@@ -135,8 +135,16 @@ export const generateCandidates = (
     // --- Combo (through one intermediate ball) ----------------------------
     // Play the cue into `obj`, driving it into another live ball `mid` that then
     // heads to a pocket. Enumerated as geometry; value decides if it's worth it.
+    //
+    // Combos are pruned to plausible geometry to keep the candidate set (and the
+    // search budget) bounded: the intermediate ball must be reasonably near the
+    // object ball (a combo across the whole table is rarely makeable) and must
+    // lie roughly on the object→pocket side. This is a feasibility filter, not a
+    // trick heuristic — the physics sim and value function still decide.
+    const COMBO_RADIUS = table.length * 0.45;
     for (const mid of live) {
       if (mid.id === tid || mid.id === CUE_ID) continue;
+      if (mag(sub(mid.pos, obj.pos)) > COMBO_RADIUS) continue;
       for (const pk of table.pockets) {
         const midGhost = ghostBall(mid.pos, pk.center); // where obj must send mid
         const objGhost = ghostBall(obj.pos, midGhost); // where cue must send obj
