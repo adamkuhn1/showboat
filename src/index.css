@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
   --accent: #5cd6a0;
+  --p0: #6fb7ff;
+  --p1: #ffb36f;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -11,25 +13,83 @@ body {
 }
 .shell {
   min-height: 100%;
-  display: grid;
-  place-content: center;
-  gap: 0.6rem;
-  text-align: center;
-  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1.5rem;
+  max-width: 960px;
+  margin: 0 auto;
 }
+.topbar { text-align: center; }
 .tag {
-  margin: 0;
+  margin: 0.2rem 0 0;
   font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #8a8a8a;
 }
 h1 {
   margin: 0;
-  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
   font-weight: 650;
   letter-spacing: -0.02em;
   color: var(--accent);
 }
-.blurb { margin: 0; max-width: 34ch; color: #c8c8c8; line-height: 1.5; }
-.status { margin-top: 0.4rem; font-size: 0.8rem; color: #6a6a6a; }
+.board { line-height: 0; }
+.table {
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  cursor: crosshair;
+  max-width: 100%;
+}
+.status {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+.turn {
+  font-weight: 650;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #1a1a1e;
+}
+.turn.p0 { color: var(--p0); }
+.turn.p1 { color: var(--p1); }
+.msg { color: #c8c8c8; }
+.controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem 1.2rem;
+  align-items: end;
+  width: 100%;
+  max-width: 760px;
+}
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: #9a9a9a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.controls label span { color: #ededed; font-weight: 600; }
+.controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+.buttons { display: flex; gap: 0.6rem; grid-column: 1 / -1; justify-content: center; }
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem 1.4rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #06251a;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.secondary { background: #26262b; color: #ededed; }
+.hint { font-size: 0.75rem; color: #6a6a6a; max-width: 60ch; text-align: center; }
