@@ -18,8 +18,16 @@ body {
   align-items: center;
   gap: 0.8rem;
   padding: 1.5rem;
-  max-width: 960px;
+  max-width: 1320px;
   margin: 0 auto;
+}
+.layout {
+  display: flex;
+  gap: 1.2rem;
+  align-items: flex-start;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 .topbar { text-align: center; }
 .tag {
@@ -92,4 +100,59 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.secondary { background: #26262b; color: #ededed; }
-.hint { font-size: 0.75rem; color: #6a6a6a; max-width: 60ch; text-align: center; }
+.toggle {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.35rem;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  color: #c8c8c8 !important;
+  font-size: 0.85rem !important;
+  cursor: pointer;
+}
+.hint { font-size: 0.75rem; color: #6a6a6a; max-width: 76ch; text-align: center; }
+
+/* --- Reasoning overlay panel --- */
+.overlay {
+  width: 320px;
+  min-height: 200px;
+  background: #131318;
+  border: 1px solid #24242c;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+.overlay h2 {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+.overlay-sub { margin: 0 0 0.6rem; font-size: 0.72rem; color: #8a8a8a; }
+.overlay-empty { font-size: 0.8rem; color: #7a7a7a; }
+.cand-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.cand-table th {
+  text-align: left;
+  color: #7a7a7a;
+  font-weight: 500;
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid #24242c;
+  font-family: ui-monospace, monospace;
+}
+.cand-table td {
+  padding: 0.2rem 0.3rem;
+  font-family: ui-monospace, monospace;
+  color: #d0d0d0;
+}
+.cand-table tr.chosen td { color: #eafff5; background: rgba(92, 214, 160, 0.1); }
+.kind.bank { color: var(--p1); }
+.kind.combo { color: #bf8fff; }
+.kind.direct { color: #8cc8ff; }
+.chosen-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.72rem;
+  color: #9a9a9a;
+  line-height: 1.45;
+}
+.chosen-note b { color: #d0d0d0; }
