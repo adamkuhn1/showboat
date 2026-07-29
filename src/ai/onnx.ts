@@ -41,13 +41,28 @@ export const tryLoadModel = async (): Promise<void> => {
   loadPromise = (async () => {
     status = "loading";
     try {
-      // HEAD-style probe: fetch the model; a 404 means "no trained model yet".
+      // Probe for the model. A dev/SPA server answers a missing file with an
+      // index.html fallback (200 + text/html), so a bare `res.ok` isn't enough:
+      // we also require a non-HTML content-type and the ONNX/protobuf magic so a
+      // missing model is cleanly "absent" (→ baseline) rather than a parse error.
       const res = await fetch(MODEL_URL, { method: "GET" });
       if (!res.ok) {
         status = "absent";
         return;
       }
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("text/html")) {
+        status = "absent"; // SPA fallback: no model file present.
+        return;
+      }
       const buf = await res.arrayBuffer();
+      // ONNX files are protobuf; the very first byte of our exported graphs is
+      // field-tag 0x08 (ir_version). An HTML page starts with '<' (0x3C).
+      const first = new Uint8Array(buf.slice(0, 1))[0];
+      if (first === 0x3c) {
+        status = "absent";
+        return;
+      }
       // Only now pull in the heavy runtime.
       ort = await import("onnxruntime-web");
       session = await ort.InferenceSession.create(buf, {
