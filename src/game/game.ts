@@ -62,20 +62,34 @@ export const placeCueBall = (
   return next;
 };
 
+// A shot simulator: applies the cue action to the cue ball and evolves the
+// world to rest, returning the trace. The default is the pure-TS reference
+// engine; the App injects the Rust→WASM implementation for play. Making this an
+// injected function keeps the game/rules layer engine-agnostic and lets tests
+// run against the deterministic TS oracle without the wasm toolchain.
+export type Simulator = (balls: Ball[], action: CueAction) => SimResult;
+
+const defaultSimulator: Simulator = (balls, action) => {
+  const cue = balls.find((b) => b.id === CUE_ID);
+  if (cue) applyCue(cue, action);
+  return simulateShot(balls, makeTable());
+};
+
 // Execute one shot. Does not mutate the input state.
 export const takeShot = (
   s: GameState,
   table: Table,
   action: CueAction,
+  simulate: Simulator = defaultSimulator,
 ): ShotReport => {
   const pre = cloneState(s);
   const next = cloneState(s);
 
   const cue = next.balls.find((b) => b.id === CUE_ID);
   if (!cue) throw new Error("no cue ball in state");
-  applyCue(cue, action);
 
-  const sim = simulateShot(next.balls, table);
+  const sim = simulate(next.balls, action);
+  void table;
 
   // Re-spot the cue ball if it was scratched: it comes back into play as
   // ball-in-hand for the opponent, so we lift it off the table until placed.

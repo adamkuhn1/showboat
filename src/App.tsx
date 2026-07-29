@@ -8,6 +8,7 @@ import { computeView, render, drawAim } from "./render/renderer";
 import { stepWorld } from "./render/animate";
 import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
+import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -22,8 +23,19 @@ export default function App() {
   const [power, setPower] = useState(0.6);
   const [side, setSide] = useState(0);
   const [top, setTop] = useState(0);
-  const [message, setMessage] = useState("Player 1 to break.");
+  const [message, setMessage] = useState("Loading physics engine…");
+  const [engineReady, setEngineReady] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Initialize the Rust→WASM physics core once on mount.
+  useEffect(() => {
+    initPhysics()
+      .then(() => {
+        setEngineReady(true);
+        setMessage("Player 1 to break.");
+      })
+      .catch(() => setMessage("Failed to load the WASM physics engine."));
+  }, []);
 
   const table = game.current.table;
   const view = computeView(CANVAS_W, CANVAS_H, table);
@@ -100,7 +112,10 @@ export default function App() {
       return;
     }
     const action: CueAction = { phi: aim, power, sideSpin: side, topSpin: top };
-    const report = takeShot(state, table, action);
+    // Authoritative outcome comes from the Rust→WASM engine.
+    const report = takeShot(state, table, action, (balls, a) =>
+      simulateShotWasm(balls, a),
+    );
 
     // Animate the SAME event-based physics in real time from a copy, then commit
     // the authoritative outcome computed above. The animation and the outcome
@@ -176,7 +191,10 @@ export default function App() {
             onChange={(e) => setTop(Number(e.target.value))} disabled={phase !== "aiming"} />
         </label>
         <div className="buttons">
-          <button onClick={shoot} disabled={phase !== "aiming" || state.winner !== null}>
+          <button
+            onClick={shoot}
+            disabled={phase !== "aiming" || state.winner !== null || !engineReady}
+          >
             {phase === "animating" ? "Rolling…" : "Shoot"}
           </button>
           <button onClick={reset} className="secondary">New rack</button>
