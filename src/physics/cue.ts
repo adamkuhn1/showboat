@@ -1,0 +1,73 @@
+import { type Ball, Motion } from "./ball";
+import { fromAngle, scale, add } from "./vec";
+import { BALL_RADIUS } from "./constants";
+
+// The cue action space. This is the *entire* set of parameters the AI (or a
+// human) can express — and it is deliberately missing the two parameters that
+// would make jump and massé shots possible:
+//
+//   - There is NO `theta` (cue elevation). Elevation is fixed at zero, so the
+//     cue strikes the ball horizontally through a plane parallel to the bed.
+//     A jump requires downward elevation into the ball; massé requires steep
+//     elevation plus extreme side english. With no elevation term, neither is
+//     REPRESENTABLE — not merely discouraged. This is the "impossible at the
+//     action level" guarantee from the spec, enforced at the type level: the
+//     interface simply has no field for it.
+//   - `V0` (cue speed) is capped (see MAX_V0). Even a hypothetical exploit that
+//     tried to launch the ball airborne with pure speed is bounded below the
+//     energy needed to do so.
+//
+// Remaining parameters:
+//   - phi: aim direction in radians (table frame).
+//   - power: normalized [0,1]; maps to V0 in [0, MAX_V0].
+//   - sideSpin (a): horizontal english in [-1, 1] (left/right of centre).
+//   - topSpin (b): vertical english in [-1, 1] (draw/follow). Bounded so it
+//     contributes roll, never lift.
+export interface CueAction {
+  phi: number;
+  power: number; // [0,1]
+  sideSpin: number; // [-1,1]  (english / "a")
+  topSpin: number; // [-1,1]  (draw<0 / follow>0 / "b")
+}
+
+// Maximum cue-ball launch speed (m/s). A hard break is ~8 m/s; we cap a little
+// above typical to allow a strong break while keeping the ball on the bed.
+export const MAX_V0 = 8.5;
+
+// Maximum spin the strike can impart, in rad/s, per unit of normalized english.
+// Bounded so english influences path/throw realistically without the pathologies
+// that elevation would enable.
+export const MAX_SIDE_SPIN = 25; // rad/s of sidespin (wz) at full english
+export const MAX_ROLL_SPIN = 40; // rad/s of roll (follow/draw) at full english
+
+// Apply a cue action to the cue ball, setting its initial velocity and spin.
+// Enforces the action-space bounds defensively even though the type already
+// forbids elevation.
+export const applyCue = (cueBall: Ball, action: CueAction): void => {
+  const power = clamp(action.power, 0, 1);
+  const a = clamp(action.sideSpin, -1, 1);
+  const b = clamp(action.topSpin, -1, 1);
+
+  const v0 = power * MAX_V0;
+  const dir = fromAngle(action.phi);
+
+  cueBall.vel = scale(dir, v0);
+
+  // Sidespin becomes vertical-axis spin (wz) → curves throw and cushion
+  // rebound. This is genuine english, NOT elevation, so it can never produce a
+  // masse arc on its own (masse needs elevation, which does not exist here).
+  cueBall.wz = a * MAX_SIDE_SPIN;
+
+  // Follow/draw sets the initial roll relative to velocity. Follow (b>0) means
+  // the ball is over-rolling in its travel direction; draw (b<0) means
+  // back-spin (surface moving backward at contact) → the classic draw shot.
+  // We seed the roll vector along the aim direction, scaled by b.
+  const rollMag = (v0 / BALL_RADIUS) + b * MAX_ROLL_SPIN;
+  cueBall.roll = scale(dir, rollMag);
+
+  cueBall.motion = v0 > 0 ? Motion.Sliding : Motion.Stationary;
+  void add; // (kept import surface small; add used elsewhere)
+};
+
+const clamp = (v: number, lo: number, hi: number): number =>
+  Math.max(lo, Math.min(hi, v));
