@@ -3,7 +3,7 @@ import { type Table } from "./table";
 import { advanceBall, timeToPhaseChange } from "./motion";
 import { timeToBallBall, timeToCushion, timeToPocket } from "./predict";
 import { resolveBallBall, resolveBallCushion } from "./collisions";
-import { STOP_SPEED } from "./constants";
+import { STOP_SPEED, BALL_RADIUS } from "./constants";
 
 // An entry in the shot's event trace. This is the raw material the reasoning
 // overlay turns into captions like "cue -> rail -> 3-ball -> corner". It is a
@@ -185,6 +185,30 @@ export const simulateShot = (balls: Ball[], table: Table): SimResult => {
     if (Math.hypot(b.vel.x, b.vel.y) < STOP_SPEED) {
       b.vel = { x: 0, y: 0 };
       b.roll = { x: 0, y: 0 };
+    }
+  }
+
+  // Final de-overlap pass (mirrors the Rust core for train/play parity): an
+  // event step can leave two resting balls interpenetrating by a fraction of a
+  // millimetre without triggering another resolve. A few relaxation iterations
+  // separate them so the resting state is physically valid.
+  for (let iter = 0; iter < 4; iter++) {
+    for (let i = 0; i < balls.length; i++) {
+      for (let j = i + 1; j < balls.length; j++) {
+        const a = balls[i];
+        const b = balls[j];
+        if (a.pocketed || b.pocketed) continue;
+        const d = { x: b.pos.x - a.pos.x, y: b.pos.y - a.pos.y };
+        const dist = Math.hypot(d.x, d.y);
+        const overlap = 2 * BALL_RADIUS - dist;
+        if (overlap > 1e-9) {
+          const nx = dist > 1e-12 ? d.x / dist : 1;
+          const ny = dist > 1e-12 ? d.y / dist : 0;
+          const push = overlap / 2 + 1e-7;
+          a.pos = { x: a.pos.x - nx * push, y: a.pos.y - ny * push };
+          b.pos = { x: b.pos.x + nx * push, y: b.pos.y + ny * push };
+        }
+      }
     }
   }
 
