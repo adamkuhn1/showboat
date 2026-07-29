@@ -19,6 +19,19 @@ import { OverlayPanel } from "./ui/OverlayPanel";
 const CANVAS_W = 900;
 const CANVAS_H = 500;
 
+// Portfolio embed contract (apps/portfolio/src/lib/embedProtocol.ts): posting
+// `ready` makes the shell crossfade its loading veil out. Sent once the engine
+// outcome is known — loaded or failed, both are painted, final states (the
+// failure message is the app's honest UI, better shown than veiled). No-op
+// when running standalone.
+function postEmbedReady() {
+  if (window.parent === window) return;
+  window.parent.postMessage(
+    { source: "portfolio-embed", type: "ready", id: "showboat" },
+    "*",
+  );
+}
+
 // Player 1 (id 0) is human; Player 2 (id 1) is the AI opponent.
 const AI_PLAYER: PlayerId = 1;
 
@@ -48,7 +61,8 @@ export default function App() {
         setEngineReady(true);
         setMessage("Player 1 to break.");
       })
-      .catch(() => setMessage("Failed to load the WASM physics engine."));
+      .catch(() => setMessage("Failed to load the WASM physics engine."))
+      .finally(postEmbedReady);
   }, []);
 
   const paint = useCallback(
