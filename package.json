@@ -14,6 +14,7 @@
     "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json"
   },
   "dependencies": {
+    "onnxruntime-web": "^1.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
