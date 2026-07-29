@@ -1,0 +1,119 @@
+// ONNX inference wiring (milestone 5).
+//
+// The trained policy/value network is exported from the Python LightZero
+// self-play pipeline (see training/) to ONNX and loaded here with
+// onnxruntime-web (WebGPU with WASM fallback). Until the multi-hour Colab
+// training run lands, there is no model file, and this module reports that
+// truthfully so the UI keeps saying "search baseline" — we never dress the
+// baseline up as the trained net.
+//
+// The model, when present, lives at `public/model/showboat.onnx` (Vite serves
+// `public/` at the site root). A tiny smoke-trained net proves this plumbing end
+// to end before the full run.
+
+// onnxruntime-web is a ~26MB WASM runtime. We import it *dynamically* and only
+// after confirming a model file actually exists, so a first-time visitor with no
+// trained model present never downloads the runtime. This keeps the baseline
+// build lean while leaving the trained-net path fully wired.
+type Ort = typeof import("onnxruntime-web");
+type InferenceSession = import("onnxruntime-web").InferenceSession;
+
+export type ModelStatus = "absent" | "loading" | "loaded" | "error";
+
+const MODEL_URL = "model/showboat.onnx";
+
+let status: ModelStatus = "absent";
+let ort: Ort | null = null;
+let session: InferenceSession | null = null;
+let loadPromise: Promise<void> | null = null;
+
+// Observation layout the network expects, kept in one place so training and
+// inference agree: normalized (x,y) for the 16 balls + a pocketed flag each =
+// 48 floats. (The Python env exports the same layout; documented in training.)
+export const OBS_BALLS = 16;
+export const OBS_DIM = OBS_BALLS * 3;
+
+// Attempt to load the model. Safe to call repeatedly; resolves whether or not a
+// model exists. Never throws — a missing model is an expected state, not an
+// error, so the baseline can run.
+export const tryLoadModel = async (): Promise<void> => {
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    status = "loading";
+    try {
+      // HEAD-style probe: fetch the model; a 404 means "no trained model yet".
+      const res = await fetch(MODEL_URL, { method: "GET" });
+      if (!res.ok) {
+        status = "absent";
+        return;
+      }
+      const buf = await res.arrayBuffer();
+      // Only now pull in the heavy runtime.
+      ort = await import("onnxruntime-web");
+      session = await ort.InferenceSession.create(buf, {
+        executionProviders: ["webgpu", "wasm"],
+        graphOptimizationLevel: "all",
+      });
+      status = "loaded";
+    } catch {
+      // No model, or a runtime that can't load it: fall back to baseline.
+      status = session ? "loaded" : "absent";
+      if (status !== "loaded") status = "absent";
+    }
+  })();
+  return loadPromise;
+};
+
+export const trainedModelStatus = (): ModelStatus => status;
+export const hasTrainedModel = (): boolean => status === "loaded" && session !== null;
+
+// Evaluate the policy/value net on an observation. Returns null when no model is
+// loaded so callers transparently use the baseline value. Output contract:
+//   value: scalar in [-1,1] (win expectation)
+//   policy: per-candidate logits (length matches the candidate encoding)
+export interface NetOutput {
+  value: number;
+  policy: Float32Array;
+}
+
+export const evaluate = async (obs: Float32Array): Promise<NetOutput | null> => {
+  if (!hasTrainedModel() || !session || !ort) return null;
+  const input = new ort.Tensor("float32", obs, [1, OBS_DIM]);
+  const feeds: Record<string, import("onnxruntime-web").Tensor> = {};
+  feeds[session.inputNames[0]] = input;
+  const out = await session.run(feeds);
+  // Convention: first output = value, second = policy. Robust to naming by
+  // falling back to output order.
+  const names = session.outputNames;
+  const valueT = out[names[0]];
+  const policyT = names.length > 1 ? out[names[1]] : undefined;
+  const value = (valueT.data as Float32Array)[0] ?? 0;
+  const policy = policyT
+    ? (policyT.data as Float32Array)
+    : new Float32Array(0);
+  return { value, policy };
+};
+
+// Encode a ball list into the observation vector the net expects. Positions are
+// normalized to [-1,1] by half the table dimensions; pocketed balls report 0s.
+export const encodeObservation = (
+  balls: { id: number; pos: { x: number; y: number }; pocketed: boolean }[],
+  halfLen: number,
+  halfWid: number,
+): Float32Array => {
+  const obs = new Float32Array(OBS_DIM);
+  for (const b of balls) {
+    if (b.id >= OBS_BALLS) continue;
+    const o = b.id * 3;
+    if (b.pocketed) {
+      obs[o] = 0;
+      obs[o + 1] = 0;
+      obs[o + 2] = 1; // pocketed flag
+    } else {
+      obs[o] = b.pos.x / halfLen;
+      obs[o + 1] = b.pos.y / halfWid;
+      obs[o + 2] = 0;
+    }
+  }
+  return obs;
+};
