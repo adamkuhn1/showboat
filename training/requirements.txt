@@ -1,0 +1,18 @@
+# Showboat training pipeline (run on Python 3.10-3.13; pooltool needs >=3.10).
+#
+# Install on Colab / a 3.10+ box:
+#   pip install -r requirements.txt
+# then the LightZero fork with the pooltool env:
+#   pip install "git+https://github.com/ekiefl/LightZero.git@dev-pooltool"
+#
+# The dev box in this repo is Python 3.9, on which pooltool cannot install; the
+# non-pooltool pieces (action space, reward, observation, network, ONNX export)
+# still run there and are covered by smoke_run.py / tests.
+
+pooltool-billiards>=0.6,<0.7   # Apache-2.0 SOTA event-based Han-2005 sim
+numpy>=1.24
+torch>=2.1                      # policy/value net + ONNX export
+onnx>=1.15                      # ONNX graph checker
+easydict>=1.10                  # LightZero config format
+# LightZero + DI-engine are installed from the ekiefl fork (see above); pinned
+# there rather than here because they pull a large dependency tree.
