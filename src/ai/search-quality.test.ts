@@ -53,10 +53,11 @@ describe("search quality: candidates are real and banks are makeable", () => {
     }
     // A healthy fraction of enumerated candidates should be genuine pots.
     expect(pots).toBeGreaterThan(0);
-    // And at least some pots should come via a rail — banks are physically
-    // realizable in this engine, so the search *can* discover them.
-    // (Not asserting a specific count; just that the capability exists.)
-    expect(railPots).toBeGreaterThanOrEqual(0);
+    // At least one bank pot must succeed in the sampled set — banks are
+    // geometrically realizable and the physics engine must execute them.
+    // The hand-set layout test below independently proves a single specific
+    // bank, so this asserts the capability emerges on a real post-break rack.
+    expect(railPots).toBeGreaterThanOrEqual(1);
   });
 
   it("a hand-set clear bank shot pots via a cushion (emergent trick capability)", () => {
