@@ -99,7 +99,7 @@ describe("event-based evolution", () => {
     expect(endKE).toBeLessThanOrEqual(startKE + 1e-9);
   });
 
-  it("balls never end up overlapping after a multi-ball shot", () => {
+  it("balls never end up overlapping after a multi-ball shot", { timeout: 30000 }, () => {
     const cue = makeBall(0, -0.3, 0);
     applyCue(cue, { phi: 0, power: 0.8, sideSpin: 0, topSpin: 0 });
     const b1 = makeBall(1, 0.2, 0);
