@@ -7,21 +7,42 @@ import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics
 import { railsBeforePot } from "./trace";
 
 /**
- * A legal pot requires BOTH: the cue's first contact matches the candidate's
+ * A legal pot requires: the cue's first contact matches the candidate's
  * intended legal ball (`sim.firstContact` — an obstruction the geometry check
  * missed, or a deflection, can make the cue strike something else first,
  * which is an illegal first contact regardless of what ends up pocketed),
- * AND the ball actually meant to drop (`candidate.potId` — for a combo/
+ * the ball actually meant to drop (`candidate.potId` — for a combo/
  * rail-combo this is the driven intermediate ball, NOT `candidate.target`,
  * the first-contact ball; see `Candidate.potId`'s doc comment in
- * candidates.ts) is the one that's pocketed. Extracted as its own function
- * (rather than inlined in the seeding loop) so it's directly unit-testable
- * against hand-built SimResult fixtures without needing real physics to
- * organically produce an illegal-first-contact case.
+ * candidates.ts) is the one that's pocketed, AND — when `potId !== target`
+ * (combo/rail-combo, where a second object ball is involved) — that the
+ * intended intermediate ball actually struck the pocketed ball, not just
+ * that both events happened to occur somewhere in the same shot.
+ *
+ * The third condition closes a real endpoint-only labeling gap (found during
+ * Phase 2C Stage A closure): checking only `firstContact` + final `pocketed`
+ * set cannot distinguish "the combo worked as intended" from "the cue hit
+ * `target` first, and `potId` was *separately* pocketed by some unrelated
+ * contact chain in the same shot" — both produce an identical
+ * (firstContact, pocketed) endpoint. `SimResult.events` (from the real WASM
+ * simulator) records every ball-ball collision in order, which is exactly
+ * the information needed to tell these apart. Direct/bank/double-bank never
+ * need this check (`potId === target`, one object ball throughout — no
+ * intermediate contact to misattribute; a ball reaching a pocket via more or
+ * fewer cushion bounces than the candidate generator planned is still a
+ * completely legal pot under real 8-ball rules, not a labeling error).
+ *
+ * Extracted as its own function (rather than inlined in the seeding loop) so
+ * it's directly unit-testable against hand-built SimResult fixtures without
+ * needing real physics to organically produce an illegal-first-contact case.
  */
-export function isLegalPot(sim: Pick<SimResult, "firstContact" | "pocketed">, candidate: Candidate): boolean {
+export function isLegalPot(sim: Pick<SimResult, "firstContact" | "pocketed" | "events">, candidate: Candidate): boolean {
   const legalFirstContact = sim.firstContact === candidate.target;
-  return legalFirstContact && sim.pocketed.includes(candidate.potId);
+  if (!legalFirstContact || !sim.pocketed.includes(candidate.potId)) return false;
+  if (candidate.potId === candidate.target) return true;
+  return sim.events.some(
+    (e) => e.kind === "ball-ball" && e.balls.includes(candidate.target) && e.balls.includes(candidate.potId),
+  );
 }
 
 // Flat UCB bandit over the candidate shot set. One level of MCTS is enough for

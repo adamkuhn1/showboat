@@ -27,17 +27,35 @@ All commands from `apps/showboat/`.
 
 1. **Generate a dataset** (Node/tsx, real WASM physics):
    ```
-   npm run ranker:gen-smoke    # ~25-30s, tiny, CI/contract-verification scale
-   npm run ranker:gen-pilot    # ~25-30 min, data-quality/throughput/diagnostic scale
-   npm run ranker:gen-full     # ~2-2.5h at current measured throughput — see
-                                # DATASET_DESIGN.md's "Scale decision" before running
+   npm run ranker:gen-smoke      # ~25-30s, tiny, CI/contract-verification scale
+   npm run ranker:gen-pilot      # data-quality/throughput/diagnostic scale
+   npm run ranker:gen-baseline   # Phase 2D training target — see THROUGHPUT_REPORT.md
+   npm run ranker:gen-full       # the brief's original 10k-state nominal target; not run this phase
    ```
-   Writes sharded NDJSON + an append-only `manifest.jsonl` + a
-   `dataset_manifest.json` (provenance, per-kind/per-split counts, shard
-   hashes, whole-dataset hash) to `data/<profile>/` — gitignored entirely
-   (fully reproducible from code + `RANKER_SEED`, see `phase2c/.gitignore`).
-   Re-running the same profile+seed reproduces an identical `dataset_hash`
-   (timestamps excluded — they're expected to differ run to run).
+   Writes one NDJSON shard per work unit (one self-play game, or one
+   controlled state) + an append-only `manifest.jsonl` + a `progress.json`
+   + a `dataset_manifest.json` (provenance, per-kind/per-split counts,
+   shard hashes, whole-dataset hash) to `data/<profile>/` — gitignored
+   entirely (fully reproducible from code + `RANKER_SEED`, see
+   `phase2c/.gitignore`). Re-running the same profile+seed reproduces an
+   identical `dataset_hash` (timestamps excluded — they're expected to
+   differ run to run).
+
+   **Resumable**: killing a run at any point and re-running the same
+   command skips already-complete units and continues — verified to
+   produce the identical `dataset_hash` as an uninterrupted run (see
+   `PHASE_2C_CLOSURE.md`). Pass `--restart-clean` to wipe a profile's
+   output and start fresh instead of resuming (required if you change
+   `RANKER_SEED`, the schema, or the physics binary for an existing
+   profile dir — resuming across an incompatible change is refused, not
+   silently allowed).
+
+   **Parallel** (worker_threads, since units are independently seeded):
+   ```
+   RANKER_PROFILE=pilot RANKER_WORKERS=4 npm run ranker:gen-parallel
+   ```
+   Same resumability semantics; see `THROUGHPUT_REPORT.md` for measured
+   scaling and the chosen worker count.
 
 2. **Validate** (schema/NaN/range/duplicate/leakage checks against the
    acceptance-criteria failure-mode list):
@@ -71,13 +89,39 @@ All commands from `apps/showboat/`.
 
 6. **Semantic/integration tests** (real WASM physics, not mocks):
    ```
-   npx vitest run training/ranker/phase2c/gen_dataset_v3.test.ts
+   npx vitest run training/ranker/phase2c/gen_dataset_v3.test.ts src/ai/shotSearch.test.ts
    ```
    Most rule-semantics fixtures (illegal first contact, scratch, no-rail
-   foul, legal/illegal 8-ball win/loss, combo `potId != target`) already
-   exist in `src/game/rules.test.ts` and `src/ai/shotSearch.test.ts` and are
-   not duplicated here; this file tests what's new in Phase 2C —
-   `classifyPocketed` and `processState`'s real-physics integration.
+   foul, legal/illegal 8-ball win/loss, combo `potId != target`, and the
+   endpoint-only-labeling fix's event-sequence fixtures) already exist in
+   `src/game/rules.test.ts` and `src/ai/shotSearch.test.ts` and are not
+   duplicated here; `gen_dataset_v3.test.ts` tests what's specific to
+   Phase 2C — `classifyPocketed` and `processState`'s real-physics
+   integration.
+
+7. **Rigorous tiny-subset memorization test** (fixes the original
+   diagnostic's wrong-metric bug — see `PHASE_2C_CLOSURE.md` item #2):
+   ```
+   python memorization_test.py --dataset-dir data/pilot
+   ```
+   Evaluates memorization via prediction-to-target MAE, not raw BCE
+   (which has a nonzero floor for soft/non-binary targets by construction).
+   Includes negative controls (zero optimization steps, zeroed features,
+   post-hoc-permuted evaluation) that must fail, proving the test itself
+   has real discriminating power.
+
+8. **Perturbation rollout benchmark** (8 vs. 16 vs. 32, chose the adaptive
+   policy `processState` now uses):
+   ```
+   npx tsx training/ranker/phase2c/perturbation_benchmark.ts
+   ```
+   See `PERTURBATION_BENCHMARK.md`.
+
+9. **Per-stage throughput profile**:
+   ```
+   npx tsx training/ranker/phase2c/throughput_profile.ts
+   ```
+   See `THROUGHPUT_REPORT.md`.
 
 ## Relationship to the Phase 2A/2B spike
 

@@ -133,36 +133,79 @@ describe("isLegalPot: first-contact and pot-target legality", () => {
     // candidate's intended ball 1 — an obstruction/deflection the candidate
     // generator's geometry check didn't catch. Ball 1 happening to still
     // drop does not make this a legal pot.
-    const sim = { firstContact: 5, pocketed: [1] };
+    const sim = { firstContact: 5, pocketed: [1], events: [] };
     expect(isLegalPot(sim, candidate)).toBe(false);
   });
 
   it("legal direct pot: first contact matches target, target is pocketed", () => {
     const candidate = makeCandidate("direct", { target: 1, potId: 1 });
-    const sim = { firstContact: 1, pocketed: [1] };
+    const sim = { firstContact: 1, pocketed: [1], events: [] };
     expect(isLegalPot(sim, candidate)).toBe(true);
   });
 
-  it("legal combo pot: first contact is the struck ball (target), but the POCKETED ball is the driven intermediate (potId), not target", () => {
+  it("legal combo pot: first contact is the struck ball (target), the POCKETED ball is the driven intermediate (potId), and events confirm target actually struck potId", () => {
     // Regression fixture for the real bug this phase fixed: candidates.ts's
     // combo/rail-combo candidates set `target` to the first-contact ball and
     // `potId` to the ball that's actually driven into the pocket — checking
     // `pocketed.includes(target)` here would wrongly return false even
     // though the combo worked exactly as intended.
     const candidate = makeCandidate("combo", { target: 1, potId: 7 });
-    const sim = { firstContact: 1, pocketed: [7] };
+    const sim = {
+      firstContact: 1,
+      pocketed: [7],
+      events: [
+        { time: 0.1, kind: "ball-ball" as const, balls: [0, 1] }, // cue hits target
+        { time: 0.2, kind: "ball-ball" as const, balls: [1, 7] }, // target drives potId
+        { time: 0.4, kind: "pocket" as const, balls: [7], pocket: "tr" },
+      ],
+    };
     expect(isLegalPot(sim, candidate)).toBe(true);
   });
 
   it("illegal: combo's first-struck ball happens to fall too, but the intended potId ball never dropped", () => {
     const candidate = makeCandidate("combo", { target: 1, potId: 7 });
-    const sim = { firstContact: 1, pocketed: [1] }; // target fell, not potId
+    const sim = { firstContact: 1, pocketed: [1], events: [] }; // target fell, not potId
     expect(isLegalPot(sim, candidate)).toBe(false);
+  });
+
+  it("illegal (endpoint-only labeling gap, fixed): first contact and final pocketed set match a combo's endpoint, but target never actually struck potId — potId was pocketed by an unrelated contact chain in the same shot", () => {
+    // Same (firstContact, pocketed) endpoint as the legal case above, but the
+    // event trace shows potId was pocketed WITHOUT ever colliding with
+    // target — e.g. it was drifting toward a pocket already and something
+    // else (or nothing) nudged it in during the same shot. Endpoint-only
+    // checking (the pre-Stage-A-closure behavior) could not tell this apart
+    // from a genuine combo; this is exactly the case that regressed it.
+    const candidate = makeCandidate("combo", { target: 1, potId: 7 });
+    const sim = {
+      firstContact: 1,
+      pocketed: [7],
+      events: [
+        { time: 0.1, kind: "ball-ball" as const, balls: [0, 1] }, // cue hits target
+        { time: 0.15, kind: "ball-cushion" as const, balls: [1], cushion: "top" }, // target bounces away, never reaches potId
+        { time: 0.3, kind: "pocket" as const, balls: [7], pocket: "tr" }, // potId drops on its own / via something else
+      ],
+    };
+    expect(isLegalPot(sim, candidate)).toBe(false);
+  });
+
+  it("direct/bank/double-bank never need the contact-chain check (single object ball throughout, potId === target) — legal regardless of intermediate cushion count", () => {
+    const candidate = makeCandidate("double-bank", { target: 3, potId: 3 });
+    const sim = {
+      firstContact: 3,
+      pocketed: [3],
+      events: [
+        { time: 0.1, kind: "ball-ball" as const, balls: [0, 3] },
+        { time: 0.2, kind: "ball-cushion" as const, balls: [3], cushion: "left" },
+        { time: 0.3, kind: "ball-cushion" as const, balls: [3], cushion: "top" },
+        { time: 0.5, kind: "pocket" as const, balls: [3], pocket: "tl" },
+      ],
+    };
+    expect(isLegalPot(sim, candidate)).toBe(true);
   });
 
   it("illegal: nothing pocketed at all", () => {
     const candidate = makeCandidate("direct", { target: 1, potId: 1 });
-    const sim = { firstContact: 1, pocketed: [] };
+    const sim = { firstContact: 1, pocketed: [], events: [] };
     expect(isLegalPot(sim, candidate)).toBe(false);
   });
 });
