@@ -10,6 +10,7 @@ export class ShotResult {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
+    readonly ballCount: number;
     readonly balls: Float64Array;
     readonly duration: number;
     readonly eventBalls: Int32Array;
@@ -19,6 +20,8 @@ export class ShotResult {
     readonly eventTimes: Float64Array;
     readonly firstContact: number;
     readonly pocketed: Uint8Array;
+    readonly waypointBalls: Float64Array;
+    readonly waypointTimes: Float64Array;
 }
 
 /**
@@ -47,6 +50,7 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_shotresult_free: (a: number, b: number) => void;
     readonly rolloutValue: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => number;
+    readonly shotresult_ballCount: (a: number) => number;
     readonly shotresult_balls: (a: number) => [number, number];
     readonly shotresult_duration: (a: number) => number;
     readonly shotresult_eventBalls: (a: number) => [number, number];
@@ -56,6 +60,8 @@ export interface InitOutput {
     readonly shotresult_eventTimes: (a: number) => [number, number];
     readonly shotresult_firstContact: (a: number) => number;
     readonly shotresult_pocketed: (a: number) => [number, number];
+    readonly shotresult_waypointBalls: (a: number) => [number, number];
+    readonly shotresult_waypointTimes: (a: number) => [number, number];
     readonly simulateShot: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly tableDims: () => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

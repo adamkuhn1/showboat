@@ -66,7 +66,7 @@ export const applyShotRules = (
     // No object ball contacted at all — always a foul (except a legal break is
     // handled by requiring at least one ball to be hit; here none was).
     foul = true;
-    foulReason = "no object ball contacted";
+    foulReason = "no contact";
   } else if (pre.broken && shooterGroup !== null) {
     // Groups assigned: must strike your own group first, unless only the 8
     // remains for you (then you must hit the 8 first).
@@ -75,17 +75,17 @@ export const applyShotRules = (
     const firstGroup = groupOf(firstHit);
     if (mustHitEight && firstHit !== EIGHT_ID) {
       foul = true;
-      foulReason = "must contact the 8-ball first";
+      foulReason = "hit the 8 first";
     } else if (!mustHitEight && firstHit === EIGHT_ID) {
       foul = true;
-      foulReason = "cannot contact the 8-ball first";
+      foulReason = "can't hit the 8 yet";
     } else if (
       !mustHitEight &&
       firstGroup !== "eight" &&
       firstGroup !== shooterGroup
     ) {
       foul = true;
-      foulReason = "contacted opponent's ball first";
+      foulReason = "hit opponent's ball first";
     }
   }
 
@@ -99,14 +99,14 @@ export const applyShotRules = (
     );
     if (!cushionAfterContact) {
       foul = true;
-      foulReason = "no ball reached a rail";
+      foulReason = "no rail";
     }
   }
 
   // --- Scratch ------------------------------------------------------------
   if (cueScratched) {
     foul = true;
-    foulReason = foulReason ?? "scratch (cue ball pocketed)";
+    foulReason = foulReason ?? "scratch";
   }
 
   // --- 8-ball win / loss --------------------------------------------------
@@ -133,7 +133,7 @@ export const applyShotRules = (
     g.winner = opp;
     return {
       foul: true,
-      foulReason: foulReason ?? "8-ball pocketed illegally",
+      foulReason: foulReason ?? "8 early",
       pocketedThisShot: pocketed,
       turnPasses: true,
       ballInHandForNext: false,

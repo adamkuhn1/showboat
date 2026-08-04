@@ -54,7 +54,7 @@ fn straight_shot_pockets_in_corner() {
     let phi = (corner.center.y - 0.0).atan2(corner.center.x - 0.0);
     apply_cue(&mut cue, &CueAction { phi, power: 0.6, side_spin: 0.0, top_spin: 0.0 });
     let mut balls = vec![cue];
-    let res = simulate_shot(&mut balls, &table);
+    let res = simulate_shot(&mut balls, &table, false);
     assert!(res.pocketed.contains(&0), "pocketed: {:?}", res.pocketed);
 }
 
@@ -64,7 +64,7 @@ fn cushion_rebound_records_event_and_returns_ball() {
     apply_cue(&mut cue, &CueAction { phi: 0.0, power: 0.3, side_spin: 0.0, top_spin: 0.0 });
     let mut balls = vec![cue];
     let table = Table::bar_box();
-    let res = simulate_shot(&mut balls, &table);
+    let res = simulate_shot(&mut balls, &table, false);
     let hit = res
         .events
         .iter()
@@ -80,7 +80,7 @@ fn energy_never_increases_and_all_balls_settle() {
     let start_ke = 0.5 * cue.vel.mag().powi(2);
     let mut balls = vec![cue];
     let table = Table::bar_box();
-    let res = simulate_shot(&mut balls, &table);
+    let res = simulate_shot(&mut balls, &table, false);
     let end_ke = 0.5 * balls[0].vel.mag().powi(2);
     for b in &balls {
         assert!(b.pocketed || b.vel.mag() < 0.01);
@@ -97,7 +97,7 @@ fn no_resting_overlap_after_multiball() {
     let b2 = Ball::new(2, 0.2 + BALL_DIAMETER * 1.02, 0.0);
     let mut balls = vec![cue, b1, b2];
     let table = Table::bar_box();
-    simulate_shot(&mut balls, &table);
+    simulate_shot(&mut balls, &table, false);
     for i in 0..balls.len() {
         for j in (i + 1)..balls.len() {
             if balls[i].pocketed || balls[j].pocketed {

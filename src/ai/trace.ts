@@ -1,10 +1,7 @@
 import { type SimResult, type ShotEvent } from "../physics/engine";
 import { CUE_ID, EIGHT_ID } from "../game/rack";
 
-// Turn a real physics event trace into a human-readable caption, e.g.
-// "cue → rail → 3-ball → corner". This reads ONLY from the simulation's actual
-// event sequence — it is a presentation layer over real decision/physics data,
-// never a scripted description. Same mechanism CueTip uses to caption shots.
+// Build a shot caption from the physics event trace: "cue → rail → 3-ball → corner".
 
 const ballName = (id: number): string => {
   if (id === CUE_ID) return "cue";
@@ -40,25 +37,29 @@ const segmentFor = (e: ShotEvent): string | null => {
   }
 };
 
-// Build the arrow-joined caption from the ordered event trace.
+// Capped at 8 segments so a chaotic multi-ball bounce can't overflow the status bar.
 export const describeShot = (sim: SimResult): string => {
+  const MAX_SEGMENTS = 8;
   const segments: string[] = ["cue"];
+  let truncated = false;
   for (const e of sim.events) {
     const seg = segmentFor(e);
-    if (seg && segments[segments.length - 1] !== seg) segments.push(seg);
+    if (seg && segments[segments.length - 1] !== seg) {
+      if (segments.length >= MAX_SEGMENTS) { truncated = true; break; }
+      segments.push(seg);
+    }
   }
   if (segments.length === 1) return "cue rolled without contact";
-  return segments.join(" → ");
+  return segments.join(" → ") + (truncated ? " → …" : "");
 };
 
-// Count cushion contacts before the first ball is pocketed — used by the overlay
-// to flag bank/multi-wall shots (which is what makes an emergent trick shot
-// legible, not any scripting).
+// Count cushion contacts before the first ball is pocketed.
+// Returns 0 if nothing was pocketed — don't credit rails to a missed shot.
 export const railsBeforePot = (sim: SimResult): number => {
   let rails = 0;
   for (const e of sim.events) {
     if (e.kind === "ball-cushion") rails++;
-    if (e.kind === "pocket") break;
+    if (e.kind === "pocket") return rails;
   }
-  return rails;
+  return 0;
 };

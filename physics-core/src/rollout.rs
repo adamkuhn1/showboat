@@ -61,7 +61,7 @@ pub fn simulate_candidate(
     if let Some(cue) = copy.iter_mut().find(|b| b.id == 0) {
         apply_cue(cue, action);
     }
-    let result = simulate_shot(&mut copy, table);
+    let result = simulate_shot(&mut copy, table, false);
     (copy, result)
 }
 

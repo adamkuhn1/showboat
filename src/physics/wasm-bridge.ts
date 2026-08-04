@@ -15,9 +15,10 @@ import init, {
   rolloutValue as wasmRolloutValue,
 } from "../wasm/showboat_physics";
 import wasmUrl from "../wasm/showboat_physics_bg.wasm?url";
-import { type Ball, Motion } from "./ball";
-import { type SimResult, type ShotEvent, type ShotEventKind } from "./engine";
+import { type Ball, Motion, classifyMotion } from "./ball";
+import { type SimResult, type SimWaypoint, type ShotEvent, type ShotEventKind } from "./engine";
 import { type CueAction } from "./cue";
+import { BALL_RADIUS } from "./constants";
 
 const STRIDE = 8;
 
@@ -50,6 +51,56 @@ export const flattenBalls = (balls: Ball[]): Float64Array => {
   return out;
 };
 
+// After a WASM sim, the Rust engine can leave balls in a numerically overlapping
+// state (distance < 2*BALL_RADIUS) due to floating-point precision at high event
+// counts. Any overlap causes the NEXT simulation that uses this state to generate
+// thousands of immediate ball-ball events before it can terminate, making the
+// search seeding phase extremely slow. Separate overlapping pairs by the minimum
+// distance needed to bring them to exact contact — this is a physics correction,
+// not a foul or position change visible in gameplay.
+// Exported so the MCTS layer can pre-sanitise the game-state copy before any
+// WASM call (the TS engine's break simulation can leave balls numerically at
+// contact distance; passing such a state to Rust causes thousands of t≈0
+// collision events and multi-second hangs).
+export const separateOverlaps = (balls: Ball[]): number => {
+  // 2 mm clearance (≈7% of ball diameter) gives Rust's event-detection enough
+  // room that even after a collision the balls won't immediately re-overlap on
+  // the next timestep.  1e-5 m (0.01 mm) was too tight.
+  const MIN = 2 * BALL_RADIUS + 0.002;
+  const live = balls.filter((b) => !b.pocketed);
+  // Iterate until fully converged: a single pass is not enough for tight clusters
+  // (pushing pair A-B can re-overlap A with C if they share ball A).  O(n²) per
+  // pass, n≤15, so 10–20 passes ≈ 2250–4500 comparisons — negligible cost in JS.
+  const MAX_PASSES = 20;
+  let pass = 0;
+  for (; pass < MAX_PASSES; pass++) {
+    let anyOverlap = false;
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j];
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < MIN) {
+          anyOverlap = true;
+          const overlap = MIN - dist;
+          if (dist < 1e-9) {
+            // Coincident: push apart along x
+            a.pos = { x: a.pos.x - MIN / 2, y: a.pos.y };
+            b.pos = { x: b.pos.x + MIN / 2, y: b.pos.y };
+          } else {
+            const nx = dx / dist, ny = dy / dist;
+            a.pos = { x: a.pos.x - nx * overlap / 2, y: a.pos.y - ny * overlap / 2 };
+            b.pos = { x: b.pos.x + nx * overlap / 2, y: b.pos.y + ny * overlap / 2 };
+          }
+        }
+      }
+    }
+    if (!anyOverlap) break;
+  }
+  return pass; // number of passes needed (0 = no overlaps found)
+};
+
 // Write a flat array back onto an existing ball list (preserving id order).
 const applyFlat = (balls: Ball[], flat: Float64Array): void => {
   balls.forEach((b, i) => {
@@ -66,6 +117,30 @@ const applyFlat = (balls: Ball[], flat: Float64Array): void => {
   });
 };
 
+// Build a fresh Ball[] from a flat waypoint block — unlike applyFlat (which
+// mutates an existing array in place), each waypoint snapshot needs its own
+// independent ball objects.
+const ballsFromFlat = (flat: Float64Array, offset: number, count: number): Ball[] => {
+  const out: Ball[] = [];
+  for (let i = 0; i < count; i++) {
+    const o = offset + i * STRIDE;
+    const px = flat[o + 1];
+    const pocketed = Number.isNaN(px);
+    const b: Ball = {
+      id: flat[o],
+      pos: { x: pocketed ? 0 : px, y: flat[o + 2] },
+      vel: { x: flat[o + 3], y: flat[o + 4] },
+      wz: flat[o + 5],
+      roll: { x: flat[o + 6], y: flat[o + 7] },
+      motion: Motion.Stationary,
+      pocketed,
+    };
+    b.motion = pocketed ? Motion.Stationary : classifyMotion(b);
+    out.push(b);
+  }
+  return out;
+};
+
 const KIND: ShotEventKind[] = ["ball-ball", "ball-cushion", "pocket", "stop"];
 
 // Run a full shot through the WASM engine. `initPhysics()` must have resolved.
@@ -74,6 +149,11 @@ export const simulateShotWasm = (
   balls: Ball[],
   action: CueAction,
 ): SimResult => {
+  // Fix any overlapping balls in the INPUT before handing to Rust.  The caller
+  // may have cloned state from the TS engine (e.g. post-break) where balls
+  // ended up numerically touching; without this Rust generates thousands of
+  // t=0 events and the call blocks for 10-30 s.
+  separateOverlaps(balls);
   const flat = flattenBalls(balls);
   const res = wasmSimulateShot(
     flat,
@@ -84,6 +164,7 @@ export const simulateShotWasm = (
   );
 
   applyFlat(balls, res.balls);
+  separateOverlaps(balls);
 
   const kinds = res.eventKinds;
   const eballs = res.eventBalls; // pairs
@@ -91,8 +172,14 @@ export const simulateShotWasm = (
   const cushions = res.eventCushions as string[];
   const times = res.eventTimes;
 
+  // Cap event parsing: a degenerate simulation can return tens of thousands of
+  // events (two balls bouncing to the Rust engine's internal collision ceiling).
+  // We never need more than ~200 events to compute potsTarget / rail counts /
+  // shot description — pockets always happen within the first ~50 events for any
+  // real shot.  Capping protects the JS parsing loop from multi-second stalls.
+  const MAX_EVENTS = 200;
   const events: ShotEvent[] = [];
-  for (let k = 0; k < kinds.length; k++) {
+  for (let k = 0; k < Math.min(kinds.length, MAX_EVENTS); k++) {
     const kind = KIND[kinds[k]];
     const a = eballs[k * 2];
     const b = eballs[k * 2 + 1];
@@ -108,8 +195,22 @@ export const simulateShotWasm = (
 
   const pocketed = Array.from(res.pocketed);
   const firstContact = res.firstContact >= 0 ? res.firstContact : null;
+  // Extract duration/waypoints before free() — accessing wasm-bindgen
+  // properties on a freed struct throws "null pointer passed to rust".
+  const duration = res.duration;
+  const waypointTimes = res.waypointTimes;
+  const waypointBalls = res.waypointBalls;
+  const ballCount = res.ballCount;
 
-  // free the wasm-owned struct.
+  const waypoints: SimWaypoint[] = [];
+  const blockSize = ballCount * STRIDE;
+  for (let w = 0; w < waypointTimes.length; w++) {
+    waypoints.push({
+      time: waypointTimes[w],
+      balls: ballsFromFlat(waypointBalls, w * blockSize, ballCount),
+    });
+  }
+
   res.free();
 
   return {
@@ -117,7 +218,8 @@ export const simulateShotWasm = (
     events,
     pocketed,
     firstContact,
-    duration: res.duration,
+    duration,
+    waypoints,
   };
 };
 
@@ -135,6 +237,7 @@ export const rolloutValueWasm = (
   nRollouts: number,
   seed: number,
 ): number => {
+  separateOverlaps(balls);
   const flat = flattenBalls(balls);
   return wasmRolloutValue(
     flat,
