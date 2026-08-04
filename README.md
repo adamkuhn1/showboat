@@ -6,7 +6,7 @@ ML foundation (a trained candidate-ranking model) is in progress — see "ML
 status" below before repeating any claim about a trained AI.
 
 > **Which brain is playing, today?** The shipped app runs the **pure-search
-> baseline** (`src/ai/mcts.ts`, a flat UCB bandit over the candidate-shot set —
+> baseline** (`src/ai/shotSearch.ts`, a flat UCB bandit over the candidate-shot set —
 > not a mislabeled "MCTS") and says so in the UI ("search baseline"/"the AI").
 > No model file ships to `public/model/`, so this is the only thing a visitor
 > ever plays against right now.
@@ -58,11 +58,11 @@ loop is **Rust→WASM**, the UI/rules/inference glue is **TypeScript**, the
 training pipeline is **Python**.
 
 ```
-physics-core/  (Rust → WASM)   event-based Han-2005 physics + MCTS rollout loop
+physics-core/  (Rust → WASM)   event-based Han-2005 physics + UCB search rollout loop
   src/physics/                 pure-TS reference engine (the test ORACLE + spec)
   src/wasm/                    committed wasm-pack output (JS build needs no cargo)
 src/game/                      8-ball ruleset + game controller (engine-agnostic)
-src/ai/                        candidate generator, MCTS, ONNX loader, brain seam
+src/ai/                        candidate generator, UCB shot search, ONNX loader, brain seam
 src/render/ + src/ui/          canvas render + reasoning overlay
 training/      (Python)        pooltool + LightZero self-play → ONNX
 ```
@@ -118,7 +118,7 @@ policy/value MLP exports to **ONNX**. Never executed on this dev box
 (PoolTool needs Python 3.10+; the box is 3.9) or anywhere else — see
 `training/README.md`'s status banner.
 
-**Play (browser), today:** `src/ai/mcts.ts`'s flat UCB bandit searches over
+**Play (browser), today:** `src/ai/shotSearch.ts`'s flat UCB bandit searches over
 the candidate-shot set using the Rust physics for rollouts — **uniform
 priors + a physics rollout value**, no model involved. This is the pure-search
 baseline every visitor plays against right now.
@@ -131,10 +131,13 @@ decorative (the `qa-audit` hard constraint):
 - **Ghost candidate paths** are the geometric aiming routes the search
   enumerated: **direct** pot, **single-cushion bank** (pocket mirrored across a
   rail), and **combo** (through an intermediate ball). Line weight/opacity tracks
-  each candidate's **MCTS visit share**.
-- **Per-candidate win-prob** is the squashed **rollout value** the search
-  optimized. **Visits** are the real MCTS visit counts. **Rails** is the number
-  of cushions before the pot, measured from the **actual simulated event trace**.
+  each candidate's **UCB visit share**.
+- **Per-candidate strength score** is the squashed **rollout value** the search
+  optimized — a relative, uncalibrated score (`CandidateStat.strength`), never
+  displayed as a percentage or called a probability/confidence, since nothing
+  has measured it against real outcome frequencies. **Visits** are the real UCB
+  visit counts. **Rails** is the number of cushions before the pot, measured
+  from the **actual simulated event trace**.
 - The chosen shot is the **most-visited** candidate. A bank or combo only appears
   as the pick when the search *values* it — trick shots are selected, never
   canned.

@@ -37,7 +37,7 @@ export interface SimResult {
   /**
    * Full ball-state snapshots across the shot, only populated by the WASM
    * simulator (simulateShotWasm) for the single real shot the player/AI
-   * takes — never by this TS reference engine, and never for MCTS rollouts.
+   * takes — never by this TS reference engine, and never for UCB search rollouts.
    * When present, this is what the UI replays for the animation, so the
    * on-screen motion and the authoritative outcome are the same simulation
    * run rather than two independently-computed ones that can diverge over a

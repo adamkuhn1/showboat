@@ -31,7 +31,7 @@ if (BOARD_DIM !== OBS_DIM) {
 }
 
 const POCKET_IDS = ["bl", "tl", "br", "tr", "sb", "st"] as const;
-const KINDS = ["direct", "bank", "double-bank", "combo"] as const;
+const KINDS = ["direct", "bank", "double-bank", "combo", "rail-combo"] as const;
 
 const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, y: a.y - b.y });
 const mag = (a: Vec2): number => Math.hypot(a.x, a.y);

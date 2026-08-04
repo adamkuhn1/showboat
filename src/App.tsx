@@ -13,11 +13,36 @@ import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { planTurn, legalTargets } from "./ai/turn";
 import { getBrain, brainLabel } from "./ai/brain";
 import { tryLoadModel } from "./ai/onnx";
-import type { SearchResult } from "./ai/mcts";
+import type { SearchResult } from "./ai/shotSearch";
 import { OverlayPanel } from "./ui/OverlayPanel";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
+
+// Bounds for the post-search reasoning-overlay hold (see the AI-turn effect
+// below). Not a fixed dramatic pause — see that call site's comment.
+const REASONING_HOLD_MIN_MS = 350;
+const REASONING_HOLD_MAX_MS = 1100;
+
+// Convert a mouse event's CSS-pixel coordinates into the canvas's intrinsic
+// pixel space. `.table { max-width: 100% }` (index.css) lets the canvas
+// render smaller than its intrinsic CANVAS_W/CANVAS_H on narrow viewports —
+// getBoundingClientRect() reports the CSS-rendered box, but view.offsetX/
+// scale (from computeView(CANVAS_W, CANVAS_H, ...)) are in intrinsic-pixel
+// space. Without this ratio, aiming/placement is measurably off on any
+// window narrower than the canvas's intrinsic width. Reads canvas.width/
+// height directly off the element rather than the CANVAS_W/CANVAS_H
+// constants so this stays correct even if those constants ever change.
+const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } => {
+  const canvas = e.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+};
 
 // Portfolio embed contract (apps/portfolio/src/lib/embedProtocol.ts): posting
 // `ready` makes the shell crossfade its loading veil out. Sent once the engine
@@ -221,7 +246,12 @@ export default function App() {
       setSearch(result);
       paint(planState, result);
 
-      // Hold the overlay briefly so the reasoning is visible, then shoot.
+      // Bounded, content-adaptive hold — NOT a fixed dramatic pause. Long
+      // enough that the overlay's candidate list has visibly rendered before
+      // the shot fires, short enough that it never reads as manufactured
+      // "thinking" theater unrelated to the actual (already-completed)
+      // search above. Scales gently with how much there is to look at.
+      const holdMs = Math.min(REASONING_HOLD_MAX_MS, REASONING_HOLD_MIN_MS + result.stats.length * 15);
       setTimeout(() => {
         if (cancelled) return;
         if (!result.best) {
@@ -266,7 +296,7 @@ export default function App() {
         const action = result.best.candidate.action;
         const report = takeShot(planState, table, action, simulateShotWasm);
         animateAndCommit(planState, action, report);
-      }, 4500);
+      }, holdMs);
     }, 30);
 
     return () => {
@@ -283,9 +313,7 @@ export default function App() {
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (aimLockedRef.current) return;
     if (phase !== "aiming" || (vsAI && state.turn === AI_PLAYER)) return;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { x: mx, y: my } = getCanvasPoint(e);
     const cue = state.balls.find((b) => b.id === CUE_ID);
     if (!cue || cue.pocketed) return;
     const cx = view.offsetX + cue.pos.x * view.scale;
@@ -299,9 +327,7 @@ export default function App() {
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (state.ballInHand === false || phase !== "aiming") return;
     if (vsAI && state.turn === AI_PLAYER) return;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { x: mx, y: my } = getCanvasPoint(e);
     const wx = (mx - view.offsetX) / view.scale;
     const wy = -(my - view.offsetY) / view.scale;
     const hx = table.length / 2 - BALL_RADIUS;

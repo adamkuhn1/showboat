@@ -6,14 +6,25 @@ import { type CueAction } from "../physics/cue";
 import { CUE_ID } from "../game/rack";
 
 // Enumerate aiming paths geometrically: direct pots, single- and double-cushion
-// banks (via pocket mirroring), and simple combos through an intermediate ball.
-// Emits aim angle + suggested power — the MCTS value function picks what's good.
+// banks (via pocket mirroring), simple combos through an intermediate ball, and
+// rail-plus-combination routes (combo where the intermediate ball's leg to the
+// pocket banks off one rail). Emits aim angle + suggested power — the UCB
+// search value function picks what's good.
 
-export type CandidateKind = "direct" | "bank" | "double-bank" | "combo";
+export type CandidateKind = "direct" | "bank" | "double-bank" | "combo" | "rail-combo";
 
 export interface Candidate {
   kind: CandidateKind;
-  target: number; // object ball id being played
+  target: number; // ball the CUE must legally strike first (first-contact legality)
+  // Ball that should actually end up in the pocket. Equal to `target` for
+  // direct/bank/double-bank (the struck ball travels straight to the
+  // pocket). Distinct from `target` for combo/rail-combo, where the cue
+  // strikes `target` (satisfying legal first contact) which then drives a
+  // *different* ball (`potId`) into the pocket — checking `pocketed.includes`
+  // against the wrong one of these two ids is a real, confirmed bug: for a
+  // combo shot simulated at realistic (non-degenerate) range, `target`
+  // generally does NOT itself reach the pocket, only `potId` does.
+  potId: number;
   pocket: string; // pocket id aimed at
   aimPoint: Vec2; // the "ghost ball" point the cue is aimed through
   action: CueAction; // phi + a suggested power (spin left to search)
@@ -125,6 +136,7 @@ export const generateCandidates = (
         out.push({
           kind: "direct",
           target: tid,
+          potId: tid,
           pocket: pk.id,
           aimPoint: ghost,
           action: aimAction(cuePos, ghost, powerFor(dist)),
@@ -150,6 +162,7 @@ export const generateCandidates = (
         out.push({
           kind: "bank",
           target: tid,
+          potId: tid,
           pocket: pk.id,
           aimPoint: gb,
           action: aimAction(cuePos, gb, powerFor(dist)),
@@ -184,6 +197,7 @@ export const generateCandidates = (
           out.push({
             kind: "double-bank",
             target: tid,
+            potId: tid,
             pocket: pk.id,
             aimPoint: gb,
             action: aimAction(cuePos, gb, powerFor(dist)),
@@ -214,12 +228,48 @@ export const generateCandidates = (
         out.push({
           kind: "combo",
           target: tid,
+          potId: mid.id,
           pocket: pk.id,
           aimPoint: objGhost,
           action: aimAction(cuePos, objGhost, powerFor(dist)),
           path: [obj.pos, mid.pos, pk.center],
           banks: 0,
         });
+      }
+
+      // --- Rail-plus-combination (combo, intermediate ball banks one rail) --
+      // Same combo geometry, but the intermediate ball's leg to the pocket
+      // reflects off one cushion instead of running straight — the pocket is
+      // mirrored across a rail (as in the single-cushion bank above) and the
+      // intermediate ball is aimed at the bank point instead of the pocket
+      // directly. This is a genuinely distinct, harder route (two balls'
+      // worth of aiming precision plus a cushion), not a relabeled combo.
+      for (const pk of table.pockets) {
+        for (const side of SIDES) {
+          const mirror = mirrorAcross(pk.center, table, side);
+          const bankPoint = railCrossing(mid.pos, mirror, table, side);
+          if (!bankPoint) continue;
+          const midGhost = ghostBall(mid.pos, bankPoint);
+          const objGhost = ghostBall(obj.pos, midGhost);
+          if (!isReachable(cuePos, objGhost, obj.pos, midGhost)) continue;
+          if (!isReachable(obj.pos, midGhost, mid.pos, bankPoint)) continue;
+          if (!isPathClear(cuePos, objGhost, live, skipCueAndTarget)) continue;
+          const dist =
+            mag(sub(objGhost, cuePos)) +
+            mag(sub(mid.pos, obj.pos)) +
+            mag(sub(bankPoint, mid.pos)) +
+            mag(sub(pk.center, bankPoint));
+          out.push({
+            kind: "rail-combo",
+            target: tid,
+            potId: mid.id,
+            pocket: pk.id,
+            aimPoint: objGhost,
+            action: aimAction(cuePos, objGhost, powerFor(dist)),
+            path: [obj.pos, mid.pos, bankPoint, pk.center],
+            banks: 1,
+          });
+        }
       }
     }
   }
@@ -228,7 +278,7 @@ export const generateCandidates = (
   // rollouts per candidate) stays within ~600 WASM calls on an open table.
   // Shorter paths are more makeable, so sort by total path distance and keep
   // the top N of each kind. The search still considers all shot types; it just
-  // prunes the least-promising geometric variants before MCTS begins.
+  // prunes the least-promising geometric variants before UCB search begins.
   const pathLen = (c: Candidate): number => {
     let d = 0;
     for (let i = 1; i < c.path.length; i++) d += mag(sub(c.path[i], c.path[i - 1]));
@@ -245,6 +295,7 @@ export const generateCandidates = (
     ...capByKind("bank", 24),
     ...capByKind("double-bank", 4),
     ...capByKind("combo", 4),
+    ...capByKind("rail-combo", 4),
   ];
 };
 

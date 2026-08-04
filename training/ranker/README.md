@@ -32,21 +32,23 @@ All commands from `apps/showboat/`.
    # or, to control scope:
    RANKER_N_STATES=15 RANKER_N_PERTURB=8 npx tsx training/ranker/gen_dataset.ts
    ```
-   Writes `training/ranker/dataset/showboat-ranker-v1.ndjson` +
-   a `.meta.json` sidecar (seed, row counts, label statistics). The committed
-   dataset in this repo was generated with `RANKER_N_STATES=15
-   RANKER_N_PERTURB=8`, seed `20260803` (hardcoded in `gen_dataset.ts`) — 648
-   rows from 15 randomized open-table states. A full 60-state run works but
-   takes materially longer (some perturbed shots are legitimately expensive
-   physics simulations — see "Known limitations" below); 15 states was chosen
-   for a spike, not because more wasn't possible.
+   Writes `training/ranker/dataset/<schema_version>.ndjson` (currently
+   `showboat-ranker-v2.ndjson`) + a `.meta.json` sidecar (seed, row counts,
+   label statistics) — the filename tracks `encode.ts`'s `SCHEMA_VERSION`
+   automatically so a stale-named file can't silently disagree with its own
+   contents. The committed dataset in this repo was generated with
+   `RANKER_N_STATES=15 RANKER_N_PERTURB=8`, seed `20260803` (hardcoded in
+   `gen_dataset.ts`) — 712 rows from 15 randomized open-table states. A full
+   60-state run works but takes materially longer (some perturbed shots are
+   legitimately expensive physics simulations — see "Known limitations"
+   below); 15 states was chosen for a spike, not because more wasn't possible.
 
 2. **Train** (Python 3.10+, needs `torch`, `onnx`; both installable without
    `pooltool`/LightZero — this track does not touch the parked RL pipeline's
    dependencies):
    ```
    cd training/ranker
-   python train.py --dataset dataset/showboat-ranker-v1.ndjson --out artifacts/run1
+   python train.py --dataset dataset/showboat-ranker-v2.ndjson --out artifacts/run1
    ```
    Splits by `state_id` (not by row) to prevent leakage between candidates
    drawn from the same board. Prints train/val loss per 20 epochs and final
@@ -79,20 +81,35 @@ All commands from `apps/showboat/`.
    npx vitest run src/ai/ranker/rankerIntegration.test.ts --workspace=apps/showboat
    ```
 
-## Current run's results (`artifacts/run1`)
+## Current run's results (`artifacts/run1`, schema `showboat-ranker-v2`)
 
-648 rows (15 states × up to 44 candidates × 8 perturbations), 472/88/88
-train/val/test split by state. Test set: BCE loss 0.445, Brier score 0.049,
-Spearman correlation between predicted score and empirical label **0.437**
-(positive, real signal — not zero, not overfit-to-noise given it's measured
-on held-out states). Mean predicted probability (0.209) tracks the mean
-empirical label (0.185) reasonably even without explicit calibration. This
-comfortably clears Phase 2A's actual bar (a deterministic fixture where the
-model changes candidate ordering) — the Spearman result is a bonus signal
-this small spike happened to show, not something Phase 2A's acceptance
-required or is claiming as a finished evaluation. Full rigor (larger
-dataset, calibration, baseline comparisons, confidence intervals) is
-Phase 2D/2G's job per `EVALUATION_SPEC.md`.
+712 rows (15 states × up to 48 candidates, now including `rail-combo`, × 8
+perturbations), 523/96/93 train/val/test split by state. Test set: BCE loss
+0.461, Brier score 0.051, Spearman correlation between predicted score and
+empirical label **0.117** — weak measured signal on this particular
+held-out split. Mean predicted probability (0.196) still tracks the mean
+empirical label (0.169) reasonably.
+
+**Three numbers were produced across this schema's development, in this
+order, each from a real fix, not a re-roll for a better result: 0.437
+(original v1 schema) → 0.054 (after adding `rail-combo`, v2 schema) → 0.117
+(after fixing a real labeling bug — `candidates.ts`'s combo/rail-combo
+candidates set `target` to the first-contact ball, not the ball that
+actually drops into the pocket; `gen_dataset.ts` and `shotSearch.ts` were
+both checking the wrong ball id for these two kinds, via the same bug — see
+`Candidate.potId` in `candidates.ts` for the fix).** Report all three rather
+than the best one: with `n_test` around 2-3 *states* (not rows — the split
+is by state, per the leakage-prevention rule), a handful of candidates from
+a couple of unlucky/lucky states can swing a rank correlation enormously.
+That volatility is itself evidence for the "small dataset" limitation below,
+not a reason to retry seeds until a better
+number appears — Phase 2A's actual acceptance bar is the deterministic
+fixture proving the model changes candidate ordering
+(`rankerIntegration.test.ts`), which this run still passes; it does not
+require a good Spearman score. Full rigor (larger dataset, calibration,
+baseline comparisons, confidence intervals over many states) is
+Phase 2D/2G's job per `EVALUATION_SPEC.md` — this number is not
+citable as a finished result in either direction.
 
 ## Known limitations (Phase 2A, by design — not hidden)
 
@@ -114,9 +131,12 @@ Phase 2D/2G's job per `EVALUATION_SPEC.md`.
   batch generation specifically (a full interactive game never hits this
   because production candidates are heuristically generated to be
   well-behaved, not randomly jittered at generation scale).
-- **Small dataset.** 648 rows is enough to prove the pipeline and show
-  non-trivial signal, not enough for a rigorous held-out evaluation. Do not
-  cite the Spearman/Brier numbers above as a finished result.
+- **Small dataset.** 712 rows across 15 states is enough to prove the
+  pipeline end to end, not enough for a rigorous held-out evaluation — the
+  Spearman swing documented above (0.437 → 0.054 across two schema versions
+  of essentially the same generation process) is direct evidence of this,
+  not a contradiction to explain away. Do not cite either Spearman/Brier
+  number as a finished result.
 - **No calibration.** The predicted values are useful for *ranking*
   candidates against each other; they are not yet validated as calibrated
   probabilities. UI copy must not call them a percentage until Phase 2G.

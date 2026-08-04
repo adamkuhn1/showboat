@@ -1,7 +1,7 @@
 import { type GameState, type PlayerId } from "../game/state";
 import { type Table } from "../physics/table";
 import { SOLIDS, STRIPES, EIGHT_ID, CUE_ID } from "../game/rack";
-import { searchBaseline, type SearchResult, type SearchConfig } from "./mcts";
+import { searchBaseline, type SearchResult, type SearchConfig } from "./shotSearch";
 
 // Determine the legal target ball ids for a player: their group's remaining
 // balls, or the 8-ball once the group is cleared; on an open table, everything

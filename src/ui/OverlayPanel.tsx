@@ -1,10 +1,16 @@
-import type { SearchResult } from "../ai/mcts";
+import type { CandidateStat, SearchResult } from "../ai/shotSearch";
+
+// Trick-shot badge: anything beyond a single-cushion bank or a plain combo —
+// i.e. the harder categories, not the safest one (direct).
+const isTrickShot = (s: CandidateStat): boolean =>
+  s.candidate.banks >= 2 || s.candidate.kind === "combo" || s.candidate.kind === "rail-combo";
 
 const KIND_LABEL: Record<string, string> = {
   direct:       "direct",
   bank:         "bank",
   "double-bank":"2-rail",
   combo:        "combo",
+  "rail-combo": "rail+combo",
 };
 
 const POCKET_SHORT: Record<string, string> = {
@@ -24,7 +30,7 @@ export function OverlayPanel({
     return (
       <aside className="overlay">
         <div className="overlay-header">
-          <span className="overlay-title">MCTS</span>
+          <span className="overlay-title">UCB Shot Search</span>
           {thinking && <span className="thinking-dots"><span /><span /><span /></span>}
         </div>
         <p className="overlay-empty">
@@ -41,7 +47,7 @@ export function OverlayPanel({
   return (
     <aside className="overlay" style={stale ? { opacity: 0.45 } : undefined}>
       <div className="overlay-header">
-        <span className="overlay-title">MCTS</span>
+        <span className="overlay-title">UCB Shot Search</span>
         <span className="overlay-meta">
           {stale ? "prev · " : ""}{result.simulations} rollouts · {result.stats.length} cand
         </span>
@@ -50,10 +56,14 @@ export function OverlayPanel({
       <div className="cand-list">
         {top.map((s, i) => {
           const isBest = s === best;
-          const winPct = Math.round(s.winProb * 100);
+          // Displayed as a plain decimal score, not a "%" — s.strength is an
+          // uncalibrated monotonic transform of the rollout/model value, not
+          // a measured probability (see shotSearch.ts's CandidateStat.strength
+          // doc comment). A percent sign here would falsely imply a chance.
+          const strengthPct = Math.round(s.strength * 100);
           const kind = KIND_LABEL[s.candidate.kind] ?? s.candidate.kind;
           const pocket = POCKET_SHORT[s.candidate.pocket] ?? s.candidate.pocket;
-          const isTrick = s.candidate.banks >= 2 || s.candidate.kind === "combo";
+          const isTrick = isTrickShot(s);
           const visitShare = s.visits / maxVisits;
 
           return (
@@ -68,9 +78,9 @@ export function OverlayPanel({
               <div className="cand-bar-wrap">
                 <div
                   className="cand-bar"
-                  style={{ width: `${winPct}%`, opacity: 0.5 + visitShare * 0.5 }}
+                  style={{ width: `${strengthPct}%`, opacity: 0.5 + visitShare * 0.5 }}
                 />
-                <span className="cand-pct">{winPct}</span>
+                <span className="cand-score">{(s.strength).toFixed(2)}</span>
               </div>
             </div>
           );
@@ -87,10 +97,10 @@ export function OverlayPanel({
           <span className="chosen-pocket">
             {POCKET_SHORT[best.candidate.pocket] ?? best.candidate.pocket}
           </span>
-          {(best.candidate.banks >= 2 || best.candidate.kind === "combo") && (
+          {isTrickShot(best) && (
             <span className="cand-star">★</span>
           )}
-          <span className="chosen-conf">{Math.round(best.winProb * 100)}%</span>
+          <span className="chosen-score">{best.strength.toFixed(2)} score</span>
         </div>
       )}
     </aside>

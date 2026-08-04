@@ -35,6 +35,7 @@ import { applyShotRules } from "../../src/game/rules";
 import { generateCandidates, type Candidate } from "../../src/ai/candidates";
 import { initPhysics, simulateShotWasm } from "../../src/physics/wasm-bridge";
 import { encodeRow, TOTAL_DIM, SCHEMA_VERSION } from "../../src/ai/ranker/encode";
+import { isLegalPot } from "../../src/ai/shotSearch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -161,7 +162,10 @@ async function main() {
         }
         const g = asOpenTableState(trial);
         const outcome = applyShotRules(g, pre, result);
-        const legalPot = !outcome.foul && outcome.pocketedThisShot.includes(candidate.target);
+        // Same legality check shotSearch.ts's seeding loop uses (isLegalPot),
+        // plus applyShotRules' broader foul detection (rail-after-contact,
+        // etc.) that isLegalPot alone doesn't cover.
+        const legalPot = !outcome.foul && isLegalPot(result, candidate);
         if (legalPot) successes++;
       }
       const candMs = Date.now() - candStart;
@@ -189,7 +193,7 @@ async function main() {
 
   const outDir = join(__dirname, "dataset");
   mkdirSync(outDir, { recursive: true });
-  const outPath = join(outDir, "showboat-ranker-v1.ndjson");
+  const outPath = join(outDir, `${SCHEMA_VERSION}.ndjson`);
   writeFileSync(outPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
 
   const byKind: Record<string, number> = {};
@@ -207,7 +211,7 @@ async function main() {
     mean_label: rows.reduce((a, r) => a + r.label, 0) / (rows.length || 1),
     generated_at: new Date().toISOString(),
   };
-  writeFileSync(join(outDir, "showboat-ranker-v1.meta.json"), JSON.stringify(meta, null, 2));
+  writeFileSync(join(outDir, `${SCHEMA_VERSION}.meta.json`), JSON.stringify(meta, null, 2));
 
   console.log(`Wrote ${rows.length} rows from ${statesUsed} states to ${outPath}`);
   console.log(JSON.stringify(meta, null, 2));

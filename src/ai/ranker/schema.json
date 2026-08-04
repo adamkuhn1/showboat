@@ -1,5 +1,5 @@
 {
-  "schema_version": "showboat-ranker-v1",
+  "schema_version": "showboat-ranker-v2",
   "board_dim": 48,
   "board_features_note": "Reuses onnx.ts's existing encodeObservation/OBS_DIM (16 balls x [x_norm, y_norm, pocketed]). Not redefined here to avoid a second board-encoding implementation; a test asserts board_dim === OBS_DIM.",
   "candidate_features": [
@@ -12,6 +12,7 @@
     "kind_bank",
     "kind_double_bank",
     "kind_combo",
+    "kind_rail_combo",
     "banks_norm",
     "target_norm",
     "pocket_bl",
@@ -23,7 +24,11 @@
     "path_length_norm",
     "obstruction_margin_norm"
   ],
-  "candidate_dim": 19,
-  "total_dim": 67,
-  "output": ["pot_success_logit"]
+  "candidate_dim": 20,
+  "total_dim": 68,
+  "output": ["pot_success_logit"],
+  "changelog": {
+    "v2": "Added kind_rail_combo (candidates.ts gained a rail-plus-combination category in Phase 2B) — candidate_dim 19->20, total_dim 67->68. v1 artifacts silently mis-encoded rail-combo candidates as all-zero kind one-hot; not patchable in place, required a version bump.",
+    "v1": "Initial Phase 2A schema."
+  }
 }

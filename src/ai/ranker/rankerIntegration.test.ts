@@ -1,7 +1,7 @@
 // Phase 2A acceptance test: proves the trained candidate-ranker model
 // (a) produces genuinely different scores per candidate (not the old flat
 // scalar every candidate shared — see docs/repair/showboat-ml/01-current-ml-audit.md
-// §6/§2), and (b) that plugging those per-candidate scores into mcts.ts's
+// §6/§2), and (b) that plugging those per-candidate scores into shotSearch.ts's
 // seeding loop changes which candidate seeds highest, compared to the old
 // whole-board-scalar approach, on a deterministic fixture.
 //
@@ -19,7 +19,7 @@ import { makeTable } from "../../physics/table";
 import { makeBall, type Ball } from "../../physics/ball";
 import { CUE_ID } from "../../game/rack";
 import { generateCandidates } from "../candidates";
-import { defaultConfig, searchBaseline } from "../mcts";
+import { defaultConfig, searchBaseline } from "../shotSearch";
 import { initPhysics } from "../../physics/wasm-bridge";
 import { encodeRow, TOTAL_DIM } from "./encode";
 
@@ -69,19 +69,23 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
 
     expect(scores.length).toBe(candidates.length);
     const distinct = new Set(scores.map((s) => s.toFixed(5)));
-    // The old bug (mcts.ts pre-fix): every candidate got IDENTICAL netSeedValue.
+    // The old bug (shotSearch.ts pre-fix): every candidate got IDENTICAL netSeedValue.
     // A real per-candidate model must not reproduce that.
     expect(distinct.size).toBeGreaterThan(1);
 
     // ---- Feed real per-candidate scores into the actual search seeding loop ----
-    // simulations: 0 isolates pure seeding behavior (no UCB refinement rounds
-    // afterward, which would selectively perturb a few candidates' values via
-    // real rollouts and muddy this specific before/after comparison — UCB
-    // refinement itself is already covered by the unmodified "no-model
-    // fallback" test below).
+    // Budget = exactly candidates.length: enough for every candidate's
+    // mandatory seeding simulateShotWasm call (1 unit each, strictly
+    // enforced — see shotSearch.ts), but with 0 left over for even one
+    // rolloutsPerEval-sized UCB refinement round. This isolates pure seeding
+    // behavior without disabling seeding entirely (which passing
+    // `simulations: 0` now correctly does, since seeding itself counts
+    // against the budget). UCB refinement itself is already covered by the
+    // unmodified "no-model fallback" test below.
+    const seedOnlyBudget = candidates.length;
     const withScores = searchBaseline(balls, table, targets, {
       ...defaultConfig,
-      simulations: 0,
+      simulations: seedOnlyBudget,
       netSeedScores: scores,
     });
     // Compare against the OLD behavior: one flat scalar (mean of the real
@@ -90,7 +94,7 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
     const meanScore = scores.reduce((a, b) => a + b, 0) / scores.length;
     const withFlatScalar = searchBaseline(balls, table, targets, {
       ...defaultConfig,
-      simulations: 0,
+      simulations: seedOnlyBudget,
       netSeedValue: meanScore,
     });
 
@@ -98,7 +102,7 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
     expect(withFlatScalar.stats.length).toBeGreaterThan(0);
 
     // Under the flat scalar, every seeded candidate has the identical value —
-    // assert that directly, so this test would fail if mcts.ts's fix regressed.
+    // assert that directly, so this test would fail if shotSearch.ts's fix regressed.
     const flatValues = new Set(withFlatScalar.stats.map((s) => s.value.toFixed(5)));
     expect(flatValues.size).toBe(1);
 

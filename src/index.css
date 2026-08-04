@@ -322,6 +322,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 .kind-bank        { color: var(--p1); }
 .kind-doublebank  { color: #ff8888; }
 .kind-combo       { color: #bf8fff; }
+.kind-railcombo   { color: #ffd166; }
 
 .cand-pocket {
   color: var(--muted);
@@ -334,7 +335,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   margin-left: auto;
 }
 
-/* Win probability bar */
+/* Candidate strength bar — a relative, uncalibrated score, not a probability */
 .cand-bar-wrap {
   display: flex;
   align-items: center;
@@ -352,10 +353,10 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   transition: width 0.2s ease;
 }
 
-.cand-pct {
+.cand-score {
   font-size: 0.64rem;
   color: var(--muted);
-  min-width: 2ch;
+  min-width: 2.5ch;
   line-height: 1;
 }
 
@@ -387,7 +388,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   font-weight: 600;
 }
 
-.chosen-conf {
+.chosen-score {
   margin-left: auto;
   font-weight: 700;
   color: var(--accent);
