@@ -5,6 +5,14 @@ use crate::ball::*;
 use crate::constants::*;
 use crate::vec::Vec2;
 
+/// Angular deceleration of the ball's roll during sliding, rad/s².
+/// Derived from I = (2/5)mR², torque = mu_s*m*g*R → α = (5/2)*mu_s*g/R.
+/// This is (5/2)/BALL_RADIUS × linear decel, so roll converges to vel/R on
+/// the correct physical timescale (not 87x too slowly).
+fn rolling_angular_decel(linear_decel: f64) -> f64 {
+    (5.0 / 2.0) * linear_decel / BALL_RADIUS
+}
+
 /// Advance a single ball by `dt` along its current analytic trajectory. The
 /// caller guarantees no collision happens within `dt`, so this moves the ball
 /// exactly along the friction-decelerated path.
@@ -27,7 +35,7 @@ pub fn advance_ball(b: &mut Ball, dt: f64) {
         b.pos = b.pos.add(b.vel.scale(dt)).add(a.scale(0.5 * dt * dt));
         b.vel = b.vel.add(a.scale(dt));
         let target_roll = b.vel.scale(1.0 / BALL_RADIUS);
-        b.roll = approach(b.roll, target_roll, decel * dt);
+        b.roll = approach(b.roll, target_roll, rolling_angular_decel(decel) * dt);
     } else {
         // Rolling
         if speed > 1e-12 {
@@ -83,7 +91,8 @@ pub fn time_to_phase_change(b: &Ball) -> f64 {
             let decel = linear_deceleration(Motion::Sliding);
             let slip = b.relative_surface_velocity().mag();
             if decel > 0.0 {
-                slip / decel
+                // Slip closes at (7/2)*decel: vel changes at decel, roll*R at (5/2)*decel.
+                2.0 * slip / (7.0 * decel)
             } else {
                 f64::INFINITY
             }

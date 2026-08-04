@@ -1,5 +1,5 @@
 [package]
-name = "showboat-physics-core"
+name = "showboat-physics"
 version = "0.1.0"
 edition = "2021"
 description = "Event-based Han-2005-lineage 2D pool physics + MCTS rollout core for Showboat, compiled to WASM."

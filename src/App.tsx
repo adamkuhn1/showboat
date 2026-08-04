@@ -1,16 +1,16 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { makeGame, takeShot, placeCueBall, cloneState } from "./game/game";
-import { CUE_ID } from "./game/rack";
+import { CUE_ID, SOLIDS, STRIPES } from "./game/rack";
 import type { GameState, PlayerId } from "./game/state";
 import type { CueAction } from "./physics/cue";
 import { applyCue } from "./physics/cue";
 import { computeView, render, drawAim } from "./render/renderer";
 import { drawOverlay } from "./render/overlay";
-import { stepWorld } from "./render/animate";
+import { buildAnimTrack, interpolateBalls, type AnimTrack } from "./render/animate";
 import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
-import { planTurn } from "./ai/turn";
+import { planTurn, legalTargets } from "./ai/turn";
 import { getBrain, brainLabel } from "./ai/brain";
 import { tryLoadModel } from "./ai/onnx";
 import type { SearchResult } from "./ai/mcts";
@@ -45,23 +45,31 @@ export default function App() {
   const [power, setPower] = useState(0.6);
   const [side, setSide] = useState(0);
   const [top, setTop] = useState(0);
-  const [message, setMessage] = useState("Loading physics engine…");
+  const [message, setMessage] = useState("loading…");
   const [engineReady, setEngineReady] = useState(false);
   const [vsAI, setVsAI] = useState(true);
+  const vsAIRef = useRef(vsAI);
   const [search, setSearch] = useState<SearchResult | null>(null);
+  const searchRef = useRef<SearchResult | null>(null);
+  const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const aimLockedRef = useRef(false);
+  const shootRef = useRef<() => void>(() => {});
 
   const table = game.current.table;
   const view = computeView(CANVAS_W, CANVAS_H, table);
+
+  vsAIRef.current = vsAI;
+  searchRef.current = search;
 
   useEffect(() => {
     Promise.all([initPhysics(), tryLoadModel()])
       .then(() => {
         setEngineReady(true);
-        setMessage("Player 1 to break.");
+        setMessage("break to start");
       })
-      .catch(() => setMessage("Failed to load the WASM physics engine."))
+      .catch(() => setMessage("couldn't load the physics engine"))
       .finally(postEmbedReady);
   }, []);
 
@@ -73,7 +81,7 @@ export default function App() {
       if (overlay && showOverlay) drawOverlay(ctx, overlay, table, view);
       if (phase === "aiming" && s.turn !== AI_PLAYER) {
         const cue = s.balls.find((b) => b.id === CUE_ID);
-        if (cue && !cue.pocketed) drawAim(ctx, cue, aim, power, view);
+        if (cue && !cue.pocketed) drawAim(ctx, cue, aim, power, view, table, s.balls);
       }
     },
     [table, view, phase, aim, power, showOverlay],
@@ -83,22 +91,67 @@ export default function App() {
     paint(state, phase === "thinking" ? search : null);
   }, [state, aim, power, phase, search, paint]);
 
-  // Animate a shot in real time, then commit the authoritative WASM outcome.
+  // Animate a shot by replaying the WASM engine's own trajectory.
+  //
+  // This used to run a SECOND, independently-implemented TS simulation
+  // (buildAnimTrack) purely for the animation preview, then snap or glide to
+  // the WASM engine's authoritative final state once it finished. Over a long
+  // collision cascade — a break chains 20+ ball-ball/cushion events — two
+  // separately-coded event-driven simulations are numerically chaotic against
+  // each other: measured on a real break, several balls diverged by tens of
+  // centimetres and the two runs even disagreed on which balls were pocketed.
+  // A glide correction only softened the resulting visible "rearrange" right
+  // before commit; it didn't remove it, because a large divergence eased
+  // over a few hundred ms still reads as balls sliding to new spots.
+  //
+  // The fix is architectural: simulateShotWasm (physics/wasm-bridge.ts) now
+  // captures a full waypoint snapshot after every resolved step of the SAME
+  // run that produces the authoritative outcome (physics-core's
+  // simulate_shot, capture_waypoints=true). Replaying those waypoints here
+  // means the animation IS the authoritative simulation — there is no second
+  // run to diverge from, so commit is a true no-op frame, not a correction.
   const animateAndCommit = useCallback(
     (fromState: GameState, action: CueAction, report: ReturnType<typeof takeShot>) => {
       setPhase("animating");
-      const anim = cloneState(fromState);
-      const cue = anim.balls.find((b) => b.id === CUE_ID)!;
-      applyCue(cue, action);
-      let last = performance.now();
+
+      const track: AnimTrack =
+        report.sim.waypoints && report.sim.waypoints.length > 0
+          ? {
+              waypoints: report.sim.waypoints.map((wp) => ({
+                simTime: wp.time,
+                balls: wp.balls,
+              })),
+              duration: report.sim.duration,
+            }
+          : (() => {
+              // Defensive fallback — only reachable if a non-WASM simulator
+              // is ever wired in without waypoint capture. Real play always
+              // takes the branch above.
+              const anim = cloneState(fromState);
+              const cue = anim.balls.find((b) => b.id === CUE_ID)!;
+              applyCue(cue, action);
+              return buildAnimTrack(anim.balls, table);
+            })();
+
+      // Real-time playback. This used to run at 2x, which made every shot —
+      // especially the break, where a dozen balls are moving at once — read
+      // as a blur rather than something you could watch the AI's reasoning
+      // play out in.
+      const ANIM_SPEED = 1.0;
+      const start = performance.now();
+
       const tick = (now: number) => {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
-        const moving = stepWorld(anim.balls, table, dt * 1.4);
-        setState({ ...anim });
-        paint(anim, null);
-        if (moving) requestAnimationFrame(tick);
-        else commitShot(report);
+        const simTime = ((now - start) / 1000) * ANIM_SPEED;
+        const balls = interpolateBalls(track, simTime);
+        const displayState = { ...fromState, balls };
+        setState(displayState);
+        paint(displayState, null);
+
+        if (simTime < track.duration) {
+          requestAnimationFrame(tick);
+        } else {
+          commitShot(report);
+        }
       };
       requestAnimationFrame(tick);
     },
@@ -108,22 +161,26 @@ export default function App() {
   const commitShot = useCallback(
     (report: ReturnType<typeof takeShot>) => {
       setState(report.next);
+      if (searchRef.current !== null) setLastSearch(searchRef.current);
       setSearch(null);
       setPhase("aiming");
       game.current.state = report.next;
       const o = report.outcome;
       const trace = describeShot(report.sim);
+      const ai = vsAIRef.current;
+      const playerName = (id: number) =>
+        ai ? (id === AI_PLAYER ? "opponent" : "you") : `player ${id + 1}`;
       let msg = "";
       if (o.gameOver) {
-        msg = `Player ${(o.winner ?? 0) + 1} wins!${o.foul ? " (" + o.foulReason + ")" : ""}`;
+        msg = `${playerName(o.winner ?? 0)} win${o.winner === 0 && ai ? "" : "s"}!${o.foul ? ` (${o.foulReason})` : ""}`;
       } else if (o.foul) {
-        msg = `Foul: ${o.foulReason}. Player ${report.next.turn + 1} — ball in hand.`;
+        msg = `foul — ${o.foulReason}. ball in hand.`;
       } else if (o.assignedGroups) {
-        msg = `Groups set. ${trace}`;
+        msg = trace;
       } else if (o.turnPasses) {
-        msg = `Player ${report.next.turn + 1}'s turn. ${trace}`;
+        msg = trace;
       } else {
-        msg = `Continue. ${trace}`;
+        msg = trace;
       }
       setMessage(msg);
     },
@@ -137,22 +194,30 @@ export default function App() {
     if (state.turn !== AI_PLAYER || state.winner !== null || phase !== "aiming") return;
 
     let cancelled = false;
-    setPhase("thinking");
-    setMessage("Opponent is thinking…");
 
     // Ball-in-hand for the AI: place the cue at a simple legal spot (centre of
-    // the head area) before searching.
+    // the head area) before searching.  Calling setState here re-triggers this
+    // effect (because `state` is in deps), but the new run sees ballInHand===false
+    // and skips this block.  The old timeout (registered below) is cancelled by
+    // that re-run's cleanup — which is correct; the re-run registers a fresh
+    // timeout that executes cleanly.
     let planState = state;
     if (state.ballInHand !== false) {
       planState = placeCueBall(state, -table.length / 4, 0);
       setState(planState);
     }
 
-    // Defer to next frame so the "thinking" UI paints first.
-    const t = setTimeout(() => {
+    // Defer to next frame.  setPhase("thinking") is intentionally inside the
+    // callback: calling it in the effect body would change `phase`, which used
+    // to be in the deps list, causing the cleanup to fire and cancel this
+    // timeout before it ran.  Moving it here avoids that self-cancellation.
+    const t = setTimeout(async () => {
       if (cancelled) return;
+      setPhase("thinking");
+      setMessage("thinking…");
       const brain = getBrain();
-      const result = brain.plan(planState, table, planTurn);
+      const result = await brain.plan(planState, table, planTurn);
+      if (cancelled) return; // check again after the (possibly async) net eval
       setSearch(result);
       paint(planState, result);
 
@@ -160,8 +225,40 @@ export default function App() {
       setTimeout(() => {
         if (cancelled) return;
         if (!result.best) {
-          // No makeable shot found: play a safe soft shot toward legal targets.
-          const fallback: CueAction = { phi: Math.random() * Math.PI * 2, power: 0.3, sideSpin: 0, topSpin: 0 };
+          // All search candidates were filtered. Aim at the nearest legal target
+          // with a clear cue path to avoid hitting the 8-ball or opponent balls first.
+          const cueBall = planState.balls.find((b) => b.id === CUE_ID)!;
+          const targets = legalTargets(planState, AI_PLAYER);
+          const live = planState.balls.filter((b) => !b.pocketed);
+          const byDist = live
+            .filter((b) => targets.includes(b.id))
+            .sort((a, b) =>
+              Math.hypot(a.pos.x - cueBall.pos.x, a.pos.y - cueBall.pos.y) -
+              Math.hypot(b.pos.x - cueBall.pos.x, b.pos.y - cueBall.pos.y)
+            );
+          // Prefer a target whose direct cue path clears all other balls.
+          const pathClearTo = (t: typeof byDist[0]) => {
+            const dx = t.pos.x - cueBall.pos.x;
+            const dy = t.pos.y - cueBall.pos.y;
+            const len = Math.hypot(dx, dy);
+            if (len < 1e-9) return true;
+            const nx = dx / len; const ny = dy / len;
+            for (const b of live) {
+              if (b.id === CUE_ID || b.id === t.id) continue;
+              const vx = b.pos.x - cueBall.pos.x;
+              const vy = b.pos.y - cueBall.pos.y;
+              const proj = vx * nx + vy * ny;
+              if (proj <= 0 || proj >= len) continue;
+              const perp2 = (vx - proj * nx) ** 2 + (vy - proj * ny) ** 2;
+              if (perp2 < (2 * BALL_RADIUS) ** 2) return false;
+            }
+            return true;
+          };
+          const nearest = byDist.find(pathClearTo) ?? byDist[0];
+          const phi = nearest
+            ? Math.atan2(nearest.pos.y - cueBall.pos.y, nearest.pos.x - cueBall.pos.x)
+            : Math.random() * Math.PI * 2;
+          const fallback: CueAction = { phi, power: 0.3, sideSpin: 0, topSpin: 0 };
           const report = takeShot(planState, table, fallback, simulateShotWasm);
           animateAndCommit(planState, fallback, report);
           return;
@@ -169,17 +266,22 @@ export default function App() {
         const action = result.best.candidate.action;
         const report = takeShot(planState, table, action, simulateShotWasm);
         animateAndCommit(planState, action, report);
-      }, 1100);
+      }, 4500);
     }, 30);
 
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
+    // `phase` is intentionally excluded: including it caused the effect cleanup
+    // to cancel the search timeout the moment setPhase("thinking") was called.
+    // Full `state` (not just state.turn) lets the effect re-trigger when the AI
+    // pockets a ball and continues its turn with the same turn index.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.turn, state.winner, phase, vsAI, engineReady]);
+  }, [state, vsAI, engineReady]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (aimLockedRef.current) return;
     if (phase !== "aiming" || (vsAI && state.turn === AI_PLAYER)) return;
     const rect = canvasRef.current!.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -190,6 +292,9 @@ export default function App() {
     const cy = view.offsetY - cue.pos.y * view.scale;
     setAim(Math.atan2(-(my - cy), mx - cx));
   };
+
+  const onMouseLeave = () => { aimLockedRef.current = true; };
+  const onMouseEnter = () => { aimLockedRef.current = false; };
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (state.ballInHand === false || phase !== "aiming") return;
@@ -204,14 +309,14 @@ export default function App() {
     const cx = Math.max(-hx, Math.min(hx, wx));
     const cy = Math.max(-hy, Math.min(hy, wy));
     setState(placeCueBall(state, cx, cy));
-    setMessage("Cue ball placed. Take your shot.");
+    setMessage("placed — shoot when ready");
   };
 
   const shoot = () => {
     if (phase !== "aiming" || state.winner !== null) return;
     if (vsAI && state.turn === AI_PLAYER) return;
     if (state.ballInHand !== false) {
-      setMessage("Place the cue ball first (click the table).");
+      setMessage("click the table to place the cue ball");
       return;
     }
     const action: CueAction = { phi: aim, power, sideSpin: side, topSpin: top };
@@ -219,23 +324,55 @@ export default function App() {
     animateAndCommit(state, action, report);
   };
 
+  shootRef.current = shoot;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat) {
+        e.preventDefault();
+        shootRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const reset = () => {
     game.current = makeGame();
     setState(game.current.state);
     setSearch(null);
+    setLastSearch(null);
     setPhase("aiming");
-    setMessage("New rack. Player 1 to break.");
+    setMessage("new game — break to start");
   };
 
   const grp = state.groups[state.turn];
   const aiTurn = vsAI && state.turn === AI_PLAYER;
+
+  // Ball-count dot colors (index = ball id)
+  const BALL_COLOR: Record<number, string> = {
+    1: "#f4c724", 2: "#1f4fd8", 3: "#e23c2e", 4: "#6b2fb3",
+    5: "#e8792b", 6: "#1f8a4c", 7: "#8c2f2a",
+    9: "#f4c724", 10: "#1f4fd8", 11: "#e23c2e", 12: "#6b2fb3",
+    13: "#e8792b", 14: "#1f8a4c", 15: "#8c2f2a",
+  };
+
+  const solidDots = SOLIDS.map((id) => ({
+    id,
+    pocketed: state.balls.find((b) => b.id === id)?.pocketed ?? false,
+  }));
+
+  const stripeDots = STRIPES.map((id) => ({
+    id,
+    pocketed: state.balls.find((b) => b.id === id)?.pocketed ?? false,
+  }));
 
   return (
     <main className="shell">
       <header className="topbar">
         <h1>Showboat</h1>
         <p className="tag">
-          2D bar pool · {vsAI ? `you vs ${brainLabel()}` : "human vs human"}
+          eight-ball · {vsAI ? `you vs ${brainLabel()}` : "two player"}
         </p>
       </header>
 
@@ -246,21 +383,47 @@ export default function App() {
             width={CANVAS_W}
             height={CANVAS_H}
             onMouseMove={onMouseMove}
+            onMouseLeave={onMouseLeave}
+            onMouseEnter={onMouseEnter}
             onClick={onClick}
             className="table"
           />
           <div className="status">
             <span className={`turn p${state.turn}`}>
-              {state.turn === AI_PLAYER && vsAI ? "Opponent" : `Player ${state.turn + 1}`}
-              {grp ? ` · ${grp}` : " · open table"}
+              {state.turn === AI_PLAYER && vsAI ? "opponent" : "you"}
+              {grp ? ` · ${grp}` : " · open"}
               {state.ballInHand !== false ? " · ball in hand" : ""}
+            </span>
+            <span className="ball-dots">
+              {solidDots.map(({ id, pocketed }) => (
+                <span
+                  key={id}
+                  className={`ball-dot${pocketed ? " pocketed" : ""}`}
+                  style={{ background: BALL_COLOR[id] }}
+                  title={`ball ${id}`}
+                />
+              ))}
+            </span>
+            <span className="ball-dots" style={{ opacity: 0.65 }}>
+              {stripeDots.map(({ id, pocketed }) => (
+                <span
+                  key={id}
+                  className={`ball-dot${pocketed ? " pocketed" : ""}`}
+                  style={{ background: BALL_COLOR[id] }}
+                  title={`ball ${id}`}
+                />
+              ))}
             </span>
             <span className="msg">{message}</span>
           </div>
         </div>
 
         {vsAI && (
-          <OverlayPanel result={search} thinking={phase === "thinking"} />
+          <OverlayPanel
+            result={search ?? lastSearch}
+            thinking={phase === "thinking"}
+            stale={search === null && lastSearch !== null}
+          />
         )}
       </div>
 
@@ -271,12 +434,12 @@ export default function App() {
             onChange={(e) => setPower(Number(e.target.value))} disabled={phase !== "aiming" || aiTurn} />
         </label>
         <label>
-          Side (english) <span>{side.toFixed(2)}</span>
+          English <span>{side > 0 ? `+${side.toFixed(2)}` : side.toFixed(2)}</span>
           <input type="range" min={-1} max={1} step={0.05} value={side}
             onChange={(e) => setSide(Number(e.target.value))} disabled={phase !== "aiming" || aiTurn} />
         </label>
         <label>
-          Draw / Follow <span>{top.toFixed(2)}</span>
+          Draw · Follow <span>{top > 0 ? `+${top.toFixed(2)}` : top.toFixed(2)}</span>
           <input type="range" min={-1} max={1} step={0.05} value={top}
             onChange={(e) => setTop(Number(e.target.value))} disabled={phase !== "aiming" || aiTurn} />
         </label>
@@ -299,11 +462,23 @@ export default function App() {
         </div>
       </div>
       <p className="hint">
-        The overlay shows the opponent's real search: candidate aiming paths (direct,
-        bank, combo), per-candidate win-prob and MCTS visit counts, and the shot's
-        event trace — all from actual decision data. No jump or massé shots exist; the
-        cue action has no elevation axis by construction.
+        hover to aim · leave the canvas to lock the angle · space to shoot
       </p>
+
+      {state.winner !== null && (
+        <div className="win-screen">
+          <div className="win-card">
+            <p className="win-eyebrow">game over</p>
+            <h2 className="win-headline">
+              {state.winner === AI_PLAYER && vsAI ? "opponent wins" : "you win"}
+            </h2>
+            <p className="win-sub">
+              {state.winner === 0 || !vsAI ? "nice run." : "the search didn't miss."}
+            </p>
+            <button onClick={reset} className="win-btn">play again</button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

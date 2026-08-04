@@ -47,24 +47,30 @@ export const drawCandidatePaths = (
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Label the pocket end of the best few with win-prob + visits.
+    // Label the pocket end of the best few with win-prob. Trick shots also get
+    // a style badge derived from the real styleScore (rails + combo bonus).
     if (isBest || weight > 0.4) {
       const end = path[path.length - 1];
       const [ex, ey] = toPx(end, v);
       ctx.fillStyle = isBest ? "#eafff5" : "rgba(230,230,230,0.7)";
       ctx.font = `${isBest ? 12 : 10}px ui-monospace, monospace`;
       ctx.textAlign = "center";
-      const label = `${Math.round(s.winProb * 100)}%`;
-      ctx.fillText(label, ex, ey - 8);
+      ctx.fillText(`${Math.round(s.winProb * 100)}%`, ex, ey - 8);
+      if (s.styleScore >= 2) {
+        ctx.fillStyle = "rgba(255,100,100,0.9)";
+        ctx.font = "9px ui-monospace, monospace";
+        ctx.fillText(`★${s.styleScore}`, ex, ey - 20);
+      }
     }
   }
 };
 
 const colorFor = (s: CandidateStat, isBest: boolean, weight: number): string => {
   if (isBest) return "rgba(92, 214, 160, 0.95)";
-  // Bank/combo lines tinted amber to distinguish trick routes at a glance; this
-  // is a *label* of the real candidate kind, not a scripted trick shot.
+  // Trick routes are tinted by kind so they read distinctly from direct pots.
+  // Colors label the real candidate kind — not scripted shots.
   const alpha = 0.25 + weight * 0.5;
+  if (s.candidate.kind === "double-bank") return `rgba(255, 100, 100, ${alpha})`;
   if (s.candidate.kind === "bank") return `rgba(255, 179, 111, ${alpha})`;
   if (s.candidate.kind === "combo") return `rgba(191, 143, 255, ${alpha})`;
   return `rgba(140, 200, 255, ${alpha})`;
