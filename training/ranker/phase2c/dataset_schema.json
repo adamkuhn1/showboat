@@ -1,0 +1,49 @@
+{
+  "dataset_schema_version": "showboat-dataset-v1",
+  "feature_schema_version": "showboat-ranker-v2",
+  "description": "Dataset-record schema for the Phase 2C candidate-conditioned training pipeline. Distinct from (references) src/ai/ranker/schema.json, which defines only the per-candidate feature encoding. See docs/repair/showboat-ml/phase-2c/DATASET_DESIGN.md.",
+  "fields": {
+    "dataset_schema_version": "string, must equal this file's dataset_schema_version",
+    "feature_schema_version": "string, must equal src/ai/ranker/schema.json's schema_version at generation time",
+    "example_id": "string — sha256(family_id, state_id, candidate_id), stable across regeneration with the same seed",
+    "family_id": "string — rack/game/trajectory id ('trajectory-<n>'), or 'controlled-<state_id>' / 'golden-<name>'",
+    "state_id": "string — unique within its family",
+    "state_origin": "enum: trajectory | controlled | golden",
+    "split": "enum: train | val | test — assigned by family_id, never state_id or example_id",
+    "candidate_id": "integer — index into generateCandidates()'s output for this state",
+    "candidate_kind": "enum: direct | bank | double-bank | combo | rail-combo",
+    "candidate_target": "integer ball id — Candidate.target (first legal contact)",
+    "candidate_pot_id": "integer ball id — Candidate.potId (ball meant to actually drop)",
+    "candidate_pocket": "string pocket id",
+    "features": "number[68] — encodeRow() output, pre-shot only (validated: no post-shot-derived value)",
+    "nominal_action": "{ phi, power, sideSpin, topSpin } — Candidate.action before perturbation",
+    "perturbation_seed_base": "integer, derived deterministically from master seed + example_id",
+    "n_perturbations": "integer (8 this phase)",
+    "raw_counts": {
+      "legal_pot": "int in [0, n_perturbations] — isLegalPot(sim, candidate) && !outcome.foul",
+      "any_pot": "int — candidate_pot_id present in sim.pocketed, regardless of legality",
+      "foul": "int — outcome.foul true",
+      "scratch": "int — cue ball pocketed",
+      "own_balls_pocketed_total": "int, summed across the n_perturbations trials",
+      "opponent_balls_pocketed_total": "int, summed across trials",
+      "terminal_win": "int — trials where this shot ends the game as a win for the shooter",
+      "terminal_loss": "int — trials where this shot ends the game as a loss for the shooter"
+    },
+    "generator_version": "string — git commit generating this row",
+    "candidate_generator_version": "string — git commit of candidates.ts (same commit in practice; recorded separately for future drift detection)",
+    "physics_version": "string — sha256 of showboat_physics_bg.wasm",
+    "rules_version": "string — git commit of rules.ts (same commit in practice; recorded separately)",
+    "generated_at": "ISO-8601 timestamp"
+  },
+  "invariants": [
+    "legal_pot <= n_perturbations",
+    "any_pot <= n_perturbations",
+    "foul <= n_perturbations",
+    "scratch <= n_perturbations",
+    "legal_pot <= any_pot",
+    "features.length == 68",
+    "no golden-origin family_id is ever assigned a split",
+    "every state_id belongs to exactly one family_id",
+    "every family_id is assigned to exactly one split"
+  ]
+}

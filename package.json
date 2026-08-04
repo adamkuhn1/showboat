@@ -12,7 +12,14 @@
     "test": "vitest run",
     "test:wasm": "cargo test --manifest-path physics-core/Cargo.toml",
     "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json",
-    "ranker:gen-dataset": "tsx training/ranker/gen_dataset.ts"
+    "ranker:gen-dataset": "tsx training/ranker/gen_dataset.ts",
+    "ranker:gen-smoke": "RANKER_PROFILE=smoke tsx training/ranker/phase2c/gen_dataset_v3.ts",
+    "ranker:gen-pilot": "RANKER_PROFILE=pilot tsx training/ranker/phase2c/gen_dataset_v3.ts",
+    "ranker:gen-full": "RANKER_PROFILE=full tsx training/ranker/phase2c/gen_dataset_v3.ts",
+    "ranker:validate": "tsx training/ranker/phase2c/validate.ts",
+    "ranker:report": "tsx training/ranker/phase2c/report.ts",
+    "ranker:split-check": "tsx training/ranker/phase2c/split_check.ts",
+    "ranker:clean-tmp": "find training/ranker/phase2c/data -name '*.tmp' -delete"
   },
   "dependencies": {
     "onnxruntime-web": "^1.27.0",
