@@ -1,0 +1,41 @@
+{
+  "schema_version": "showboat-ranker-v1",
+  "model_architecture": "MLP(67->64->64->1), ReLU, BCEWithLogitsLoss",
+  "dataset_path": "dataset/showboat-ranker-v1.ndjson",
+  "dataset_sha256": "4c315bf66ec2ec0d302ac3ad0a69814d02628bd2514513f27fc0cb89aaeb14d5",
+  "dataset_n_rows": 648,
+  "train_n": 472,
+  "val_n": 88,
+  "test_n": 88,
+  "split_method": "by_state_id",
+  "training_config": {
+    "epochs": 200,
+    "lr": 0.001,
+    "hidden": 64,
+    "optimizer": "Adam",
+    "loss": "BCEWithLogitsLoss"
+  },
+  "seed": 1234,
+  "git_commit": "d3551375165f50ff85ac2ce390b793a61e1d6ef4",
+  "eval_metrics": {
+    "best_val_loss": 0.4833788573741913,
+    "test_bce_loss": 0.4445885717868805,
+    "test_brier_score": 0.04899006709456444,
+    "test_spearman_vs_label": 0.43684618364974825,
+    "test_n": 88,
+    "mean_test_label": 0.18465909361839294,
+    "mean_test_pred": 0.20927761495113373
+  },
+  "calibration_applied": false,
+  "random_init": false,
+  "trained_at": "2026-08-04T02:36:39.475573+00:00",
+  "onnx_file_sha256": "d7772842fc3bc4e8609b2422a34defb57f77bf243aaa71ca8c4fbb5e80407212",
+  "onnx_export_timestamp": "2026-08-04T02:39:09.869487+00:00",
+  "onnx_input_names": [
+    "candidate_features"
+  ],
+  "onnx_output_names": [
+    "pot_success_logit"
+  ],
+  "onnx_opset": 17
+}

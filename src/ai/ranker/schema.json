@@ -1,0 +1,29 @@
+{
+  "schema_version": "showboat-ranker-v1",
+  "board_dim": 48,
+  "board_features_note": "Reuses onnx.ts's existing encodeObservation/OBS_DIM (16 balls x [x_norm, y_norm, pocketed]). Not redefined here to avoid a second board-encoding implementation; a test asserts board_dim === OBS_DIM.",
+  "candidate_features": [
+    "action_phi_sin",
+    "action_phi_cos",
+    "action_power",
+    "action_side_spin",
+    "action_top_spin",
+    "kind_direct",
+    "kind_bank",
+    "kind_double_bank",
+    "kind_combo",
+    "banks_norm",
+    "target_norm",
+    "pocket_bl",
+    "pocket_tl",
+    "pocket_br",
+    "pocket_tr",
+    "pocket_sb",
+    "pocket_st",
+    "path_length_norm",
+    "obstruction_margin_norm"
+  ],
+  "candidate_dim": 19,
+  "total_dim": 67,
+  "output": ["pot_success_logit"]
+}

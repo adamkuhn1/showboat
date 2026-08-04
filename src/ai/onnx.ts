@@ -109,6 +109,91 @@ export const evaluate = async (obs: Float32Array): Promise<NetOutput | null> => 
   return { value, policy };
 };
 
+// ---------------------------------------------------------------------------
+// Candidate-ranker model (Phase 2A) — a second, independent model slot.
+//
+// This is deliberately NOT merged with the whole-board policy/value net above.
+// That net (never yet trained — see docs/repair/showboat-ml/01-current-ml-audit.md)
+// outputs one scalar for the entire board; this one scores each candidate
+// individually, which is the capability the audit found missing. Kept
+// separate so the parked net's fallback behavior is untouched. Same
+// lazy-load / magic-byte-sniff / never-throws pattern as tryLoadModel above,
+// on purpose — that pattern is already correct.
+//
+// Per Phase 2A's acceptance criteria, this slot is not wired into
+// `brainLabel()`'s public "trained AI" string and is not loaded from the
+// default `public/model/` path by App.tsx — proof that it works lives in
+// `ranker/rankerIntegration.test.ts`, not in a live UI claim, until Phase 2F.
+// ---------------------------------------------------------------------------
+
+export type RankerStatus = "absent" | "loading" | "loaded" | "error";
+
+let rankerStatus: RankerStatus = "absent";
+let rankerOrt: Ort | null = null;
+let rankerSession: InferenceSession | null = null;
+let rankerLoadPromise: Promise<void> | null = null;
+let rankerLoadedUrl: string | null = null;
+
+export const tryLoadRankerModel = async (url: string): Promise<void> => {
+  if (rankerLoadPromise && rankerLoadedUrl === url) return rankerLoadPromise;
+  rankerLoadedUrl = url;
+  rankerLoadPromise = (async () => {
+    rankerStatus = "loading";
+    try {
+      const res = await fetch(url, { method: "GET" });
+      if (!res.ok) {
+        rankerStatus = "absent";
+        return;
+      }
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("text/html")) {
+        rankerStatus = "absent";
+        return;
+      }
+      const buf = await res.arrayBuffer();
+      const first = new Uint8Array(buf.slice(0, 1))[0];
+      if (first === 0x3c) {
+        rankerStatus = "absent";
+        return;
+      }
+      rankerOrt = ort ?? (await import("onnxruntime-web"));
+      rankerSession = await rankerOrt.InferenceSession.create(buf, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+      });
+      rankerStatus = "loaded";
+    } catch {
+      rankerStatus = rankerSession ? "loaded" : "absent";
+      if (rankerStatus !== "loaded") rankerStatus = "absent";
+    }
+  })();
+  return rankerLoadPromise;
+};
+
+export const rankerModelStatus = (): RankerStatus => rankerStatus;
+export const hasRankerModel = (): boolean => rankerStatus === "loaded" && rankerSession !== null;
+
+/**
+ * Score a batch of candidate rows in one session.run() call (not N calls —
+ * see docs/repair/showboat-ml/04-browser-integration.md §8 on per-call
+ * overhead). `rows` is `count` rows of `dim` floats each, row-major. Returns
+ * one score per row (raw logit; caller applies sigmoid if a probability-style
+ * display is wanted — see EVALUATION_SPEC.md on not doing that before
+ * calibration is measured).
+ */
+export const evaluateCandidateRows = async (
+  rows: Float32Array,
+  count: number,
+  dim: number,
+): Promise<Float32Array | null> => {
+  if (!hasRankerModel() || !rankerSession || !rankerOrt) return null;
+  const input = new rankerOrt.Tensor("float32", rows, [count, dim]);
+  const feeds: Record<string, import("onnxruntime-web").Tensor> = {};
+  feeds[rankerSession.inputNames[0]] = input;
+  const out = await rankerSession.run(feeds);
+  return out[rankerSession.outputNames[0]].data as Float32Array;
+};
+
 // Encode a ball list into the observation vector the net expects. Positions are
 // normalized to [-1,1] by half the table dimensions; pocketed balls report 0s.
 export const encodeObservation = (
