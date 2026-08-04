@@ -95,29 +95,6 @@ def soft_bce(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return nn.functional.binary_cross_entropy_with_logits(logits, target)
 
 
-def train_model(X: np.ndarray, y: np.ndarray, input_dim: int, epochs: int, lr: float = 1e-2, seed: int = DIAGNOSTIC_SEED) -> TinyNet:
-    """Trains for a fixed number of epochs with no early stopping — only
-    appropriate for the tiny-overfit check, where driving TRAINING loss to
-    zero is the entire point. Do not use this for any comparison that reports
-    a validation metric (see train_model_early_stopping): with a few thousand
-    noisy 8-perturbation soft labels and no regularization, this network
-    overfits within ~30-60 epochs and val loss then climbs well past the
-    constant-mean baseline by epoch 300 — a training-curve artifact, not
-    evidence about the dataset (confirmed by tracing the curve directly)."""
-    torch.manual_seed(seed)
-    model = TinyNet(input_dim)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
-    Xt = torch.from_numpy(X)
-    yt = torch.from_numpy(y)
-    model.train()
-    for _ in range(epochs):
-        opt.zero_grad()
-        loss = soft_bce(model(Xt), yt)
-        loss.backward()
-        opt.step()
-    return model
-
-
 def train_model_early_stopping(
     Xtr: np.ndarray,
     ytr: np.ndarray,
@@ -166,13 +143,6 @@ def train_model_early_stopping(
 
     model.load_state_dict(best_state)
     return model, best_val, best_epoch
-
-
-def eval_bce(model: TinyNet, X: np.ndarray, y: np.ndarray) -> float:
-    model.eval()
-    with torch.no_grad():
-        loss = soft_bce(model(torch.from_numpy(X)), torch.from_numpy(y))
-    return float(loss.item())
 
 
 def constant_mean_bce(train_y: np.ndarray, eval_y: np.ndarray) -> float:
@@ -244,18 +214,17 @@ def main():
             json.dump(results, f, indent=2)
         return
 
-    # --- Check 1: tiny-subset overfit ---------------------------------------
-    # Sample from MANY states, not the first N rows in file order: file order
-    # groups all of one state's ~47 candidates together, so "first 30 rows"
-    # is actually "one state's candidates" — far less input diversity than a
-    # genuine tiny random subset, and not a fair test of the architecture.
-    rng_tiny = np.random.default_rng(DIAGNOSTIC_SEED)
-    tiny_idx = rng_tiny.choice(len(Xtr), size=min(30, len(Xtr)), replace=False)
-    n_tiny = len(tiny_idx)
-    tiny_model = train_model(Xtr[tiny_idx], ytr[tiny_idx], TOTAL_DIM, epochs=args.epochs * 5, lr=3e-2)
-    tiny_loss = eval_bce(tiny_model, Xtr[tiny_idx], ytr[tiny_idx])
-    results["tiny_overfit"] = {"n": n_tiny, "n_distinct_states": len(set(sid_tr[tiny_idx].tolist())), "final_train_bce": tiny_loss, "pass": tiny_loss < 0.15}
-    print(f"[diagnostic] tiny-overfit (n={n_tiny}, distinct states={len(set(sid_tr[tiny_idx].tolist()))}): train BCE={tiny_loss:.4f} (pass<0.15: {tiny_loss < 0.15})")
+    # --- Check 1: tiny-subset memorization ----------------------------------
+    # See memorization_test.py for the authoritative implementation and full
+    # explanation. Do NOT duplicate a raw-BCE-vs-threshold check here again —
+    # that was the original bug (Stage A closure): BCE against a soft,
+    # non-binary target has a nonzero floor (the target's own binary entropy)
+    # even at a perfect fit, so "BCE < 0.15" was never an achievable or
+    # meaningful bar. Run `python memorization_test.py --dataset-dir <dir>`
+    # separately for the rigorous version (MAE-to-target + 3 negative
+    # controls); this just points at it so results aren't duplicated/stale.
+    print("[diagnostic] tiny-overfit/memorization check moved to memorization_test.py — run it separately.")
+    results["tiny_overfit"] = {"note": "see memorization_test.py output (memorization_test_results.json) for the corrected version of this check"}
 
     baseline_bce = constant_mean_bce(ytr, yval)
 

@@ -82,7 +82,7 @@ describe("processState: real-physics integration", () => {
     await initPhysics(readFileSync(wasmPath));
   });
 
-  const testProfile: Profile = { games: 0, maxShotsPerGame: 0, controlledStates: 0, perturbations: 8, shardSize: 500 };
+  const testProfile: Profile = { games: 0, maxShotsPerGame: 0, controlledStates: 0, perturbations: 8 };
   const versions = { generator: "test", physics: "test" };
 
   it("a reliable cut shot into a corner pocket produces a high legal_pot rate and counts it as own, not opponent", () => {
@@ -112,7 +112,7 @@ describe("processState: real-physics integration", () => {
     };
 
     const rng = makeRng(42);
-    const rows = processState(state, table, "fixture-family", "fixture-state", "golden", rng, testProfile, versions, "2026-01-01T00:00:00.000Z");
+    const rows = processState(state, table, "fixture-family", "fixture-state", "golden", rng, testProfile, versions, "2026-01-01T00:00:00.000Z", 42);
     const rowsForBall1 = rows.filter((r) => r.candidate_pot_id === 1 && r.candidate_target === 1);
     expect(rowsForBall1.length).toBeGreaterThan(0);
 
@@ -146,9 +146,9 @@ describe("processState: real-physics integration", () => {
       shotCount: 5,
     };
     const rng1 = makeRng(7);
-    const rows1 = processState(state, table, "f1", "s1", "golden", rng1, testProfile, versions, "2026-01-01T00:00:00.000Z");
+    const rows1 = processState(state, table, "f1", "s1", "golden", rng1, testProfile, versions, "2026-01-01T00:00:00.000Z", 7);
     const rng2 = makeRng(7);
-    const rows2 = processState(state, table, "f1", "s1", "golden", rng2, testProfile, versions, "2026-01-01T00:00:00.000Z");
+    const rows2 = processState(state, table, "f1", "s1", "golden", rng2, testProfile, versions, "2026-01-01T00:00:00.000Z", 7);
     expect(rows1.length).toBe(rows2.length);
     for (let i = 0; i < rows1.length; i++) {
       expect(rows1[i].features).toEqual(rows2[i].features);
