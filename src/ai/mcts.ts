@@ -39,6 +39,13 @@ export interface SearchConfig {
   // seeding phase can skip per-candidate rollouts and spend the whole budget
   // on UCB refinement instead.
   netSeedValue?: number;
+  // Phase 2A candidate ranker: one score per candidate, indexed identically
+  // to `generateCandidates`'s output order. Distinct from `netSeedValue`
+  // (a single whole-board scalar applied to every candidate, from the older
+  // parked policy/value net) — this is the per-candidate signal that was
+  // missing before (see docs/repair/showboat-ml/ARCHITECTURE_DECISION.md).
+  // Takes priority over `netSeedValue` when both are present.
+  netSeedScores?: number[];
 }
 
 export const defaultConfig: SearchConfig = {
@@ -81,7 +88,9 @@ export const searchBaseline = (
   };
 
   let sims = 0;
-  const useNetSeed = config.netSeedValue !== undefined;
+  const netScores = config.netSeedScores;
+  const useNetScores = netScores !== undefined && netScores.length === candidates.length;
+  const useNetSeed = useNetScores || config.netSeedValue !== undefined;
   const SEED_TIMEOUT_MS = 2000;
   const seedStart = performance.now();
 
@@ -99,8 +108,11 @@ export const searchBaseline = (
     s.styleScore = s.rails + (isComboLike ? 1 : 0);
 
     if (useNetSeed) {
-      s.value = config.netSeedValue!;
-      s.winProb = squash(config.netSeedValue!);
+      // Per-candidate score when available (Phase 2A ranker); otherwise the
+      // old flat whole-board scalar (parked policy/value net) as a fallback.
+      const v = useNetScores ? netScores![ci] : config.netSeedValue!;
+      s.value = v;
+      s.winProb = squash(v);
       s.visits = 1;
       sims += 1;
     } else {

@@ -1,0 +1,12 @@
+# Root .gitignore blanket-excludes *.pt/*.onnx/*.onnx.data ("keep training
+# reproducible instead of committing weights blindly") — a sound policy for
+# real-scale model weights. This directory's Phase 2A spike artifacts are a
+# deliberate, narrow exception: they're tiny (~40KB checkpoint, ~36KB ONNX),
+# and docs/repair/showboat-ml/ARCHITECTURE_DECISION.md's acceptance test
+# (rankerIntegration.test.ts) depends on the ONNX file existing to prove the
+# pipeline works without requiring every contributor to stand up a Python +
+# PyTorch environment just to run `npm test`. Reproduction commands are in
+# README.md regardless. Not a precedent for committing real-scale weights —
+# Phase 2C+ artifacts follow the root policy.
+!artifacts/run1/checkpoint.pt
+!artifacts/run1/showboat-ranker.onnx

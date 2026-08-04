@@ -1,4 +1,19 @@
-# Showboat training pipeline
+# Showboat training pipeline (PoolTool/LightZero self-play track — PARKED)
+
+> **Status (2026-08-03): parked, not deleted, not the active ML path.** This
+> pipeline has never been executed even once in this repo (PoolTool requires
+> Python ≥3.10; the dev box is 3.9) — no checkpoint, `.pt`, or `.onnx` from
+> this track exists anywhere in git history. Its `OBS_DIM=50` observation
+> contract has a known, **unfixed** mismatch against the browser's
+> `OBS_DIM=48` (`src/ai/onnx.ts`) — left unfixed deliberately, since patching
+> a schema for a track nothing currently builds on would be polishing dead
+> code. The active ML work is a **different problem** (candidate ranking, not
+> self-play policy learning) at `apps/showboat/training/ranker/` — see
+> `docs/repair/showboat-ml/ARCHITECTURE_DECISION.md` for why, and that
+> directory's own README for the real, run, currently-working pipeline. This
+> track is kept because it represents genuine engineering effort and may be
+> revisited later (see the architecture decision's "rejected alternatives"
+> table), not because it's currently functional.
 
 Trains the 8-ball AI by **self-play** with **pooltool** (SOTA event-based
 Han-2005 physics) as the simulator and **LightZero** (Sampled EfficientZero →

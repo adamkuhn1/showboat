@@ -13,8 +13,7 @@
 import init, {
   simulateShot as wasmSimulateShot,
   rolloutValue as wasmRolloutValue,
-} from "../wasm/showboat_physics";
-import wasmUrl from "../wasm/showboat_physics_bg.wasm?url";
+} from "../wasm/showboat_physics.js";
 import { type Ball, Motion, classifyMotion } from "./ball";
 import { type SimResult, type SimWaypoint, type ShotEvent, type ShotEventKind } from "./engine";
 import { type CueAction } from "./cue";
@@ -26,9 +25,27 @@ let ready: Promise<void> | null = null;
 
 // Initialize the WASM module exactly once. Vite resolves the ?url import to the
 // hashed asset path, so this works both standalone and embedded in the shell.
-export const initPhysics = (): Promise<void> => {
+//
+// `source` lets a non-Vite caller (the Node/tsx headless dataset generator in
+// training/ranker/gen_dataset.ts) supply the same .wasm bytes directly via
+// fs.readFileSync instead of the Vite-only `?url` import — so training data
+// and the browser build load the literal same compiled artifact through the
+// literal same init/simulate code path, not a re-implementation of it.
+//
+// The `?url` import is loaded with a *dynamic* import, evaluated only on the
+// no-`source` (browser) path. A static top-level `?url` import is eagerly
+// resolved at module-load time even when unused, and Node/tsx's ESM loader
+// doesn't understand Vite's `?url` query convention — it tries to load the
+// referenced .wasm file itself as a native WASM ES module and fails. Vite
+// still statically analyzes this dynamic import (the specifier is a literal
+// string) and code-splits/hashes the asset exactly as it would a static one.
+export const initPhysics = (source?: BufferSource | string): Promise<void> => {
   if (!ready) {
-    ready = init({ module_or_path: wasmUrl }).then(() => undefined);
+    ready = (async () => {
+      const modulePath =
+        source ?? (await import("../wasm/showboat_physics_bg.wasm?url")).default;
+      await init({ module_or_path: modulePath });
+    })();
   }
   return ready;
 };
