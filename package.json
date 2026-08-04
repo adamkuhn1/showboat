@@ -11,7 +11,8 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:wasm": "cargo test --manifest-path physics-core/Cargo.toml",
-    "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json"
+    "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json",
+    "ranker:gen-dataset": "tsx training/ranker/gen_dataset.ts"
   },
   "dependencies": {
     "onnxruntime-web": "^1.27.0",
@@ -22,6 +23,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.19.2",
     "typescript": "~5.6.3",
     "vite": "^5.4.11",
     "vitest": "^4.1.10"

@@ -1,15 +1,33 @@
 # Showboat
 
-2D bar-pool game with a **real trained-ML** opponent, a from-scratch event-based
-physics engine, and a **live reasoning overlay** driven by actual search data.
+2D bar-pool game with a from-scratch event-based physics engine, a search-driven
+opponent, and a **live reasoning overlay** driven by actual search data. A real
+ML foundation (a trained candidate-ranking model) is in progress — see "ML
+status" below before repeating any claim about a trained AI.
 
-> **Which brain is playing?** The shipped app currently runs the **pure-search
-> MCTS baseline** and says so in the UI ("search baseline"). It upgrades to the
-> **trained net** automatically once a trained ONNX model is dropped at
-> `public/model/showboat.onnx` (the label flips to "trained net (ONNX)"). We
-> never present the baseline as the trained AI — the multi-hour self-play run
-> happens on Colab (see `training/README.md`); the pipeline is complete and the
-> plumbing is proven, the trained weights are the one thing pending.
+> **Which brain is playing, today?** The shipped app runs the **pure-search
+> baseline** (`src/ai/mcts.ts`, a flat UCB bandit over the candidate-shot set —
+> not a mislabeled "MCTS") and says so in the UI ("search baseline"/"the AI").
+> No model file ships to `public/model/`, so this is the only thing a visitor
+> ever plays against right now.
+
+## ML status (2026-08-03, redirected — read before touching training/)
+
+Two separate ML tracks exist; do not conflate them:
+
+1. **`training/ranker/` — active, real, small.** A candidate-ranking MLP
+   trained on data generated from the authoritative Rust/WASM physics (the
+   exact binary this app ships), with a real checkpoint, a real ONNX export,
+   and an automated test proving it changes candidate ordering. See
+   `training/ranker/README.md` for reproduction commands and honest
+   limitations. **Not yet wired into live gameplay** — Phase 2F does that.
+2. **`training/showboat_env/` — parked.** The original PoolTool+LightZero
+   self-play pipeline described further down this README. It has never been
+   executed (PoolTool needs Python ≥3.10; the dev box is 3.9) — no checkpoint
+   or ONNX file from it exists anywhere in git history. Kept for the record,
+   not deleted, not the active path. See `training/README.md`'s status
+   banner and `docs/repair/showboat-ml/ARCHITECTURE_DECISION.md` for why
+   candidate ranking was chosen over self-play as the active track.
 
 ## Run
 
@@ -82,20 +100,28 @@ launch the ball airborne.
 
 ## Train vs. play split
 
-- **Train (Python, offline):** `pooltool` simulates; `LightZero` (Sampled
-  EfficientZero → EfficientZero V2) runs self-play over the 4-D continuous action
-  (`phi, V0, a, b`, **no theta**); reward is **outcome-only** so banks/combos are
-  **emergent, never scripted**. The policy/value MLP exports to **ONNX**. See
-  `training/README.md` for the Colab recipe and the honest dev-box blocker
-  (pooltool needs Python 3.10+; the dev box is 3.9).
-- **Play (browser):** `onnxruntime-web` loads the ONNX net (WebGPU / WASM), a
-  **client-side TS-MCTS** searches over the candidate-shot set using the Rust
-  physics for rollouts and the net for priors/value. Fully client-side and free;
-  no server.
+**Active track (`training/ranker/`):** the dataset generator loads the exact
+WASM physics binary this app ships (`src/wasm/showboat_physics_bg.wasm`) from
+Node, reusing `candidates.ts`/`rules.ts`/`trace.ts` unmodified, so training
+labels and play-time physics are not just "the same lineage" — they're the
+same compiled artifact. Training itself is Python/PyTorch, reading the
+already-encoded rows the Node generator wrote (no second feature encoder to
+drift out of sync). See `training/ranker/README.md`.
 
-Until the trained model lands, the same MCTS runs with **uniform priors + a
-physics rollout value** — the **pure-search baseline**, which is also the
-win-rate benchmark from `PLAN.md §6`.
+**Parked track (`training/showboat_env/`), described for the historical
+record:** `pooltool` simulates (a *different*, independent physics engine
+from the Rust core above — not verified equivalent, see
+`docs/repair/showboat-ml/01-current-ml-audit.md`); `LightZero` (Sampled
+EfficientZero → EfficientZero V2) runs self-play over the 4-D continuous
+action (`phi, V0, a, b`, **no theta**); reward is **outcome-only**. The
+policy/value MLP exports to **ONNX**. Never executed on this dev box
+(PoolTool needs Python 3.10+; the box is 3.9) or anywhere else — see
+`training/README.md`'s status banner.
+
+**Play (browser), today:** `src/ai/mcts.ts`'s flat UCB bandit searches over
+the candidate-shot set using the Rust physics for rollouts — **uniform
+priors + a physics rollout value**, no model involved. This is the pure-search
+baseline every visitor plays against right now.
 
 ## How the overlay maps to real decisions
 
