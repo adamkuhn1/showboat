@@ -28,15 +28,63 @@ pub struct ShotEvent {
 }
 
 #[derive(Clone, Debug)]
+pub struct Waypoint {
+    pub time: f64,
+    pub balls: Vec<Ball>,
+}
+
+#[derive(Clone, Debug)]
 pub struct SimResult {
     pub events: Vec<ShotEvent>,
     pub pocketed: Vec<u8>,
     pub first_contact: i32, // -1 if none
     pub duration: f64,
+    /// Full ball-state snapshots at every resolved step, captured only when
+    /// requested (see `simulate_shot`'s `capture_waypoints` flag). Lets the
+    /// caller replay the EXACT trajectory that produced `pocketed`/the final
+    /// resting state, instead of re-simulating separately for animation and
+    /// risking the two runs diverging (see render/animate.ts's removal note).
+    pub waypoints: Vec<Waypoint>,
 }
 
-const MAX_SIM_TIME: f64 = 30.0;
+const MAX_SIM_TIME: f64 = 8.0; // 8 s simulated ≫ any realistic shot; prevents runaway sims
 const LOOKAHEAD: f64 = 0.05;
+const MAX_ITERATIONS: u32 = 500; // hard guard; a realistic shot needs ≤~200 iterations at LOOKAHEAD=0.05
+
+/// Multi-pass positional separation: push overlapping pairs apart until all
+/// gaps ≥ 2 mm.  Mirrors the JS `separateOverlaps` used on the bridge side.
+/// Called at the start of `simulate_shot` so the event-detection scan never
+/// sees a pair at contact distance before a collision has been resolved.
+fn separate_overlaps(balls: &mut [Ball]) {
+    let min_dist = crate::constants::BALL_DIAMETER + 0.002; // 2 mm clearance
+    for _ in 0..20 {
+        let mut any = false;
+        for i in 0..balls.len() {
+            for j in (i + 1)..balls.len() {
+                if balls[i].pocketed || balls[j].pocketed {
+                    continue;
+                }
+                let d = balls[j].pos.sub(balls[i].pos);
+                let dist = d.mag();
+                if dist < min_dist {
+                    any = true;
+                    let overlap = min_dist - dist;
+                    let n = if dist > 1e-9 {
+                        d.scale(1.0 / dist)
+                    } else {
+                        Vec2::new(1.0, 0.0)
+                    };
+                    let push = n.scale(overlap / 2.0);
+                    balls[i].pos = balls[i].pos.sub(push);
+                    balls[j].pos = balls[j].pos.add(push);
+                }
+            }
+        }
+        if !any {
+            break;
+        }
+    }
+}
 
 fn reclassify(balls: &mut [Ball]) {
     for b in balls.iter_mut() {
@@ -60,15 +108,35 @@ enum Action {
 }
 
 /// Run one shot to completion, mutating `balls` to the resting state.
-pub fn simulate_shot(balls: &mut Vec<Ball>, table: &Table) -> SimResult {
+///
+/// `capture_waypoints` records a full ball-state snapshot after every resolved
+/// step (event or LOOKAHEAD-bounded advance) — the same granularity
+/// render/animate.ts used to build separately in TS. Only the single real
+/// shot the player/AI actually takes needs this (see wasm.rs); the MCTS
+/// rollout hot loop calls this thousands of times per turn and must not pay
+/// for snapshot allocation it never uses.
+pub fn simulate_shot(balls: &mut Vec<Ball>, table: &Table, capture_waypoints: bool) -> SimResult {
     let mut events: Vec<ShotEvent> = Vec::new();
     let mut pocketed: Vec<u8> = Vec::new();
     let mut first_contact: i32 = -1;
     let mut t = 0.0;
+    let mut iters: u32 = 0;
+    let mut zero_step_count: u32 = 0;
+    let mut waypoints: Vec<Waypoint> = Vec::new();
 
+    // Ensure no balls start at contact distance: the JS bridge applies 2 mm
+    // clearance too, but round-trips through Float64Array can shave a few nm.
+    separate_overlaps(balls);
     reclassify(balls);
+    if capture_waypoints {
+        waypoints.push(Waypoint { time: 0.0, balls: balls.clone() });
+    }
 
     while any_moving(balls) && t < MAX_SIM_TIME {
+        iters += 1;
+        if iters >= MAX_ITERATIONS {
+            break;
+        }
         let window = LOOKAHEAD;
         let mut best_t = window;
         let mut best_action = Action::None;
@@ -137,6 +205,11 @@ pub fn simulate_shot(balls: &mut Vec<Ball>, table: &Table) -> SimResult {
                     let (lo, hi) = if i < j { (i, j) } else { (j, i) };
                     let (left, right) = balls.split_at_mut(hi);
                     resolve_ball_ball(&mut left[lo], &mut right[0]);
+                    // After resolving a ball-ball collision, nearby balls in a
+                    // cluster may now be overlapping (the resolved ball was pushed
+                    // into a neighbour). Run a full separation pass so the next
+                    // event scan sees no t=0 pairs and the cascade is cut at zero cost.
+                    separate_overlaps(balls);
                     if first_contact == -1 && (a_id == 0 || b_id == 0) {
                         first_contact = if a_id == 0 { b_id } else { a_id };
                     }
@@ -184,8 +257,24 @@ pub fn simulate_shot(balls: &mut Vec<Ball>, table: &Table) -> SimResult {
 
         reclassify(balls);
 
-        if step <= 0.0 && !best_is_event {
-            break;
+        // Capture a waypoint after EVERY iteration — event or no-event window
+        // advance — mirroring animate.ts's buildAnimTrack exactly, so replaying
+        // these with the same advanceBall/interpolation logic on the JS side
+        // never spans a phase transition it wasn't captured across.
+        if capture_waypoints {
+            waypoints.push(Waypoint { time: t, balls: balls.clone() });
+        }
+
+        if step <= 0.0 {
+            if !best_is_event {
+                break; // no progress and no event: fully stationary
+            }
+            zero_step_count += 1;
+            if zero_step_count > 200 {
+                break; // t=0 event cascade: too many consecutive zero-advance steps
+            }
+        } else {
+            zero_step_count = 0;
         }
     }
 
@@ -230,10 +319,27 @@ pub fn simulate_shot(balls: &mut Vec<Ball>, table: &Table) -> SimResult {
         pocket: -1,
     });
 
+    // Final settle + de-overlap ran after the last in-loop waypoint capture;
+    // replace that waypoint (same `t`) with the truly-final state so the last
+    // frame of a replayed animation matches `balls` — the value this function
+    // actually returns — exactly.
+    if capture_waypoints {
+        if let Some(last) = waypoints.last_mut() {
+            if last.time == t {
+                last.balls = balls.clone();
+            } else {
+                waypoints.push(Waypoint { time: t, balls: balls.clone() });
+            }
+        } else {
+            waypoints.push(Waypoint { time: t, balls: balls.clone() });
+        }
+    }
+
     SimResult {
         events,
         pocketed,
         first_contact,
         duration: t,
+        waypoints,
     }
 }

@@ -12,11 +12,14 @@ pub fn resolve_ball_ball(a: &mut Ball, b: &mut Ball) {
     let n = b.pos.sub(a.pos).normalize();
     let t = n.perp();
 
-    // Positional de-overlap so balls never rest inside one another.
+    // Positional de-overlap: push apart by overlap/2 plus 1 mm clearance so
+    // the next event scan sees gap > EPS and won't fire a t=0 event for this
+    // pair again immediately.  1e-7 (0.2 nm) was too tight — float jitter
+    // would re-trigger the t=0 guard on the very next iteration.
     let dist = b.pos.sub(a.pos).mag();
     let overlap = 2.0 * BALL_RADIUS - dist;
     if overlap > 0.0 {
-        let push = n.scale(overlap / 2.0 + 1e-7);
+        let push = n.scale(overlap / 2.0 + 0.001);
         a.pos = a.pos.sub(push);
         b.pos = b.pos.add(push);
     }

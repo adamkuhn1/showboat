@@ -23,6 +23,13 @@ export class ShotResult {
         wasm.__wbg_shotresult_free(ptr, 0);
     }
     /**
+     * @returns {number}
+     */
+    get ballCount() {
+        const ret = wasm.shotresult_ballCount(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {Float64Array}
      */
     get balls() {
@@ -97,6 +104,24 @@ export class ShotResult {
         const ret = wasm.shotresult_pocketed(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get waypointBalls() {
+        const ret = wasm.shotresult_waypointBalls(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get waypointTimes() {
+        const ret = wasm.shotresult_waypointTimes(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
     }
 }

@@ -23,12 +23,27 @@ export interface ShotEvent {
   pocket?: string; // pocket id, for pocket
 }
 
+export interface SimWaypoint {
+  time: number;
+  balls: Ball[];
+}
+
 export interface SimResult {
   balls: Ball[]; // final resting state
   events: ShotEvent[]; // ordered event trace
   pocketed: number[]; // ball ids pocketed during the shot, in order
   firstContact: number | null; // id of first object ball the cue ball hit
   duration: number; // simulated seconds
+  /**
+   * Full ball-state snapshots across the shot, only populated by the WASM
+   * simulator (simulateShotWasm) for the single real shot the player/AI
+   * takes — never by this TS reference engine, and never for MCTS rollouts.
+   * When present, this is what the UI replays for the animation, so the
+   * on-screen motion and the authoritative outcome are the same simulation
+   * run rather than two independently-computed ones that can diverge over a
+   * long collision cascade (see render/animate.ts).
+   */
+  waypoints?: SimWaypoint[];
 }
 
 // Maximum simulated time for a single shot; a real shot settles in a few

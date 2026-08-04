@@ -2,59 +2,52 @@ import { type Ball, cloneBall } from "../physics/ball";
 import { type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
 import { type Candidate, generateCandidates } from "./candidates";
-import { rolloutValueWasm, simulateShotWasm } from "../physics/wasm-bridge";
+import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics/wasm-bridge";
 import { railsBeforePot } from "./trace";
 
-// Client-side MCTS over the candidate-shot set, using the Rust→WASM physics for
-// simulation and the native rollout hot loop for value estimation.
-//
-// This is the pure-search BASELINE opponent (milestone 3): priors are uniform
-// and the leaf value is the physics rollout — there is NO learned network here.
-// It is explicitly the win-rate benchmark, NOT the shipped trained AI. When the
-// ONNX net lands (milestone 5) it replaces the uniform prior + rollout value.
-//
-// Search is a flat "bandit over candidates" MCTS: because a pool turn is a
-// single continuous action refined into discrete candidate paths, one level of
-// UCB selection over candidates with physics rollouts is the honest baseline and
-// keeps the per-decision cost bounded for real-time play.
+// Flat UCB bandit over the candidate shot set. One level of MCTS is enough for
+// a pool turn: a shot is a single continuous action, so the branching factor
+// is already handled by candidate generation. Physics rollouts give the value.
 
 export interface CandidateStat {
   candidate: Candidate;
   visits: number;
-  value: number; // running mean rollout value
-  winProb: number; // squashed value in [0,1] for the overlay
-  rails: number; // cushions before the pot in the *actual* simulated shot
-  potsTarget: boolean; // did the simulated shot pocket the intended ball?
+  value: number;
+  winProb: number;
+  rails: number;
+  potsTarget: boolean;
+  styleScore: number;
 }
 
 export interface SearchResult {
   best: CandidateStat | null;
-  stats: CandidateStat[]; // all candidates, sorted by visits desc (overlay data)
+  stats: CandidateStat[];
   simulations: number;
 }
 
 const UCB_C = 1.2;
 
-// Squash a rollout value (mean target-balls pocketed, ~0..a few) into [0,1] so
-// the overlay can show a "win-prob"-style number. Monotonic, honest transform.
+// Map mean-balls-pocketed (~0..a few) to a displayable win probability.
 const squash = (v: number): number => 1 - Math.exp(-v);
 
 export interface SearchConfig {
-  simulations: number; // total rollout budget across the turn
-  rolloutDepth: number; // continuation shots per rollout
-  rolloutsPerEval: number; // playouts averaged per candidate visit
+  simulations: number;
+  rolloutDepth: number;
+  rolloutsPerEval: number;
   seed: number;
+  // When the trained net is loaded, it supplies a position value here so the
+  // seeding phase can skip per-candidate rollouts and spend the whole budget
+  // on UCB refinement instead.
+  netSeedValue?: number;
 }
 
 export const defaultConfig: SearchConfig = {
-  simulations: 240,
-  rolloutDepth: 2,
-  rolloutsPerEval: 6,
+  simulations: 60,
+  rolloutDepth: 1,
+  rolloutsPerEval: 2,
   seed: 12345,
 };
 
-// Run the baseline search for the current shooter. `targets` are the legal
-// object-ball ids (their group, or the 8 when cleared).
 export const searchBaseline = (
   balls: Ball[],
   table: Table,
@@ -66,6 +59,11 @@ export const searchBaseline = (
     return { best: null, stats: [], simulations: 0 };
   }
 
+  // Separate any overlapping balls before handing to Rust — the TS animation
+  // engine can leave balls at exact contact distance.
+  const workBalls = balls.map(cloneBall);
+  separateOverlaps(workBalls);
+
   const stats: CandidateStat[] = candidates.map((c) => ({
     candidate: c,
     visits: 0,
@@ -73,10 +71,9 @@ export const searchBaseline = (
     winProb: 0,
     rails: c.banks,
     potsTarget: false,
+    styleScore: 0,
   }));
 
-  // Seed: simulate each candidate once to record what the shot *actually* does
-  // (real event trace → rails-before-pot, did-it-pot) for honest overlay data.
   let seed = config.seed >>> 0;
   const nextSeed = (): number => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -84,68 +81,74 @@ export const searchBaseline = (
   };
 
   let sims = 0;
-  for (const s of stats) {
-    const copy = balls.map(cloneBall);
+  const useNetSeed = config.netSeedValue !== undefined;
+  const SEED_TIMEOUT_MS = 2000;
+  const seedStart = performance.now();
+
+  for (let ci = 0; ci < stats.length; ci++) {
+    if (performance.now() - seedStart > SEED_TIMEOUT_MS) break;
+    const s = stats[ci];
+    const copy = workBalls.map(cloneBall);
     const sim = simulateShotWasm(copy, s.candidate.action);
+    // Cue ball id is always 0. A scratch is a foul regardless of what else was
+    // pocketed — skip the candidate entirely so it can't win UCB selection.
+    if (sim.pocketed.includes(0)) continue;
     s.potsTarget = sim.pocketed.includes(s.candidate.target);
     s.rails = railsBeforePot(sim);
-    const v = rolloutValueWasm(
-      balls,
-      s.candidate.action,
-      targets,
-      config.rolloutDepth,
-      config.rolloutsPerEval,
-      nextSeed(),
-    );
-    s.visits = 1;
-    s.value = v;
-    s.winProb = squash(v);
-    sims += config.rolloutsPerEval;
+    const isComboLike = s.candidate.kind === "combo" || s.candidate.kind === "double-bank";
+    s.styleScore = s.rails + (isComboLike ? 1 : 0);
+
+    if (useNetSeed) {
+      s.value = config.netSeedValue!;
+      s.winProb = squash(config.netSeedValue!);
+      s.visits = 1;
+      sims += 1;
+    } else {
+      const v = rolloutValueWasm(
+        workBalls,
+        s.candidate.action,
+        targets,
+        config.rolloutDepth,
+        config.rolloutsPerEval,
+        nextSeed(),
+      );
+      s.visits = 1;
+      s.value = v;
+      s.winProb = squash(v);
+      sims += config.rolloutsPerEval;
+    }
   }
 
-  // UCB rounds: spend the remaining budget on the most promising candidates.
-  const rounds = Math.max(0, config.simulations - stats.length * config.rolloutsPerEval);
-  const perRound = config.rolloutsPerEval;
-  const nRounds = Math.floor(rounds / perRound);
+  const seedCost = useNetSeed ? 0 : stats.length * config.rolloutsPerEval;
+  const nRounds = Math.floor(Math.max(0, config.simulations - seedCost) / config.rolloutsPerEval);
+  const seeded = stats.filter(s => s.visits > 0);
 
-  for (let r = 0; r < nRounds; r++) {
-    const totalVisits = stats.reduce((a, s) => a + s.visits, 0);
-    let pick = stats[0];
+  for (let r = 0; r < nRounds && seeded.length > 0; r++) {
+    const totalVisits = seeded.reduce((a, s) => a + s.visits, 0);
+    let pick = seeded[0];
     let bestUcb = -Infinity;
-    for (const s of stats) {
-      const exploit = s.value;
-      const explore = UCB_C * Math.sqrt(Math.log(totalVisits + 1) / s.visits);
-      const ucb = exploit + explore;
-      if (ucb > bestUcb) {
-        bestUcb = ucb;
-        pick = s;
-      }
+    for (const s of seeded) {
+      const ucb = s.value + UCB_C * Math.sqrt(Math.log(totalVisits + 1) / s.visits);
+      if (ucb > bestUcb) { bestUcb = ucb; pick = s; }
     }
     const v = rolloutValueWasm(
-      balls,
-      pick.candidate.action,
-      targets,
-      config.rolloutDepth,
-      perRound,
-      nextSeed(),
+      workBalls, pick.candidate.action, targets,
+      config.rolloutDepth, config.rolloutsPerEval, nextSeed(),
     );
-    // Incremental mean.
     pick.value = (pick.value * pick.visits + v) / (pick.visits + 1);
     pick.visits += 1;
     pick.winProb = squash(pick.value);
-    sims += perRound;
+    sims += config.rolloutsPerEval;
   }
 
-  const sorted = [...stats].sort((a, b) => b.visits - a.visits || b.value - a.value);
-  // The chosen shot is the most-visited candidate (standard MCTS move rule),
-  // tie-broken by value. Prefer a candidate that actually pots its target.
-  const best =
-    sorted.find((s) => s.potsTarget) ?? sorted[0] ?? null;
+  const sorted = [...stats]
+    .filter(s => s.visits > 0)
+    .sort((a, b) => b.visits - a.visits || b.value - a.value);
 
+  const best = sorted.find(s => s.potsTarget) ?? sorted[0] ?? null;
   return { best, stats: sorted, simulations: sims };
 };
 
-// Convenience: pick just the action to play.
 export const chooseShot = (
   balls: Ball[],
   table: Table,

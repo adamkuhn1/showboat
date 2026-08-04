@@ -73,6 +73,17 @@ pub struct ShotResult {
     event_times: Vec<f64>,
     first_contact: i32,
     duration: f64,
+    // Full trajectory for animation playback: `waypoint_times[i]` pairs with
+    // the flat (STRIDE=8) ball block at `waypoint_balls[i * ball_count *
+    // STRIDE .. (i+1) * ball_count * STRIDE]`. This is the same simulation
+    // run that produced `balls`/`pocketed` above — replaying it is what
+    // guarantees the animation ends exactly where the authoritative result
+    // says it does, instead of a second, independently-run TS simulation
+    // that can diverge over a long collision cascade (see App.tsx's removed
+    // glideToAuthoritative correction).
+    waypoint_times: Vec<f64>,
+    waypoint_balls: Vec<f64>,
+    ball_count: usize,
 }
 
 fn kind_code(k: EventKind) -> i32 {
@@ -125,6 +136,18 @@ impl ShotResult {
     pub fn duration(&self) -> f64 {
         self.duration
     }
+    #[wasm_bindgen(getter, js_name = waypointTimes)]
+    pub fn waypoint_times(&self) -> Vec<f64> {
+        self.waypoint_times.clone()
+    }
+    #[wasm_bindgen(getter, js_name = waypointBalls)]
+    pub fn waypoint_balls(&self) -> Vec<f64> {
+        self.waypoint_balls.clone()
+    }
+    #[wasm_bindgen(getter, js_name = ballCount)]
+    pub fn ball_count(&self) -> usize {
+        self.ball_count
+    }
 }
 
 /// Simulate one shot to its resting state. `flat` is the ball state; the cue
@@ -145,7 +168,8 @@ pub fn simulate_shot_wasm(
             &CueAction { phi, power, side_spin, top_spin },
         );
     }
-    let res = simulate_shot(&mut balls, &table);
+    let ball_count = balls.len();
+    let res = simulate_shot(&mut balls, &table, true);
 
     let mut event_kinds = Vec::new();
     let mut event_balls = Vec::new();
@@ -161,6 +185,13 @@ pub fn simulate_shot_wasm(
         event_times.push(e.time);
     }
 
+    let mut waypoint_times = Vec::with_capacity(res.waypoints.len());
+    let mut waypoint_balls = Vec::with_capacity(res.waypoints.len() * ball_count * STRIDE);
+    for wp in &res.waypoints {
+        waypoint_times.push(wp.time);
+        waypoint_balls.extend(balls_to_flat(&wp.balls));
+    }
+
     ShotResult {
         balls: balls_to_flat(&balls),
         pocketed: res.pocketed,
@@ -171,6 +202,9 @@ pub fn simulate_shot_wasm(
         event_times,
         first_contact: res.first_contact,
         duration: res.duration,
+        waypoint_times,
+        waypoint_balls,
+        ball_count,
     }
 }
 

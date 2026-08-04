@@ -5,16 +5,11 @@ import { BALL_RADIUS } from "../physics/constants";
 import { type CueAction } from "../physics/cue";
 import { CUE_ID } from "../game/rack";
 
-// Candidate-shot GENERATOR. This enumerates aiming *paths* geometrically — it is
-// NOT shot scripting. For each legal target ball and each pocket it computes the
-// cut angle for a direct pot, plus single- and double-cushion (bank) routes by
-// mirroring the pocket across rails, plus simple combo routes through an
-// intermediate ball. It emits only the aim direction + a power suggestion; the
-// physics sim (and the value function / MCTS) decide which candidate is good.
-// Banks and combos are made *available* here exactly like a direct shot is — the
-// search selects them on value, so trick shots stay emergent, never canned.
+// Enumerate aiming paths geometrically: direct pots, single- and double-cushion
+// banks (via pocket mirroring), and simple combos through an intermediate ball.
+// Emits aim angle + suggested power — the MCTS value function picks what's good.
 
-export type CandidateKind = "direct" | "bank" | "combo";
+export type CandidateKind = "direct" | "bank" | "double-bank" | "combo";
 
 export interface Candidate {
   kind: CandidateKind;
@@ -74,6 +69,31 @@ const mirrorAcross = (p: Vec2, table: Table, side: string): Vec2 => {
 
 const SIDES = ["left", "right", "top", "bottom"] as const;
 
+// Check the line segment from `from` to `to` is clear of blocking balls.
+// A ball blocks if its center is within 2*BALL_RADIUS of the segment.
+// `skipIds` contains balls that are intentionally on the path (cue, target).
+const isPathClear = (
+  from: Vec2,
+  to: Vec2,
+  live: Ball[],
+  skipIds: Set<number>,
+): boolean => {
+  const d = sub(to, from);
+  const len = mag(d);
+  if (len < 1e-9) return true;
+  const dn = { x: d.x / len, y: d.y / len };
+  const minDist = 2 * BALL_RADIUS + 0.004; // 4mm margin for physics tolerance
+  for (const b of live) {
+    if (skipIds.has(b.id)) continue;
+    const v = sub(b.pos, from);
+    const t = v.x * dn.x + v.y * dn.y;
+    if (t < 0 || t > len) continue;
+    const perp2 = (v.x - t * dn.x) ** 2 + (v.y - t * dn.y) ** 2;
+    if (perp2 < minDist * minDist) return false;
+  }
+  return true;
+};
+
 // Enumerate candidates for one shooter given the legal target ids.
 export const generateCandidates = (
   balls: Ball[],
@@ -86,15 +106,21 @@ export const generateCandidates = (
   const live = balls.filter((b) => !b.pocketed);
   const out: Candidate[] = [];
 
+  // Max total path length for a 2-cushion route: beyond this the shot is
+  // almost impossible to execute at the required precision.
+  const MAX_DOUBLE_BANK_PATH = table.length * 3.5;
+
   for (const tid of targets) {
     const obj = live.find((b) => b.id === tid);
     if (!obj) continue;
 
+    const skipCueAndTarget = new Set([CUE_ID, tid]);
+
     for (const pk of table.pockets) {
-      // --- Direct pot -----------------------------------------------------
+      // --- Direct pot -------------------------------------------------------
       const ghost = ghostBall(obj.pos, pk.center);
       const cutOk = isReachable(cuePos, ghost, obj.pos, pk.center);
-      if (cutOk) {
+      if (cutOk && isPathClear(cuePos, ghost, live, skipCueAndTarget)) {
         const dist = mag(sub(pk.center, obj.pos)) + mag(sub(ghost, cuePos));
         out.push({
           kind: "direct",
@@ -107,7 +133,7 @@ export const generateCandidates = (
         });
       }
 
-      // --- Single-cushion bank -------------------------------------------
+      // --- Single-cushion bank ----------------------------------------------
       // Aim the object ball at the mirror image of the pocket across each rail:
       // the straight line to the mirror crosses the rail at the true bank point.
       for (const side of SIDES) {
@@ -116,6 +142,7 @@ export const generateCandidates = (
         if (!bankPoint) continue;
         const gb = ghostBall(obj.pos, bankPoint);
         if (!isReachable(cuePos, gb, obj.pos, bankPoint)) continue;
+        if (!isPathClear(cuePos, gb, live, skipCueAndTarget)) continue;
         const dist =
           mag(sub(bankPoint, obj.pos)) +
           mag(sub(pk.center, bankPoint)) +
@@ -130,26 +157,56 @@ export const generateCandidates = (
           banks: 1,
         });
       }
+
+      // --- Double-cushion bank (2 rails) ------------------------------------
+      // Mirror pocket across rail1 → m1, then m1 across rail2 → m2. Object
+      // ball aims toward m2, hits side2 at B2, deflects toward m1, hits side1
+      // at B1, arrives at pocket. The reflection principle ensures the straight
+      // line obj→m2 unfolds to the correct two-cushion path.
+      for (const side1 of SIDES) {
+        for (const side2 of SIDES) {
+          if (side1 === side2) continue;
+          const m1 = mirrorAcross(pk.center, table, side1);
+          const m2 = mirrorAcross(m1, table, side2);
+          const B2 = railCrossing(obj.pos, m2, table, side2);
+          if (!B2) continue;
+          const B1 = railCrossing(B2, m1, table, side1);
+          if (!B1) continue;
+          const gb = ghostBall(obj.pos, B2);
+          if (!isReachable(cuePos, gb, obj.pos, B2)) continue;
+          if (!isPathClear(cuePos, gb, live, skipCueAndTarget)) continue;
+          const dist =
+            mag(sub(gb, cuePos)) +
+            mag(sub(B2, obj.pos)) +
+            mag(sub(B1, B2)) +
+            mag(sub(pk.center, B1));
+          if (dist > MAX_DOUBLE_BANK_PATH) continue;
+          out.push({
+            kind: "double-bank",
+            target: tid,
+            pocket: pk.id,
+            aimPoint: gb,
+            action: aimAction(cuePos, gb, powerFor(dist)),
+            path: [obj.pos, B2, B1, pk.center],
+            banks: 2,
+          });
+        }
+      }
     }
 
     // --- Combo (through one intermediate ball) ----------------------------
-    // Play the cue into `obj`, driving it into another live ball `mid` that then
-    // heads to a pocket. Enumerated as geometry; value decides if it's worth it.
-    //
-    // Combos are pruned to plausible geometry to keep the candidate set (and the
-    // search budget) bounded: the intermediate ball must be reasonably near the
-    // object ball (a combo across the whole table is rarely makeable) and must
-    // lie roughly on the object→pocket side. This is a feasibility filter, not a
-    // trick heuristic — the physics sim and value function still decide.
+    // Pruned to candidates where the intermediate is within COMBO_RADIUS —
+    // long-range combos are rarely makeable and blow the search budget.
     const COMBO_RADIUS = table.length * 0.45;
     for (const mid of live) {
       if (mid.id === tid || mid.id === CUE_ID) continue;
       if (mag(sub(mid.pos, obj.pos)) > COMBO_RADIUS) continue;
       for (const pk of table.pockets) {
-        const midGhost = ghostBall(mid.pos, pk.center); // where obj must send mid
-        const objGhost = ghostBall(obj.pos, midGhost); // where cue must send obj
+        const midGhost = ghostBall(mid.pos, pk.center);
+        const objGhost = ghostBall(obj.pos, midGhost);
         if (!isReachable(cuePos, objGhost, obj.pos, midGhost)) continue;
         if (!isReachable(obj.pos, midGhost, mid.pos, pk.center)) continue;
+        if (!isPathClear(cuePos, objGhost, live, skipCueAndTarget)) continue;
         const dist =
           mag(sub(objGhost, cuePos)) +
           mag(sub(mid.pos, obj.pos)) +
@@ -167,7 +224,28 @@ export const generateCandidates = (
     }
   }
 
-  return out;
+  // Cap per candidate kind so seeding cost (1 physics sim + rolloutsPerEval
+  // rollouts per candidate) stays within ~600 WASM calls on an open table.
+  // Shorter paths are more makeable, so sort by total path distance and keep
+  // the top N of each kind. The search still considers all shot types; it just
+  // prunes the least-promising geometric variants before MCTS begins.
+  const pathLen = (c: Candidate): number => {
+    let d = 0;
+    for (let i = 1; i < c.path.length; i++) d += mag(sub(c.path[i], c.path[i - 1]));
+    return d;
+  };
+  const capByKind = (kind: CandidateKind, n: number): Candidate[] =>
+    out
+      .filter((c) => c.kind === kind)
+      .sort((a, b) => pathLen(a) - pathLen(b))
+      .slice(0, n);
+
+  return [
+    ...capByKind("direct", 12),
+    ...capByKind("bank", 24),
+    ...capByKind("double-bank", 4),
+    ...capByKind("combo", 4),
+  ];
 };
 
 // Is the ghost-ball contact roughly in front of the object ball relative to the
