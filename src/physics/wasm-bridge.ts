@@ -1,6 +1,6 @@
 // Typed bridge from the TypeScript game/UI layer to the Rust→WASM physics core.
 //
-// The heavy simulation and the MCTS rollout hot loop live in Rust (see
+// The heavy simulation and the UCB search rollout hot loop live in Rust (see
 // physics-core/); this module is the thin boundary that (de)serializes ball
 // state across the flat Float64Array interface and re-materializes the event
 // trace into the same ShotEvent/SimResult shapes the TS engine produced, so the
@@ -75,7 +75,7 @@ export const flattenBalls = (balls: Ball[]): Float64Array => {
 // search seeding phase extremely slow. Separate overlapping pairs by the minimum
 // distance needed to bring them to exact contact — this is a physics correction,
 // not a foul or position change visible in gameplay.
-// Exported so the MCTS layer can pre-sanitise the game-state copy before any
+// Exported so the search layer can pre-sanitise the game-state copy before any
 // WASM call (the TS engine's break simulation can leave balls numerically at
 // contact distance; passing such a state to Rust causes thousands of t≈0
 // collision events and multi-second hangs).

@@ -1,9 +1,9 @@
 import { type GameState } from "../game/state";
 import { type Table } from "../physics/table";
-import { type SearchResult, type SearchConfig, defaultConfig } from "./mcts";
+import { type SearchResult, type SearchConfig, defaultConfig } from "./shotSearch";
 import { hasTrainedModel, trainedModelStatus, evaluate, encodeObservation } from "./onnx";
 
-// Two modes: pure MCTS search (default, no network needed) and trained net
+// Two modes: flat UCB candidate search (default, no network needed) and trained net
 // (same search but the seeding phase uses the ONNX value estimate instead of
 // per-candidate rollouts, freeing the budget for UCB refinement).
 
