@@ -10,3 +10,12 @@
 # Phase 2C+ artifacts follow the root policy.
 !artifacts/run1/checkpoint.pt
 !artifacts/run1/showboat-ranker.onnx
+
+# Phase 2C dataset generation output (all profiles, including smoke): fully
+# reproducible from code + master seed in well under a minute (smoke) to a
+# few hours (full) — see phase2c/gen_dataset_v3.ts and DATASET_DESIGN.md.
+# Even smoke's tiny fixture is ~500KB of generated NDJSON; regenerating on
+# demand (`npm run ranker:gen-smoke`) is cheaper than tracking it, and its
+# determinism (byte-identical dataset_hash across runs) is exactly what
+# makes that safe to rely on instead of committing the output.
+phase2c/data/
