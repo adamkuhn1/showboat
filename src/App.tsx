@@ -7,7 +7,6 @@ import { applyCue } from "./physics/cue";
 import { computeView, render, drawAim } from "./render/renderer";
 import { drawOverlay } from "./render/overlay";
 import { buildAnimTrack, interpolateBalls, type AnimTrack } from "./render/animate";
-import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { legalTargets } from "./ai/turn";
@@ -60,6 +59,14 @@ function postEmbedReady() {
   );
 }
 
+/** Run `fn` when the browser is next idle, or soon, in engines without it. */
+function idle(fn: () => void): void {
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+    .requestIdleCallback;
+  if (typeof ric === "function") ric(fn);
+  else window.setTimeout(fn, 1200);
+}
+
 // Player 1 (id 0) is human; Player 2 (id 1) is the AI opponent.
 const AI_PLAYER: PlayerId = 1;
 
@@ -80,7 +87,6 @@ export default function App() {
   const [search, setSearch] = useState<SearchResult | null>(null);
   const searchRef = useRef<SearchResult | null>(null);
   const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
-  const [showOverlay, setShowOverlay] = useState(true);
   // Neural ranking is the DEFAULT. Classical physics search remains fully
   // available as an explicitly selectable comparison mode via the toggle.
   //
@@ -157,6 +163,20 @@ export default function App() {
     neuralEvaluator.preflight().then((pre) => {
       if (pre.ok) {
         setModelAvailable(true);
+        // Neural ranking is the default, so the ~27MB onnxruntime-web WASM
+        // runtime is now on the path of an ordinary game rather than of a
+        // visitor who ticked a box. Start it as soon as the app is idle
+        // instead of on the first opponent turn: nothing awaits it here, the
+        // turn still falls back to classical while it is in flight
+        // (getBrain gates on evaluator.isReady()), and by the time the human
+        // has taken a break shot it is normally already resident.
+        //
+        // Deliberately inside the app, not the shell: the portfolio never
+        // mounts this iframe until the visitor presses "Play a rack", so a
+        // visitor who scrolls past the section downloads none of it.
+        idle(() => {
+          void neuralEvaluator.load();
+        });
       } else {
         console.error(
           `[showboat] ranker artifact failed preflight: ${pre.reason} — the neural mode will be ` +
@@ -172,13 +192,13 @@ export default function App() {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
       render(ctx, s, table, view);
-      if (overlay && showOverlay) drawOverlay(ctx, overlay, table, view);
+      if (overlay) drawOverlay(ctx, overlay, table, view);
       if (phase === "aiming" && s.turn !== AI_PLAYER) {
         const cue = s.balls.find((b) => b.id === CUE_ID);
         if (cue && !cue.pocketed) drawAim(ctx, cue, aim, power, view, table, s.balls);
       }
     },
-    [table, view, phase, aim, power, showOverlay],
+    [table, view, phase, aim, power],
   );
 
   useEffect(() => {
@@ -260,21 +280,32 @@ export default function App() {
       setPhase("aiming");
       game.current.state = report.next;
       const o = report.outcome;
-      const trace = describeShot(report.sim);
       const ai = vsAIRef.current;
       const playerName = (id: number) =>
         ai ? (id === AI_PLAYER ? "opponent" : "you") : `player ${id + 1}`;
+      // "you" takes a plural verb; "the opponent" and "player 2" don't.
+      const isPlural = (id: number) => ai && id !== AI_PLAYER;
+      const verb = (id: number, plural: string, singular: string) =>
+        isPlural(id) ? plural : singular;
+      // The turn has already moved in `report.next` when it passes, so the
+      // player who just shot is recovered from the outcome rather than from a
+      // pre-shot state this function doesn't hold.
+      const shooter = o.turnPasses ? (report.next.turn === 0 ? 1 : 0) : report.next.turn;
+
       let msg = "";
       if (o.gameOver) {
-        msg = `${playerName(o.winner ?? 0)} win${o.winner === 0 && ai ? "" : "s"}!${o.foul ? ` (${o.foulReason})` : ""}`;
+        msg = `${playerName(o.winner ?? 0)} ${verb(o.winner ?? 0, "win", "wins")}!${o.foul ? ` (${o.foulReason})` : ""}`;
       } else if (o.foul) {
         msg = `foul, ${o.foulReason}. ball in hand.`;
       } else if (o.assignedGroups) {
-        msg = trace;
+        // The table was open and this shot claimed a group. That is the only
+        // thing worth saying about it.
+        const group = report.next.groups[shooter];
+        msg = group ? `${group} for ${playerName(shooter)}.` : `${playerName(shooter)} claimed a group.`;
       } else if (o.turnPasses) {
-        msg = trace;
+        msg = `${playerName(report.next.turn)} up.`;
       } else {
-        msg = trace;
+        msg = `${playerName(shooter)} ${verb(shooter, "stay", "stays")} at the table.`;
       }
       setMessage(msg);
     },
@@ -308,7 +339,15 @@ export default function App() {
     const t = setTimeout(async () => {
       if (cancelled) return;
       setPhase("searching");
-      setMessage("searching…");
+      // The model load is normally already done (see the idle preload in the
+      // startup effect), but if this turn arrives first the wait is stated
+      // rather than hidden behind a generic "searching…". It is the honest
+      // reason the opponent's own name in the header can change mid-session.
+      setMessage(
+        useNeuralRef.current && !neuralEvaluator.isReady()
+          ? "loading the trained model…"
+          : "searching…",
+      );
       // First neural turn pays for the onnxruntime-web session (idempotent
       // afterwards). A failure here is reported, never silently downgraded.
       if (useNeuralRef.current) {
@@ -321,6 +360,7 @@ export default function App() {
         }
       }
       if (cancelled) return;
+      setMessage("searching…");
       const brain = getBrain(useNeuralRef.current);
       const result = await brain.plan(planState, table, AI_PLAYER);
       if (cancelled) return; // check again after the (possibly async) net eval
@@ -389,8 +429,18 @@ export default function App() {
     // to cancel the search timeout the moment setPhase("searching") was called.
     // Full `state` (not just state.turn) lets the effect re-trigger when the AI
     // pockets a ball and continues its turn with the same turn index.
+    // `useNeural` is intentionally excluded as well, and this is a bug fix,
+    // not an oversight. It used to be in this list, so flipping the toggle
+    // during the opponent's turn ran the cleanup (cancelling the in-flight
+    // search) and then re-entered the effect, which bailed immediately on the
+    // `phase !== "aiming"` guard — leaving the turn wedged at "searching…"
+    // forever with no way out but a new rack. The effect body already reads
+    // the live value through `useNeuralRef`, so the dependency bought nothing
+    // even when it worked. A toggle mid-turn now lets the turn in flight
+    // finish under the mode it started in, and takes effect from the next
+    // one. See searchToggle.test.ts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, vsAI, engineReady, useNeural]);
+  }, [state, vsAI, engineReady]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (aimLockedRef.current) return;
@@ -417,7 +467,7 @@ export default function App() {
     const cx = Math.max(-hx, Math.min(hx, wx));
     const cy = Math.max(-hy, Math.min(hy, wy));
     setState(placeCueBall(state, cx, cy));
-    setMessage("placed · shoot when ready");
+    setMessage("cue ball placed. shoot when ready.");
   };
 
   const shoot = () => {
@@ -451,7 +501,7 @@ export default function App() {
     setSearch(null);
     setLastSearch(null);
     setPhase("aiming");
-    setMessage("new game · break to start");
+    setMessage("new game. break to start.");
   };
 
   const grp = state.groups[state.turn];
@@ -485,8 +535,20 @@ export default function App() {
             accurately, just not here: the "neural ranking" toggle below and
             the reasoning panel's own title (OverlayPanel.tsx, derived from
             the search's real trace) are the honest, mode-specific readouts. */}
+        {/* Describes what the opponent does, not which implementation is
+            deciding this instant. `brainLabel()` (ai/brain.ts) still derives
+            that from validated model state and is still the honest answer to
+            "what is running" — but it flips from "the physics-search
+            opponent" to "the neural + physics opponent" when the runtime
+            finishes downloading, which as a page header read as copy that
+            changed between loads. The mode is stated where it is actionable
+            and stable instead: on the "neural ranking" toggle, and on the
+            reasoning panel's own title, both of which are read off the real
+            decision. */}
         <p className="tag">
-          eight-ball · {vsAI ? "you vs an opponent that goes looking for the bank shot" : "two player"}
+          {vsAI
+            ? "Eight-ball, against an opponent that goes looking for the bank shot."
+            : "Eight-ball, two players."}
         </p>
       </header>
 
@@ -578,10 +640,6 @@ export default function App() {
             <input type="checkbox" checked={vsAI} onChange={(e) => setVsAI(e.target.checked)} />
             vs AI
           </label>
-          <label className="toggle">
-            <input type="checkbox" checked={showOverlay} onChange={(e) => setShowOverlay(e.target.checked)} />
-            overlay
-          </label>
           <label
             className="toggle"
             title={
@@ -601,7 +659,7 @@ export default function App() {
         </div>
       </div>
       <p className="hint">
-        hover to aim · leave the canvas to lock the angle · space to shoot
+        Hover to aim, leave the canvas to lock the angle, then press space to shoot.
       </p>
 
       {state.winner !== null && (
