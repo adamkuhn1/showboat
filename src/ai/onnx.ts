@@ -157,6 +157,12 @@ export interface RankerLoadOptions {
    * or truncating at the first live decision.
    */
   expectedInputDim?: number;
+  /**
+   * Injected only so tests can serve the real committed artifact off disk
+   * through the identical code path the browser uses. Defaults to global
+   * `fetch` in every non-test caller.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 let rankerHashVerified = false;
@@ -185,7 +191,7 @@ export const tryLoadRankerModel = async (url: string, opts: RankerLoadOptions = 
     rankerError = null;
     rankerHashVerified = false;
     try {
-      const res = await fetch(url, { method: "GET" });
+      const res = await (opts.fetchImpl ?? fetch)(url, { method: "GET" });
       if (!res.ok) {
         rankerStatus = "absent";
         rankerError = `HTTP ${res.status} fetching ${url}`;

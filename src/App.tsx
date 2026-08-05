@@ -20,7 +20,7 @@ const CANVAS_W = 900;
 const CANVAS_H = 500;
 
 // Bounds for the post-search overlay READ hold (see the AI-turn effect below).
-// This is a rendering concession, not simulated thinking: the search has fully
+// This is a rendering concession, not simulated deliberation: the search has fully
 // completed before this timer starts, and the panel shows no progress
 // animation. Without a hold the overlay would be painted and replaced by the
 // shot animation in the same few frames, so nothing would be legible.
@@ -63,7 +63,7 @@ function postEmbedReady() {
 // Player 1 (id 0) is human; Player 2 (id 1) is the AI opponent.
 const AI_PLAYER: PlayerId = 1;
 
-type Phase = "aiming" | "thinking" | "animating";
+type Phase = "aiming" | "searching" | "animating";
 
 export default function App() {
   const game = useRef(makeGame());
@@ -143,7 +143,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    paint(state, phase === "thinking" ? search : null);
+    paint(state, phase === "searching" ? search : null);
   }, [state, aim, power, phase, search, paint]);
 
   // Animate a shot by replaying the WASM engine's own trajectory.
@@ -242,7 +242,7 @@ export default function App() {
     [],
   );
 
-  // AI turn: plan (real search), show the overlay + a short "thinking" pause,
+  // AI turn: plan (real search), show the overlay for a bounded read hold,
   // then play the chosen shot. Runs whenever it becomes the AI's move.
   useEffect(() => {
     if (!vsAI || !engineReady) return;
@@ -262,13 +262,13 @@ export default function App() {
       setState(planState);
     }
 
-    // Defer to next frame.  setPhase("thinking") is intentionally inside the
+    // Defer to next frame.  setPhase("searching") is intentionally inside the
     // callback: calling it in the effect body would change `phase`, which used
     // to be in the deps list, causing the cleanup to fire and cancel this
     // timeout before it ran.  Moving it here avoids that self-cancellation.
     const t = setTimeout(async () => {
       if (cancelled) return;
-      setPhase("thinking");
+      setPhase("searching");
       setMessage("searching…");
       // Idempotent: resolves immediately once the background load above
       // finished. On the very first opponent turn of a cold load this is what
@@ -340,7 +340,7 @@ export default function App() {
       clearTimeout(t);
     };
     // `phase` is intentionally excluded: including it caused the effect cleanup
-    // to cancel the search timeout the moment setPhase("thinking") was called.
+    // to cancel the search timeout the moment setPhase("searching") was called.
     // Full `state` (not just state.turn) lets the effect re-trigger when the AI
     // pockets a ball and continues its turn with the same turn index.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -483,7 +483,7 @@ export default function App() {
         {vsAI && (
           <OverlayPanel
             result={search ?? lastSearch}
-            thinking={phase === "thinking"}
+            searching={phase === "searching"}
             stale={search === null && lastSearch !== null}
             badge={useNeural ? modelBadge : { mode: "classical" }}
           />
@@ -511,7 +511,7 @@ export default function App() {
             onClick={shoot}
             disabled={phase !== "aiming" || state.winner !== null || !engineReady || aiTurn}
           >
-            {phase === "animating" ? "Rolling…" : phase === "thinking" ? "Searching…" : "Shoot"}
+            {phase === "animating" ? "Rolling…" : phase === "searching" ? "Searching…" : "Shoot"}
           </button>
           <button onClick={reset} className="secondary">New rack</button>
           <label className="toggle">

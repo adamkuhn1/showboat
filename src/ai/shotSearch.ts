@@ -92,6 +92,14 @@ export interface DecisionTrace {
   prunedByPrior: number;
   /** Candidates that actually got a real WASM shot simulation. */
   physicsVerified: number;
+  /**
+   * Indices (into the candidate list the search was given) of exactly those
+   * candidates a real simulation was run on. `stats` cannot answer this: it
+   * drops every `visits === 0` row, which includes candidates whose seeding
+   * simulation scratched — those were verified, and the verification is why
+   * they're gone. The evaluation harness scores candidate recall against this.
+   */
+  verifiedIndices: number[];
   /** Of those, how many the real simulation showed legally pot their ball. */
   legalPots: number;
   /** Candidates whose seeding simulation scratched the cue (excluded outright). */
@@ -222,6 +230,7 @@ export const searchCandidates = (
     candidatesConsidered: 0,
     prunedByPrior: 0,
     physicsVerified: 0,
+    verifiedIndices: [],
     legalPots: 0,
     scratched: 0,
     physicsCalls: 0,
@@ -296,7 +305,7 @@ export const searchCandidates = (
   const SEED_TIMEOUT_MS = 2000;
   const seedStart = performance.now();
 
-  let physicsVerified = 0;
+  const verifiedIndices: number[] = [];
   let legalPots = 0;
   let scratched = 0;
 
@@ -308,7 +317,7 @@ export const searchCandidates = (
     const sim = simulateShotWasm(copy, s.candidate.action);
     sims += 1;
     s.verified = true;
-    physicsVerified++;
+    verifiedIndices.push(ci);
     // Cue ball id is always 0. A scratch is a foul regardless of what else was
     // pocketed — skip the candidate entirely so it can't win UCB selection.
     if (sim.pocketed.includes(0)) {
@@ -383,7 +392,8 @@ export const searchCandidates = (
     ...baseTrace(),
     candidatesConsidered: order.length,
     prunedByPrior,
-    physicsVerified,
+    physicsVerified: verifiedIndices.length,
+    verifiedIndices,
     legalPots,
     scratched,
     physicsCalls: sims,
