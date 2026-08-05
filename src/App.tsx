@@ -495,6 +495,24 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Keyboard shortcuts listen on this window, which inside an iframe holds no
+  // focus until something in it is clicked. The shell hands control over by
+  // posting `focus` (see apps/portfolio/src/lib/useEmbed.ts) — take the focus
+  // it is offering, so "press space to shoot" is true from that moment rather
+  // than only after the visitor happens to click the felt. Standalone, the
+  // window already has focus and this never fires.
+  useEffect(() => {
+    if (window.parent === window) return;
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { source?: unknown; type?: unknown; id?: unknown } | null;
+      if (!data || data.source !== "portfolio-embed") return;
+      if (data.type !== "focus" || data.id !== "showboat") return;
+      window.focus();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   const reset = () => {
     game.current = makeGame();
     setState(game.current.state);
