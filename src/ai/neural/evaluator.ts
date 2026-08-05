@@ -188,6 +188,18 @@ export class NeuralCandidateEvaluator {
    * Score every candidate in one batched inference. Returns null when the
    * model isn't ready — callers must treat null as "run classical", never as
    * "score 0".
+   *
+   * Never throws. A load-time failure (missing/corrupt artifact, schema
+   * mismatch) is caught by `load()`/`preflight()` and never reaches here —
+   * but onnxruntime-web's `session.run()` can still fail *after* a
+   * successful load (a WASM runtime error, an out-of-memory condition, an
+   * ORT-internal exception on a pathological input), and an uncaught
+   * rejection here would propagate out of `neuralHybridBrain.plan()` with no
+   * classical fallback, hanging the AI's turn indefinitely instead of
+   * degrading. So a runtime failure here is treated exactly like "model
+   * unavailable": downgraded to `invalid` (so later turns don't keep
+   * retrying a session that just proved broken) and reported to the caller
+   * as null, same as every other "run classical" path.
    */
   async score(balls: Ball[], table: Table, candidates: Candidate[]): Promise<CandidateScores | null> {
     if (!this.isReady() || candidates.length === 0) return null;
@@ -199,7 +211,15 @@ export class NeuralCandidateEvaluator {
       rows.set(encodeRow(balls, table, candidates[i]), i * TOTAL_DIM);
     }
     const t1 = performance.now();
-    const out = await evaluateCandidateRows(rows, candidates.length, TOTAL_DIM);
+    let out: Float32Array | null;
+    try {
+      out = await evaluateCandidateRows(rows, candidates.length, TOTAL_DIM);
+    } catch (e) {
+      const reason = `onnx runtime error during inference: ${e instanceof Error ? e.message : String(e)}`;
+      console.error(`[showboat] ${reason}`);
+      this.state = { status: "invalid", reason };
+      return null;
+    }
     const t2 = performance.now();
     const inferenceMs = t2 - t0;
     if (!out || out.length !== candidates.length) return null;
