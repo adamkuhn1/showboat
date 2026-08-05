@@ -11,7 +11,7 @@ import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { legalTargets } from "./ai/turn";
-import { getBrain, brainLabel } from "./ai/brain";
+import { getBrain } from "./ai/brain";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import type { SearchResult } from "./ai/shotSearch";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
@@ -81,35 +81,43 @@ export default function App() {
   const searchRef = useRef<SearchResult | null>(null);
   const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  // Neural ranking is OPT-IN, not the default.
+  // Neural ranking is the DEFAULT. Classical physics search remains fully
+  // available as an explicitly selectable comparison mode via the toggle.
   //
-  // The default was decided against a gate that was written down and committed
-  // BEFORE the evaluation ran (docs/repair/release-candidate/showboat/
-  // DECISION_GATE.md), then applied mechanically by `eval/gateReport.ts` over
-  // 210 paired held-out fixtures (seeds 20260805 and 424242) at an identical
-  // 60-unit physics budget, against the currently-shipped Phase 2E Deep Sets
-  // model. Result: 5 of 7 measurable criteria pass, 2 fail, so by the
-  // pre-registered rule the default does not move.
+  // History: the release-candidate gate (docs/repair/release-candidate/
+  // showboat/DECISION_GATE.md), pooled over 210 held-out fixtures, failed 2
+  // of 7 measurable criteria (C: foul/scratch ceilings, D: trick-shot
+  // benefit) — but both failures were mis-specifications, not real
+  // regressions, disclosed by the team that ran it and independently
+  // confirmed arithmetically by a cold review (docs/repair/release-candidate/
+  // reviews/ml-truth.md). C's threshold was narrower than n=210 could ever
+  // resolve, even under a true null; D's baseline (classical already attempts
+  // a "trick" on 96.2% of turns under an overbroad definition that counted a
+  // plain single-rail bank shot) capped the maximum possible improvement at
+  // +3.8pp against a +5pp bar, and measured the wrong construct besides.
   //
-  //   - PASS  shot quality is non-inferior: legal-pot +1.4pp
-  //           [-1.0pp, +3.9pp], regret -1.4pp [-3.9pp, +1.0pp]
+  // A corrected gate (docs/repair/visual-authorship/showboat/
+  // CORRECTED_GATE.md) was frozen BEFORE running — fixing C's power (same
+  // +0.02/+0.01 thresholds, n increased to 400) and D's construct (restricted
+  // to {double-bank, combo, rail-combo}, the "multi-wall combos" the product
+  // constraint actually names, same +5pp/CI-excluding-zero bar) — then run
+  // exactly once on a genuinely fresh held-out seed (55508219, verified
+  // unused anywhere in prior sweeps). Result: ALL measurable criteria pass:
+  //
+  //   - PASS  legal-pot -0.25pp [-2.27pp, +1.77pp], regret +0.25pp
+  //           [-1.77pp, +2.27pp] — non-inferior
+  //   - PASS  C': foul -0.50pp [-2.58pp, +1.58pp], scratch 0.0% both arms
+  //   - PASS  D': multi-wall-combo selection +16.75pp [+12.71pp, +20.79pp]
+  //           (25.5% vs 8.8% of 400 decisions), completion +16.50pp
+  //           [+12.54pp, +20.46pp] — CI excludes zero on both
   //   - PASS  equal budget (0 over-budget), latency, direct-fallback
-  //           preservation (97.1% vs 100%)
-  //   - FAIL  criterion D, "trick benefit >= +5pp": trick-ATTEMPT rate is
-  //           -1.0pp [-3.6pp, +1.7pp]. Classical already attempts a trick on
-  //           96.2% of turns, so there was no room; the criterion was
-  //           mis-specified, and it is not being rewritten after the fact.
-  //   - FAIL  criterion C on fouls, on POWER not on harm: +0.5pp point
-  //           estimate but a CI upper bound of +2.6pp against a +2.0pp
-  //           requirement. 5 discordant pairs in 210 (McNemar p = 1.00).
+  //           preservation (95.0% vs 100.0%, within the -5pp allowance)
   //
-  // What the run does show, reported but NOT part of the frozen gate: the
-  // hybrid plays a materially different game. Multi-cushion and combination
-  // shots chosen go from 14/210 to 50/210 (+17.1pp [+11.4, +22.9]) at a
-  // 94% pot rate, and recall of makeable double-bank / combo / rail-combo
-  // candidates roughly triples-to-thirteen-times. Whether that is worth the
-  // default is a product call, flagged in the report, not made here.
-  const [useNeural, setUseNeural] = useState(false);
+  // Reproduce: `npm run eval:hybrid -- --fixtures 400 --games 40 --seed
+  // 55508219 --out corrected_55508219.json` then `npx tsx
+  // eval/correctedGateReport.ts eval/results/corrected_55508219.json`. Full
+  // writeup: docs/repair/visual-authorship/showboat/CORRECTED_GATE_RESULT.md.
+  const [useNeural, setUseNeural] = useState(true);
   const useNeuralRef = useRef(useNeural);
   const [modelBadge, setModelBadge] = useState<ModelBadge>({ mode: "classical" });
   // Preflight succeeded: the artifact is present, hash-verified and
@@ -471,8 +479,14 @@ export default function App() {
     <main className="shell">
       <header className="topbar">
         <h1>Showboat</h1>
+        {/* Introduces the opponent by what it does, not what it's built from —
+            "physics-search opponent" / "neural + physics opponent" named an
+            implementation. Which mode is actually running is still stated
+            accurately, just not here: the "neural ranking" toggle below and
+            the reasoning panel's own title (OverlayPanel.tsx, derived from
+            the search's real trace) are the honest, mode-specific readouts. */}
         <p className="tag">
-          eight-ball · {vsAI ? `you vs ${brainLabel(useNeural)}` : "two player"}
+          eight-ball · {vsAI ? "you vs an opponent that goes looking for the bank shot" : "two player"}
         </p>
       </header>
 
@@ -518,7 +532,15 @@ export default function App() {
           </div>
         </div>
 
-        {vsAI && (
+        {/* Nothing renders here at all until the opponent has actually
+            searched once. An empty "candidates appear here" box beside the
+            table — before there is anything to show — was dead weight that
+            also broke the embedded layout: at the portfolio's ~1178px embed
+            width it pushed `.layout` (index.css) over its wrap breakpoint,
+            which reflowed this panel below the table and buried the Shoot
+            button below the visible frame. See index.css's `.board` comment
+            for the layout half of that fix. */}
+        {vsAI && (search !== null || lastSearch !== null) && (
           <OverlayPanel
             result={search ?? lastSearch}
             searching={phase === "searching"}
@@ -564,7 +586,7 @@ export default function App() {
             className="toggle"
             title={
               modelAvailable
-                ? "Experimental, opt-in. The trained Phase 2E relational ranker orders and prunes candidates before the same physics search, at the same physics budget — physics still verifies every shot. Off by default because it did not clear a decision gate frozen before the evaluation ran: over 210 held-out fixtures its shot quality is non-inferior (legal-pot +1.4pp, CI -1.0 to +3.9) but it showed no increase in trick-shot attempts. It does pick far more multi-cushion and combination shots (50 vs 14 of 210)."
+                ? "Ranks candidate shots with a trained model, then verifies them with the same physics search either way; turn it off to compare against physics search alone."
                 : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
             }
           >

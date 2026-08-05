@@ -46,24 +46,11 @@ export const drawCandidatePaths = (
     }
     ctx.stroke();
     ctx.setLineDash([]);
-
-    // Label the pocket end of the best few with the strength score (an
-    // uncalibrated relative score, not a probability — no "%" here on
-    // purpose). Trick shots also get a style badge derived from the real
-    // styleScore (rails + combo bonus).
-    if (isBest || weight > 0.4) {
-      const end = path[path.length - 1];
-      const [ex, ey] = toPx(end, v);
-      ctx.fillStyle = isBest ? "#eafff5" : "rgba(230,230,230,0.7)";
-      ctx.font = `${isBest ? 12 : 10}px ui-monospace, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillText(s.strength.toFixed(2), ex, ey - 8);
-      if (s.styleScore >= 2) {
-        ctx.fillStyle = "rgba(255,100,100,0.9)";
-        ctx.font = "9px ui-monospace, monospace";
-        ctx.fillText(`★${s.styleScore}`, ex, ey - 20);
-      }
-    }
+    // The strength/style numbers used to be painted here too (text on the
+    // felt, over the actual game). That's the reasoning panel's job — the
+    // path itself, colour-coded by kind and weighted by visit share, is the
+    // real information the table can carry without turning into a second
+    // copy of the panel.
   }
 };
 

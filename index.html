@@ -6,9 +6,11 @@
     <!-- Private phase: keep every surface out of search indexes until launch. -->
     <meta name="robots" content="noindex,nofollow" />
     <title>Showboat</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <!-- No webfont is loaded: the app is off whole-application monospace
+         (index.css), and the serif it uses now falls back to whatever
+         Garamond-family or system serif is already on the device rather
+         than fetching one — one less external request, and no font this
+         sprint didn't already have a reason to add. -->
   </head>
   <body>
     <div id="root"></div>
