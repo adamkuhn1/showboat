@@ -59,6 +59,8 @@ export interface CandidateScores {
 export class NeuralCandidateEvaluator {
   private state: EvaluatorState = { status: "absent", reason: "not loaded yet" };
   private loading: Promise<EvaluatorState> | null = null;
+  private preflighting: Promise<{ ok: true; manifest: ProductionModelManifest } | { ok: false; reason: string }> | null =
+    null;
 
   constructor(private readonly dir: string = DEFAULT_MODEL_DIR) {}
 
@@ -76,37 +78,91 @@ export class NeuralCandidateEvaluator {
   }
 
   /**
-   * Load the manifest, then the artifact. Idempotent. Never throws: every
-   * failure resolves to an `absent`/`invalid` state carrying a human-readable
-   * reason, which the UI is required to display rather than silently degrade.
+   * Cheap startup check: fetch and validate the manifest (~5 KB) and hash the
+   * artifact bytes (~14 KB), WITHOUT importing onnxruntime-web or creating a
+   * session. That's the ~27 MB WASM runtime deferred until the model is
+   * actually going to be used, while still catching a missing / corrupted /
+   * schema-mismatched artifact loudly at startup.
+   *
+   * Returns the validated manifest, or a reason it could not be validated.
+   * Never throws.
+   */
+  async preflight(
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<{ ok: true; manifest: ProductionModelManifest } | { ok: false; reason: string }> {
+    if (this.preflighting) return this.preflighting;
+    this.preflighting = (async () => {
+      const read = await this.readManifest(fetchImpl);
+      if (!read.ok) return { ok: false as const, reason: read.reason };
+      const manifest = read.manifest;
+      try {
+        const res = await fetchImpl(`${this.dir}/${manifest.artifact}`, { method: "GET" });
+        if (!res.ok) return { ok: false as const, reason: `HTTP ${res.status} fetching ${manifest.artifact}` };
+        const buf = await res.arrayBuffer();
+        if (new Uint8Array(buf.slice(0, 1))[0] === 0x3c) {
+          return { ok: false as const, reason: `${manifest.artifact} returned HTML, not an ONNX graph` };
+        }
+        if (buf.byteLength !== manifest.bytes) {
+          return {
+            ok: false as const,
+            reason: `${manifest.artifact} is ${buf.byteLength} bytes, manifest declares ${manifest.bytes}`,
+          };
+        }
+        const subtle = globalThis.crypto?.subtle;
+        if (subtle) {
+          const digest = await subtle.digest("SHA-256", buf);
+          const hex = Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          if (hex !== manifest.onnx_sha256) {
+            return { ok: false as const, reason: `${manifest.artifact} sha256 ${hex} != manifest ${manifest.onnx_sha256}` };
+          }
+        }
+        return { ok: true as const, manifest };
+      } catch (e) {
+        return { ok: false as const, reason: e instanceof Error ? e.message : String(e) };
+      }
+    })();
+    return this.preflighting;
+  }
+
+  private async readManifest(
+    fetchImpl: typeof fetch,
+  ): Promise<{ ok: true; manifest: ProductionModelManifest } | { ok: false; reason: string; kind: "absent" | "invalid" }> {
+    const manifestUrl = `${this.dir}/manifest.json`;
+    let raw: unknown;
+    try {
+      const res = await fetchImpl(manifestUrl, { method: "GET" });
+      if (!res.ok) return { ok: false, kind: "absent", reason: `HTTP ${res.status} fetching ${manifestUrl}` };
+      const text = await res.text();
+      if (text.trimStart().startsWith("<")) {
+        return { ok: false, kind: "absent", reason: `${manifestUrl} returned HTML — no manifest at that path` };
+      }
+      raw = JSON.parse(text);
+    } catch (e) {
+      return {
+        ok: false,
+        kind: "absent",
+        reason: `could not read ${manifestUrl}: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+    const validated = validateManifest(raw);
+    if (!validated.ok) return { ok: false, kind: "invalid", reason: validated.error };
+    return { ok: true, manifest: validated.manifest };
+  }
+
+  /**
+   * Load the manifest, then the artifact and an onnxruntime-web session.
+   * Idempotent. Never throws: every failure resolves to an `absent`/`invalid`
+   * state carrying a human-readable reason, which the UI is required to display
+   * rather than silently degrade.
    */
   async load(fetchImpl: typeof fetch = fetch): Promise<EvaluatorState> {
     if (this.loading) return this.loading;
     this.loading = (async (): Promise<EvaluatorState> => {
-      const manifestUrl = `${this.dir}/manifest.json`;
-      let raw: unknown;
-      try {
-        const res = await fetchImpl(manifestUrl, { method: "GET" });
-        if (!res.ok) {
-          return (this.state = { status: "absent", reason: `HTTP ${res.status} fetching ${manifestUrl}` });
-        }
-        const text = await res.text();
-        if (text.trimStart().startsWith("<")) {
-          return (this.state = { status: "absent", reason: `${manifestUrl} returned HTML — no manifest at that path` });
-        }
-        raw = JSON.parse(text);
-      } catch (e) {
-        return (this.state = {
-          status: "absent",
-          reason: `could not read ${manifestUrl}: ${e instanceof Error ? e.message : String(e)}`,
-        });
-      }
-
-      const validated = validateManifest(raw);
-      if (!validated.ok) {
-        return (this.state = { status: "invalid", reason: validated.error });
-      }
-      const manifest = validated.manifest;
+      const read = await this.readManifest(fetchImpl);
+      if (!read.ok) return (this.state = { status: read.kind, reason: read.reason });
+      const manifest = read.manifest;
 
       await tryLoadRankerModel(`${this.dir}/${manifest.artifact}`, {
         expectedSha256: manifest.onnx_sha256,
