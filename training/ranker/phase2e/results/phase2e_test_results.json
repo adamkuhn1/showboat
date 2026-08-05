@@ -1,0 +1,4271 @@
+{
+  "frozen_config": {
+    "phase": "2E",
+    "written_before_reading_test_split": true,
+    "declaration": [
+      "Every choice below was made from train/val results only. This file is written",
+      "and committed BEFORE evaluate_test.py runs for the first time. The test split's",
+      "numbers for Phase 2D's MLP were already published in",
+      "docs/repair/showboat-ml/phase-2d/ before this phase started, so this comparison",
+      "is not perfectly blind and is not claimed to be; what is preserved is that no",
+      "architecture, width, learning rate, batch size, seed, calibration parameter,",
+      "ablation, or recommendation in this phase was chosen using test data."
+    ],
+    "selected_architecture": {
+      "name": "deepsets",
+      "class": "DeepSetsRanker",
+      "hidden": 64,
+      "phi_hidden": 64,
+      "n_params": 24257,
+      "input_contract": "[N, 68] float32 -> [N, 1] float32 logit (IDENTICAL to the Phase 2D artifact)",
+      "why_this_config": "best validation group-aware Spearman in search.py's 9-point grid (search.json), fastest to converge of the DS arms; deepsets_small (8,033 params) is statistically indistinguishable on validation and is reported as a cheaper alternative, but the frozen selection is not changed after the fact"
+    },
+    "baseline_for_comparison": {
+      "primary": "mlp_matched \u2014 Phase 2D's exact TinyNet(68, 32), retrained under this phase's identical minibatch protocol so no comparison is confounded by optimizer differences",
+      "historical_reference": "Phase 2D's published full-batch numbers (val BCE 0.3703, val group-aware Spearman 0.3818; test 0.3744 / 0.3684) \u2014 cited, not re-derived",
+      "note": "the matched-protocol MLP is STRONGER than Phase 2D's published MLP on validation, so the relational model is being compared against the better of the two MLPs, not the weaker one"
+    },
+    "training_protocol": {
+      "optimizer": "Adam",
+      "lr": 0.003,
+      "batch_size": 4096,
+      "max_epochs": 200,
+      "early_stopping": "patience 20 epochs on validation BCE, best checkpoint kept",
+      "loss": "soft-label BCE against legal_pot_rate (identical target to Phase 2D)",
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "calibration": "two-parameter Platt (a, b) fit on validation predictions only, applied unchanged to test"
+    },
+    "recommendation_made_before_test": {
+      "verdict": "ADOPT the relational (Deep Sets) model, replacing the candidate-conditioned MLP",
+      "decision_rule_this_was_judged_against": [
+        "meaningful improvement in at least one important dimension without unacceptable regression elsewhere"
+      ],
+      "validation_evidence_supporting_it": {
+        "group_aware_spearman": "0.4700 +- 0.0073 vs 0.4017 +- 0.0058 (+17.0% relative)",
+        "bce": "0.3423 +- 0.0003 vs 0.3656 +- 0.0013",
+        "double_bank_group_aware_spearman": "0.1916 +- 0.0132 vs 0.1238 +- 0.0333 (the predeclared weak point, +55% relative, and ~2.5x less seed variance)",
+        "ndcg@3": "0.7304 vs 0.6518",
+        "top1_hit_rate": "0.7337 vs 0.6089",
+        "mean_regret": "0.1850 vs 0.2531",
+        "ece": "0.0087 vs 0.0121",
+        "physics_budget_proxy": "recall-of-best@5 0.774 vs the MLP needing k=8 for 0.781 \u2014 ~1.6x fewer candidates to simulate for equal quality",
+        "seed_stability": "equal or better across-seed std on every headline metric"
+      },
+      "accepted_costs": {
+        "training_time": "~49s vs ~1.4s per seed (35x, both trivial in absolute terms)",
+        "browser_inference": "median 1.09-1.92 ms vs 0.040-0.043 ms per 24-candidate batch in onnxruntime-web (~30-45x), p95 2.6-6.7 ms, worst observed single call 12.9 ms \u2014 still 4-19x under the 50 ms budget and well below one physics rollout (~23 ms, derived from phase2c/perturbation_benchmark_results.json)",
+        "artifact_size": "177 KB vs 14 KB"
+      },
+      "what_would_have_reversed_it": [
+        "browser p95 latency at or above the 50 ms budget, or above the cost of a single physics rollout",
+        "ONNX export or onnxruntime-web parity failing",
+        "requiring a change to Team A's [N,68] input contract",
+        "any headline validation metric regressing versus the matched-protocol MLP"
+      ]
+    },
+    "not_recommended_and_why": {
+      "deepsets_attn": "the attention/GNN arm matches plain Deep Sets within noise (val BCE 0.3414 +- 0.0004 vs 0.3423 +- 0.0003; group-aware Spearman 0.4733 +- 0.0046 vs 0.4700 +- 0.0073) for 1.7x the parameters and ~3.5x the training time \u2014 no justification for the extra machinery",
+      "deepsets_pot_id": "adds the intended pot-ball id as a 69th input. Real but small gain (group-aware Spearman 0.4762 +- 0.0043 vs 0.4700). Requires changing encode.ts's feature contract, which is Team A's/the lead's call, not an engineering swap \u2014 flagged, not adopted",
+      "deepsets_small": "statistically indistinguishable from the selected config on validation with 3x fewer parameters; kept out of the frozen selection only because the selection rule was fixed before these 5-seed numbers existed"
+    },
+    "evaluate_on_test": [
+      "mlp_matched",
+      "mlp_wide",
+      "flat_entity_mlp",
+      "deepsets",
+      "deepsets_small",
+      "deepsets_attn",
+      "deepsets_no_relations",
+      "deepsets_no_kind",
+      "deepsets_state_only",
+      "deepsets_candidate_only",
+      "deepsets_pot_id",
+      "zero_input_mlp",
+      "zero_input_deepsets"
+    ],
+    "evaluate_on_test_note": "Evaluating several variants in one pass is not test-set tuning: the recommendation above is already fixed, and nothing downstream selects on these numbers. The ablations and controls are included so the report's test column is complete rather than selectively reported."
+  },
+  "n_test_rows": 18697,
+  "variants": {
+    "mlp_matched": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.36993432575124663,
+        "std": 0.0016659678031814712
+      },
+      "test_brier": {
+        "mean": 0.032842623979478,
+        "std": 0.0006314055385419281
+      },
+      "test_ece": {
+        "mean": 0.01126501623176697,
+        "std": 0.0016062444411126346
+      },
+      "test_ece_calibrated": {
+        "mean": 0.006878761115026721,
+        "std": 0.0017156996077513397
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.3912712882766834,
+        "std": 0.004151203456023151
+      },
+      "test_pooled_spearman": {
+        "mean": 0.4338408055058185,
+        "std": 0.005830820024958916
+      },
+      "test_ndcg@3": {
+        "mean": 0.6201618167624902,
+        "std": 0.011467627013064488
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.6022408963585435,
+        "std": 0.008857920616718152
+      },
+      "test_mean_regret": {
+        "mean": 0.2697461790393013,
+        "std": 0.007742221345127854
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5088075707309916,
+          "std": 0.009241874110533137,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.3618431720062871,
+          "std": 0.005092210347183619,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.10258209857315508,
+          "std": 0.016074396616302757,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.26241793750577747,
+          "std": 0.020221786409458382,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.24575237514159326,
+          "std": 0.010601507606004411,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.37017004188790603,
+          "brier": 0.03297763410225302,
+          "ece": 0.012366845774231045,
+          "pooled_spearman": 0.4401925762242823,
+          "ndcg@3": 0.6278542393978691,
+          "top1_hit_rate": 0.6162464985994398,
+          "mean_regret": 0.2590065502183406,
+          "group_aware_spearman": 0.39601277659179374,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.45117909761724845,
+              "brier": 0.04327294629186821,
+              "group_aware_spearman": 0.5131305468842745,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3722231381359626,
+              "brier": 0.0317568211613969,
+              "group_aware_spearman": 0.36802894155734595,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3224339657052241,
+              "brier": 0.02625098011163256,
+              "group_aware_spearman": 0.1294393225855495,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2955407898351593,
+              "brier": 0.027963128450941486,
+              "group_aware_spearman": 0.2617488339822588,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28870337640043897,
+              "brier": 0.02740759036944303,
+              "group_aware_spearman": 0.2664466058381326,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.006903948613304553,
+          "brier_calibrated": 0.032573340186704616,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.37073982738469446,
+          "brier": 0.03322421406175444,
+          "ece": 0.011196818343998945,
+          "pooled_spearman": 0.4288189845482409,
+          "ndcg@3": 0.6169735418391071,
+          "top1_hit_rate": 0.6078431372549019,
+          "mean_regret": 0.2698553493449782,
+          "group_aware_spearman": 0.3887030504823405,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.451363952957342,
+              "brier": 0.04327919145367866,
+              "group_aware_spearman": 0.4999770415194881,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3730982445461887,
+              "brier": 0.03202399518517742,
+              "group_aware_spearman": 0.3559904625303321,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3225429039104571,
+              "brier": 0.026456880876623984,
+              "group_aware_spearman": 0.10641625396975415,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2973194314147223,
+              "brier": 0.02886250385769769,
+              "group_aware_spearman": 0.23582884406181723,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2878272820801797,
+              "brier": 0.027534491851345197,
+              "group_aware_spearman": 0.23722268915651995,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004104713615490905,
+          "brier_calibrated": 0.03296624843463523,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.3682819951519401,
+          "brier": 0.03215755927084544,
+          "ece": 0.012735963282764882,
+          "pooled_spearman": 0.43297430400160886,
+          "ndcg@3": 0.6216151533503403,
+          "top1_hit_rate": 0.5910364145658263,
+          "mean_regret": 0.27313045851528384,
+          "group_aware_spearman": 0.39147233530512443,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44564379917429564,
+              "brier": 0.0410769832605887,
+              "group_aware_spearman": 0.5193448127293248,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3715689133493672,
+              "brier": 0.031338631856016354,
+              "group_aware_spearman": 0.3669114903339409,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.324563895464499,
+              "brier": 0.026893985806998456,
+              "group_aware_spearman": 0.0840241764830823,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2939347224598217,
+              "brier": 0.027373166235412933,
+              "group_aware_spearman": 0.25402629455309644,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28395085834619166,
+              "brier": 0.025802723303066082,
+              "group_aware_spearman": 0.2390370764596746,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.00852226314593708,
+          "brier_calibrated": 0.03201554828786566,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.37250438241680744,
+          "brier": 0.033747228782877406,
+          "ece": 0.01179896374131203,
+          "pooled_spearman": 0.4264128873546892,
+          "ndcg@3": 0.6003257929999163,
+          "top1_hit_rate": 0.5994397759103641,
+          "mean_regret": 0.28193231441048033,
+          "group_aware_spearman": 0.3848771331874037,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.45391451553083617,
+              "brier": 0.044182055260273356,
+              "group_aware_spearman": 0.49576320052167566,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.37509164574697806,
+              "brier": 0.03260052918918293,
+              "group_aware_spearman": 0.3562390552652786,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3204519737479904,
+              "brier": 0.02592727350600773,
+              "group_aware_spearman": 0.0882113637095311,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2994411179563307,
+              "brier": 0.02913662963314701,
+              "group_aware_spearman": 0.29800940501511625,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2902630284553016,
+              "brier": 0.02822706509156528,
+              "group_aware_spearman": 0.24231686783853806,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.006069429686597154,
+          "brier_calibrated": 0.03345934716886889,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.36797538191488494,
+          "brier": 0.032106483679659716,
+          "ece": 0.00822649001652795,
+          "pooled_spearman": 0.44080527540027103,
+          "ndcg@3": 0.6340403562252178,
+          "top1_hit_rate": 0.5966386554621849,
+          "mean_regret": 0.2648062227074236,
+          "group_aware_spearman": 0.39529114581675456,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44716272278184194,
+              "brier": 0.04147620337572239,
+              "group_aware_spearman": 0.5158222520001954,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.37183212774831487,
+              "brier": 0.031448351417767535,
+              "group_aware_spearman": 0.362045910344538,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31935912131666744,
+              "brier": 0.02561969167804679,
+              "group_aware_spearman": 0.10481937611785833,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.29229672337313484,
+              "brier": 0.026819966923890177,
+              "group_aware_spearman": 0.26247630991659854,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28266220927166097,
+              "brier": 0.025576604831801165,
+              "group_aware_spearman": 0.243738636415101,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.008793450513803916,
+          "brier_calibrated": 0.032110631618315,
+          "seed": 20260808
+        }
+      ]
+    },
+    "mlp_wide": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.37677944411687114,
+        "std": 0.001067038851505457
+      },
+      "test_brier": {
+        "mean": 0.035037334317934356,
+        "std": 0.00042358818360556583
+      },
+      "test_ece": {
+        "mean": 0.014674782096796088,
+        "std": 0.0019587189357933308
+      },
+      "test_ece_calibrated": {
+        "mean": 0.01171662881743266,
+        "std": 0.0016337967641566373
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.3723908980985691,
+        "std": 0.0106266808567758
+      },
+      "test_pooled_spearman": {
+        "mean": 0.4098007684302411,
+        "std": 0.007003776401404936
+      },
+      "test_ndcg@3": {
+        "mean": 0.5960972887736922,
+        "std": 0.011951889412506989
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.5557422969187675,
+        "std": 0.028598877351485058
+      },
+      "test_mean_regret": {
+        "mean": 0.2863810043668122,
+        "std": 0.013757895136654392
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.4820499389169905,
+          "std": 0.015425850849584075,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.34622896970890565,
+          "std": 0.007117423533500225,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.10812224908153856,
+          "std": 0.014305107369947959,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.2640868152302374,
+          "std": 0.022247092892867405,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.2396535801882546,
+          "std": 0.009857024606368775,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.37589524534046115,
+          "brier": 0.03461556743986129,
+          "ece": 0.01207149451616557,
+          "pooled_spearman": 0.41224332296223426,
+          "ndcg@3": 0.5995655299309018,
+          "top1_hit_rate": 0.5518207282913166,
+          "mean_regret": 0.28957423580786024,
+          "group_aware_spearman": 0.38020271204070066,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.45926064018031687,
+              "brier": 0.04613087777079642,
+              "group_aware_spearman": 0.4932801367086191,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3790193581283088,
+              "brier": 0.03374598243787076,
+              "group_aware_spearman": 0.347023677252961,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3232114865364193,
+              "brier": 0.026141031496744113,
+              "group_aware_spearman": 0.11644162528044245,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3002439226645751,
+              "brier": 0.028636642154888235,
+              "group_aware_spearman": 0.30400993302889984,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.289140412806843,
+              "brier": 0.0269816890437469,
+              "group_aware_spearman": 0.2538227959810897,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.011315472916166316,
+          "brier_calibrated": 0.03461834511975201,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.37741062439950723,
+          "brier": 0.03539436035141194,
+          "ece": 0.017344062649490247,
+          "pooled_spearman": 0.4040558840748073,
+          "ndcg@3": 0.5886576826673853,
+          "top1_hit_rate": 0.5434173669467787,
+          "mean_regret": 0.29291757641921395,
+          "group_aware_spearman": 0.36532303986495807,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.46115859172868545,
+              "brier": 0.047172182797493745,
+              "group_aware_spearman": 0.4810174906254098,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.38110348111766884,
+              "brier": 0.034632299528637916,
+              "group_aware_spearman": 0.34324376086981845,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3234236140969665,
+              "brier": 0.026519434722360243,
+              "group_aware_spearman": 0.09252964626549877,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.30015995796124895,
+              "brier": 0.028956337264935458,
+              "group_aware_spearman": 0.24536577551449468,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2894800736581048,
+              "brier": 0.027401660256470246,
+              "group_aware_spearman": 0.22364533868761874,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.009134136702616905,
+          "brier_calibrated": 0.03509222285937038,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.3785932748556164,
+          "brier": 0.035680136321573686,
+          "ece": 0.012776770055909306,
+          "pooled_spearman": 0.39933387340730286,
+          "ndcg@3": 0.5771234753577721,
+          "top1_hit_rate": 0.5210084033613446,
+          "mean_regret": 0.30519923580786024,
+          "group_aware_spearman": 0.3549968623035793,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.46483895142044657,
+              "brier": 0.04850450914603636,
+              "group_aware_spearman": 0.4534624964810972,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.38231461900477026,
+              "brier": 0.03481204109091433,
+              "group_aware_spearman": 0.33522874933375263,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.32458284867816506,
+              "brier": 0.026361771865241385,
+              "group_aware_spearman": 0.08905445147904081,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.29741084039031657,
+              "brier": 0.02831604645859184,
+              "group_aware_spearman": 0.24181478232756326,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2883285906736471,
+              "brier": 0.027155028649935443,
+              "group_aware_spearman": 0.24263047201239912,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.014134021149049146,
+          "brier_calibrated": 0.03569723657639017,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.37604706999868326,
+          "brier": 0.03467244831424656,
+          "ece": 0.015599092507771058,
+          "pooled_spearman": 0.415699738258715,
+          "ndcg@3": 0.6110061307305941,
+          "top1_hit_rate": 0.6078431372549019,
+          "mean_regret": 0.26398744541484714,
+          "group_aware_spearman": 0.37821717760889834,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4595133056705781,
+              "brier": 0.04618767849183796,
+              "group_aware_spearman": 0.4974200915348675,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.38009544158735364,
+              "brier": 0.03401123672261915,
+              "group_aware_spearman": 0.3485968526025716,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.32353982110920526,
+              "brier": 0.026267836649241406,
+              "group_aware_spearman": 0.12170112226415379,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2953256595803456,
+              "brier": 0.027614961430760938,
+              "group_aware_spearman": 0.2605158702809421,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28848254753822394,
+              "brier": 0.02681660653305074,
+              "group_aware_spearman": 0.2359810247509772,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.011493713520405515,
+          "brier_calibrated": 0.03449706506069628,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.3759510059900878,
+          "brier": 0.03482415916257827,
+          "ece": 0.015582490754644266,
+          "pooled_spearman": 0.4176710234481462,
+          "ndcg@3": 0.6041336251818071,
+          "top1_hit_rate": 0.5546218487394958,
+          "mean_regret": 0.28022652838427947,
+          "group_aware_spearman": 0.3832146986747093,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4587519431941816,
+              "brier": 0.046276137336556354,
+              "group_aware_spearman": 0.4850694792349591,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3803641627103783,
+              "brier": 0.03417205724671181,
+              "group_aware_spearman": 0.35705180848542467,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3264607429624077,
+              "brier": 0.027240856560790633,
+              "group_aware_spearman": 0.12088440011855699,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2941230505233664,
+              "brier": 0.0276128070197256,
+              "group_aware_spearman": 0.2687277149992871,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2857156144387221,
+              "brier": 0.02632776314712952,
+              "group_aware_spearman": 0.24218826950918831,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.012505799798925415,
+          "brier_calibrated": 0.03482703850588508,
+          "seed": 20260808
+        }
+      ]
+    },
+    "flat_entity_mlp": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.36618096241037296,
+        "std": 0.0004539442320005095
+      },
+      "test_brier": {
+        "mean": 0.03143311068264977,
+        "std": 0.00014820830568453862
+      },
+      "test_ece": {
+        "mean": 0.008511692293109042,
+        "std": 0.0006808034907436847
+      },
+      "test_ece_calibrated": {
+        "mean": 0.005215575566628198,
+        "std": 0.0007378648762957936
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.37877679725813557,
+        "std": 0.003152713140567477
+      },
+      "test_pooled_spearman": {
+        "mean": 0.4296917463030228,
+        "std": 0.0014151121365254204
+      },
+      "test_ndcg@3": {
+        "mean": 0.6306252462158815,
+        "std": 0.005550198515763758
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.62296918767507,
+        "std": 0.010717717910201114
+      },
+      "test_mean_regret": {
+        "mean": 0.25165120087336246,
+        "std": 0.004384771339995778
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.4951504848779476,
+          "std": 0.005884850311722528,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.3595699696155664,
+          "std": 0.0030076444763366336,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.09097941703835644,
+          "std": 0.01681143310389761,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.24193420078121147,
+          "std": 0.008732959537775031,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.22271016932251161,
+          "std": 0.01796845690388748,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.36606359176448383,
+          "brier": 0.03148906023455297,
+          "ece": 0.008637348011725025,
+          "pooled_spearman": 0.4299842000038657,
+          "ndcg@3": 0.630626222018402,
+          "top1_hit_rate": 0.6162464985994398,
+          "mean_regret": 0.25695960698689957,
+          "group_aware_spearman": 0.37963621145432935,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44338840218008163,
+              "brier": 0.03971029838070002,
+              "group_aware_spearman": 0.4917698775459771,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.369101423354878,
+              "brier": 0.030608671676523907,
+              "group_aware_spearman": 0.361636850446693,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31856590966642234,
+              "brier": 0.025530959469561472,
+              "group_aware_spearman": 0.07601434685680257,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2939042119978019,
+              "brier": 0.02784031644371909,
+              "group_aware_spearman": 0.24016401555491892,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2852181952605342,
+              "brier": 0.02680733143204023,
+              "group_aware_spearman": 0.22923561350776314,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004493945463077202,
+          "brier_calibrated": 0.03129615325093004,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.36652723550549365,
+          "brier": 0.031472023661275716,
+          "ece": 0.008124912473956754,
+          "pooled_spearman": 0.430183352916443,
+          "ndcg@3": 0.6278360983294856,
+          "top1_hit_rate": 0.6050420168067226,
+          "mean_regret": 0.2550491266375546,
+          "group_aware_spearman": 0.3802278488600324,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44442807982703014,
+              "brier": 0.03983507621017106,
+              "group_aware_spearman": 0.49409638072994927,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.36933591690780204,
+              "brier": 0.03056818302009884,
+              "group_aware_spearman": 0.36246520435780566,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31969911251035776,
+              "brier": 0.02564877445164594,
+              "group_aware_spearman": 0.12266795540487527,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2941376618270806,
+              "brier": 0.027736450148423263,
+              "group_aware_spearman": 0.25339308007029904,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28509667298871244,
+              "brier": 0.026522385137760413,
+              "group_aware_spearman": 0.22679102137373774,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.006173325929787347,
+          "brier_calibrated": 0.031428140480283494,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.36543280459118405,
+          "brier": 0.03118997679335832,
+          "ece": 0.007493523408329001,
+          "pooled_spearman": 0.43127188336729894,
+          "ndcg@3": 0.6410588547801945,
+          "top1_hit_rate": 0.6302521008403361,
+          "mean_regret": 0.2454967248908297,
+          "group_aware_spearman": 0.3834682182501925,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44038473196803296,
+              "brier": 0.03851288222979633,
+              "group_aware_spearman": 0.504126000030213,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3687981904227682,
+              "brier": 0.0303843344486779,
+              "group_aware_spearman": 0.36052325482232955,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31996578351162125,
+              "brier": 0.025952394244333436,
+              "group_aware_spearman": 0.09027033542355546,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2944903292605652,
+              "brier": 0.028180366215750517,
+              "group_aware_spearman": 0.25037274826395606,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28503697674668604,
+              "brier": 0.026837597214396543,
+              "group_aware_spearman": 0.22690710606841025,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004266744339766398,
+          "brier_calibrated": 0.031077884144991432,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.3661227122006469,
+          "brier": 0.03137481213105363,
+          "ece": 0.009536770899015138,
+          "pooled_spearman": 0.42999186854886473,
+          "ndcg@3": 0.624782919873079,
+          "top1_hit_rate": 0.6330532212885154,
+          "mean_regret": 0.2531386462882096,
+          "group_aware_spearman": 0.3748689036291189,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4415683900239691,
+              "brier": 0.03906552336199659,
+              "group_aware_spearman": 0.4987855192333682,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3690804240258335,
+              "brier": 0.030464439439081555,
+              "group_aware_spearman": 0.35927408345805384,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3196296526816002,
+              "brier": 0.0256482492445504,
+              "group_aware_spearman": 0.08827653993649645,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.29609217957344103,
+              "brier": 0.02840878120984351,
+              "group_aware_spearman": 0.2352555238758221,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2870833990014426,
+              "brier": 0.027223077403598733,
+              "group_aware_spearman": 0.24202849211681912,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.005317050729925418,
+          "brier_calibrated": 0.031239907740851544,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.36675846799005607,
+          "brier": 0.03163968059300823,
+          "ece": 0.00876590667251929,
+          "pooled_spearman": 0.42702742667864135,
+          "ndcg@3": 0.6288221360782461,
+          "top1_hit_rate": 0.6302521008403361,
+          "mean_regret": 0.24761189956331878,
+          "group_aware_spearman": 0.3756828040970045,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44364309727604595,
+              "brier": 0.03977596105425862,
+              "group_aware_spearman": 0.48697464685023023,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3701153742484726,
+              "brier": 0.030839959590658942,
+              "group_aware_spearman": 0.35395045499294975,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.32007877165882054,
+              "brier": 0.025918333550974112,
+              "group_aware_spearman": 0.07766790757005249,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.293729446228631,
+              "brier": 0.027748259005555345,
+              "group_aware_spearman": 0.2304856361410612,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2851102060210809,
+              "brier": 0.026681878901689708,
+              "group_aware_spearman": 0.18858861354582782,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0058268113705846275,
+          "brier_calibrated": 0.03147163571697987,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.34498018446473017,
+        "std": 0.0006811795511213945
+      },
+      "test_brier": {
+        "mean": 0.024679003554869846,
+        "std": 0.00021001051168322439
+      },
+      "test_ece": {
+        "mean": 0.007733336082832658,
+        "std": 0.0014031020015693747
+      },
+      "test_ece_calibrated": {
+        "mean": 0.0033636644569483578,
+        "std": 0.000474777551835608
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.4714563580420942,
+        "std": 0.005452238727930576
+      },
+      "test_pooled_spearman": {
+        "mean": 0.527002372109879,
+        "std": 0.004124299280720479
+      },
+      "test_ndcg@3": {
+        "mean": 0.7115070320309902,
+        "std": 0.004031796724153975
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.719327731092437,
+        "std": 0.006952198121003257
+      },
+      "test_mean_regret": {
+        "mean": 0.1976664847161572,
+        "std": 0.0032142730393967802
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5921234837578596,
+          "std": 0.003980329619300476,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.44817088107457315,
+          "std": 0.0054608283663598175,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.23675529754049734,
+          "std": 0.016103927524909644,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.38185352026568226,
+          "std": 0.02346832799115766,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.338119344501555,
+          "std": 0.012267350906753753,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.3443363456193072,
+          "brier": 0.024560395435256732,
+          "ece": 0.008579680660564505,
+          "pooled_spearman": 0.5326651273319609,
+          "ndcg@3": 0.7052402389427411,
+          "top1_hit_rate": 0.7142857142857143,
+          "mean_regret": 0.19998635371179038,
+          "group_aware_spearman": 0.4796032891975232,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41894384336304796,
+              "brier": 0.03058239125235945,
+              "group_aware_spearman": 0.5903619728159532,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.348000080429913,
+              "brier": 0.023646343760772907,
+              "group_aware_spearman": 0.4505942815148951,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3012299366468062,
+              "brier": 0.021202202406875283,
+              "group_aware_spearman": 0.2534857833296809,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27080584872108326,
+              "brier": 0.022183529232640675,
+              "group_aware_spearman": 0.4163517197372498,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2629907909332825,
+              "brier": 0.02127521923302906,
+              "group_aware_spearman": 0.36116327899432166,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003359685082365346,
+          "brier_calibrated": 0.02449051543639584,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.34470968846841515,
+          "brier": 0.024573299534001922,
+          "ece": 0.0064132585011762566,
+          "pooled_spearman": 0.5266194563358864,
+          "ndcg@3": 0.7110589824446163,
+          "top1_hit_rate": 0.7282913165266106,
+          "mean_regret": 0.20094159388646288,
+          "group_aware_spearman": 0.4711032872979254,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4168127198393505,
+              "brier": 0.02968425705917789,
+              "group_aware_spearman": 0.5997296081921436,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3485625919004562,
+              "brier": 0.02385856324986389,
+              "group_aware_spearman": 0.45383904623836213,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.301934023788555,
+              "brier": 0.021916458372786773,
+              "group_aware_spearman": 0.21796363802364627,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27338052738914753,
+              "brier": 0.022279481269335124,
+              "group_aware_spearman": 0.36785462485298315,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2658012551457995,
+              "brier": 0.021496538128963544,
+              "group_aware_spearman": 0.3300791644947958,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003665638504267031,
+          "brier_calibrated": 0.024524550531928844,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.34619974574561857,
+          "brier": 0.025035083113672214,
+          "ece": 0.00777967293535719,
+          "pooled_spearman": 0.5208861531747696,
+          "ndcg@3": 0.7103349449391352,
+          "top1_hit_rate": 0.7086834733893558,
+          "mean_regret": 0.19193504366812228,
+          "group_aware_spearman": 0.46622970546936265,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4201022885323096,
+              "brier": 0.030769841440310267,
+              "group_aware_spearman": 0.5893450085152034,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.35012938099916074,
+              "brier": 0.024332790218870543,
+              "group_aware_spearman": 0.441215277791278,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3007983978917116,
+              "brier": 0.021183583679964858,
+              "group_aware_spearman": 0.21675486367854604,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27390552159567644,
+              "brier": 0.02259849938395464,
+              "group_aware_spearman": 0.39549960909832116,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26633840637503475,
+              "brier": 0.021832363256729208,
+              "group_aware_spearman": 0.32791607863259636,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0035487994439682745,
+          "brier_calibrated": 0.02486038809665037,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.34444129410758967,
+          "brier": 0.0244401937479694,
+          "ece": 0.00985636536725136,
+          "pooled_spearman": 0.530166276897255,
+          "ndcg@3": 0.7176101104630087,
+          "top1_hit_rate": 0.7226890756302521,
+          "mean_regret": 0.19657478165938866,
+          "group_aware_spearman": 0.475248392721612,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4176432512272411,
+              "brier": 0.029911014991926915,
+              "group_aware_spearman": 0.5922990022259946,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3473004175729889,
+              "brier": 0.023408589835791842,
+              "group_aware_spearman": 0.453174104630576,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30053417222136686,
+              "brier": 0.0213570979250403,
+              "group_aware_spearman": 0.24460237968345566,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2749053605863818,
+              "brier": 0.022858274301798195,
+              "group_aware_spearman": 0.3820803553982844,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26801850999441074,
+              "brier": 0.02207148150723425,
+              "group_aware_spearman": 0.34025468725675695,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0024569371053992334,
+          "brier_calibrated": 0.02435067094785015,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.34521384838272035,
+          "brier": 0.024786045943448982,
+          "ece": 0.006037702949813976,
+          "pooled_spearman": 0.524674846809523,
+          "ndcg@3": 0.7132908833654502,
+          "top1_hit_rate": 0.7226890756302521,
+          "mean_regret": 0.19889465065502182,
+          "group_aware_spearman": 0.4650971155240473,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41944967049127296,
+              "brier": 0.030760168328302702,
+              "group_aware_spearman": 0.5888818270400029,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34810370602249513,
+              "brier": 0.02366995292851289,
+              "group_aware_spearman": 0.4420316951977546,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.2980112989295578,
+              "brier": 0.020396221045709702,
+              "group_aware_spearman": 0.25096982298715775,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27657671945492024,
+              "brier": 0.023619607734552205,
+              "group_aware_spearman": 0.347481292241573,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2688685919527562,
+              "brier": 0.022712603084680746,
+              "group_aware_spearman": 0.3311835131293041,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0037872621487419047,
+          "brier_calibrated": 0.024660674533469436,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_small": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.34514325610985724,
+        "std": 0.00106582060680186
+      },
+      "test_brier": {
+        "mean": 0.02480386215096339,
+        "std": 0.0002932287796552445
+      },
+      "test_ece": {
+        "mean": 0.007121812630955429,
+        "std": 0.0018682689373366132
+      },
+      "test_ece_calibrated": {
+        "mean": 0.00353251981848879,
+        "std": 0.000511440381069291
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.4706356821168243,
+        "std": 0.004043107568286259
+      },
+      "test_pooled_spearman": {
+        "mean": 0.5272606009348468,
+        "std": 0.00522907601510447
+      },
+      "test_ndcg@3": {
+        "mean": 0.7089710603573167,
+        "std": 0.004435220756488771
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.7254901960784313,
+        "std": 0.007304428465213025
+      },
+      "test_mean_regret": {
+        "mean": 0.19459606986899564,
+        "std": 0.004505135582337542
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5861935412859813,
+          "std": 0.005988770976923904,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.44430523014067,
+          "std": 0.004324313919343992,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.23449451003872085,
+          "std": 0.02064292753313873,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.3839889093314434,
+          "std": 0.024570411338855208,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.33893997428833533,
+          "std": 0.008055862074841522,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.3433498480930031,
+          "brier": 0.02429568382652213,
+          "ece": 0.00629841615164727,
+          "pooled_spearman": 0.5358957533546505,
+          "ndcg@3": 0.7100182416330078,
+          "top1_hit_rate": 0.7338935574229691,
+          "mean_regret": 0.19118449781659388,
+          "group_aware_spearman": 0.4779046974489328,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41709511496028023,
+              "brier": 0.029862532783523455,
+              "group_aware_spearman": 0.5909034276430427,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3472592462498122,
+              "brier": 0.023538785591221193,
+              "group_aware_spearman": 0.4497487918858209,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.2998509694419824,
+              "brier": 0.021550846514300073,
+              "group_aware_spearman": 0.24492910591376196,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27093657111542635,
+              "brier": 0.02172856563080882,
+              "group_aware_spearman": 0.3936986279701042,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26203723399223877,
+              "brier": 0.020727946429848584,
+              "group_aware_spearman": 0.3479510223216817,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003134679126162168,
+          "brier_calibrated": 0.024105135056493636,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.3460577109090004,
+          "brier": 0.02499087180620503,
+          "ece": 0.009290739040545436,
+          "pooled_spearman": 0.521115361138657,
+          "ndcg@3": 0.7014949855578507,
+          "top1_hit_rate": 0.7142857142857143,
+          "mean_regret": 0.20053220524017468,
+          "group_aware_spearman": 0.46804605467079463,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41949820144696365,
+              "brier": 0.030514480240836115,
+              "group_aware_spearman": 0.5775062116446131,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3501439199093029,
+              "brier": 0.024236652019500576,
+              "group_aware_spearman": 0.4455307535395346,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3034555448470909,
+              "brier": 0.022158301180252908,
+              "group_aware_spearman": 0.22696966159857823,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2724640913506996,
+              "brier": 0.02249200882361816,
+              "group_aware_spearman": 0.39919824518888153,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26462765107950115,
+              "brier": 0.021540575113446172,
+              "group_aware_spearman": 0.348082631826398,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0029550013650182214,
+          "brier_calibrated": 0.024901526241854603,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.34448149298550845,
+          "brier": 0.02465372620664729,
+          "ece": 0.005437367334073257,
+          "pooled_spearman": 0.5285463655276281,
+          "ndcg@3": 0.7080686371917851,
+          "top1_hit_rate": 0.7310924369747899,
+          "mean_regret": 0.1974617903930131,
+          "group_aware_spearman": 0.46754781904704684,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4194621004182257,
+              "brier": 0.030735160700067817,
+              "group_aware_spearman": 0.5809715776004987,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34769877986205516,
+              "brier": 0.02362974840625,
+              "group_aware_spearman": 0.43715861902594816,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.2984740403998944,
+              "brier": 0.020676459152991978,
+              "group_aware_spearman": 0.2478224539989489,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2734545049190923,
+              "brier": 0.0228657011920135,
+              "group_aware_spearman": 0.39978874413647497,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26550993663014005,
+              "brier": 0.021953442094260367,
+              "group_aware_spearman": 0.3384283423396485,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.00351878127012749,
+          "brier_calibrated": 0.024628459137852894,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.3458783008363379,
+          "brier": 0.02500018924717691,
+          "ece": 0.005149409813699718,
+          "pooled_spearman": 0.5225794407748461,
+          "ndcg@3": 0.7100214593464347,
+          "top1_hit_rate": 0.7198879551820728,
+          "mean_regret": 0.1879093886462882,
+          "group_aware_spearman": 0.46745376528388655,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41684868755798804,
+              "brier": 0.029952177978238875,
+              "group_aware_spearman": 0.5932519755659813,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3492158257148825,
+              "brier": 0.024079913923155317,
+              "group_aware_spearman": 0.442180085731548,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30491505570566646,
+              "brier": 0.022736163363707512,
+              "group_aware_spearman": 0.1976034316380732,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2747304319784402,
+              "brier": 0.022898312683767644,
+              "group_aware_spearman": 0.3920396237856006,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2704181041248566,
+              "brier": 0.022847038046877717,
+              "group_aware_spearman": 0.3287379510141353,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004431237976850849,
+          "brier_calibrated": 0.024980484784139247,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.3459489277254364,
+          "brier": 0.02507883966826558,
+          "ece": 0.00943313081481147,
+          "pooled_spearman": 0.5281660838784521,
+          "ndcg@3": 0.7152519780575057,
+          "top1_hit_rate": 0.7282913165266106,
+          "mean_regret": 0.1958924672489083,
+          "group_aware_spearman": 0.4722260741334608,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4200468576124829,
+              "brier": 0.030705560263997157,
+              "group_aware_spearman": 0.5883345139757709,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3488481986598897,
+              "brier": 0.0239245756971531,
+              "group_aware_spearman": 0.4469079005204987,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.29877009004626554,
+              "brier": 0.020845023830195406,
+              "group_aware_spearman": 0.25514789704424207,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27717403834443755,
+              "brier": 0.024251993171838602,
+              "group_aware_spearman": 0.3352193055761559,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26998264259359417,
+              "brier": 0.023553299207156667,
+              "group_aware_spearman": 0.3314999239398132,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0036228993542852224,
+          "brier_calibrated": 0.024990877857855785,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_attn": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806
+      ],
+      "test_bce": {
+        "mean": 0.3448720283218723,
+        "std": 0.0006684738490046014
+      },
+      "test_brier": {
+        "mean": 0.024893691493362752,
+        "std": 0.0002819025981213061
+      },
+      "test_ece": {
+        "mean": 0.006917441818726405,
+        "std": 0.0009009619321576348
+      },
+      "test_ece_calibrated": {
+        "mean": 0.0039264795364040705,
+        "std": 0.000378146598330114
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.47625401728394473,
+        "std": 0.004089616054322775
+      },
+      "test_pooled_spearman": {
+        "mean": 0.5339642494975644,
+        "std": 0.0028824010578459677
+      },
+      "test_ndcg@3": {
+        "mean": 0.7077665854920837,
+        "std": 0.002193769083325457
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.7292250233426705,
+        "std": 0.007352014821673051
+      },
+      "test_mean_regret": {
+        "mean": 0.1977802037845706,
+        "std": 0.0036328926471996784
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.6013415364584332,
+          "std": 0.0013499126864092172,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.4473727154233898,
+          "std": 0.006810629355374578,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.2429109818125165,
+          "std": 0.0038172960319623655,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.39113070944699596,
+          "std": 0.01599555918738626,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.34975476960908286,
+          "std": 0.009521595661359156,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.34543649942630983,
+          "brier": 0.02504772794325236,
+          "ece": 0.005686638745791952,
+          "pooled_spearman": 0.5330757123585783,
+          "ndcg@3": 0.7047504483162784,
+          "top1_hit_rate": 0.7226890756302521,
+          "mean_regret": 0.201214519650655,
+          "group_aware_spearman": 0.47802160673209887,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4168254084737081,
+              "brier": 0.03004067094259156,
+              "group_aware_spearman": 0.6009335167473565,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34758550795829896,
+              "brier": 0.02372677712186404,
+              "group_aware_spearman": 0.449239478574968,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3046308166941257,
+              "brier": 0.023064815904908453,
+              "group_aware_spearman": 0.23753340909852866,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27730350083445426,
+              "brier": 0.023769190884727856,
+              "group_aware_spearman": 0.36851061655907974,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2726207622280238,
+              "brier": 0.023960479836558315,
+              "group_aware_spearman": 0.3472372299663757,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0042411964007139195,
+          "brier_calibrated": 0.024971439198204326,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.3452465386941904,
+          "brier": 0.025135119796614397,
+          "ece": 0.007247463868304408,
+          "pooled_spearman": 0.5378538380960081,
+          "ndcg@3": 0.709904035990257,
+          "top1_hit_rate": 0.7394957983193278,
+          "mean_regret": 0.19275382096069868,
+          "group_aware_spearman": 0.48013930631513374,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41920172534387573,
+              "brier": 0.030896570807252274,
+              "group_aware_spearman": 0.5999304499304939,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34944994792288,
+              "brier": 0.024414952322434434,
+              "group_aware_spearman": 0.4546224509081326,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30194839243915,
+              "brier": 0.022143605696906456,
+              "group_aware_spearman": 0.2460107514693944,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2705091971631994,
+              "brier": 0.022124132413084186,
+              "group_aware_spearman": 0.40225255684127853,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2637721316070556,
+              "brier": 0.02158617880657486,
+              "group_aware_spearman": 0.3624694405961314,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004143563684937009,
+          "brier_calibrated": 0.025140565882761246,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.3439330468451166,
+          "brier": 0.024498226740221507,
+          "ece": 0.007818222842082856,
+          "pooled_spearman": 0.5309631980381065,
+          "ndcg@3": 0.7086452721697157,
+          "top1_hit_rate": 0.7254901960784313,
+          "mean_regret": 0.19937227074235808,
+          "group_aware_spearman": 0.47060113880460164,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4171987725526837,
+              "brier": 0.030148569507080707,
+              "group_aware_spearman": 0.6031606426974492,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34721769738611835,
+              "brier": 0.02345772876548112,
+              "group_aware_spearman": 0.4382562167870689,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3000810532279376,
+              "brier": 0.021368444598381126,
+              "group_aware_spearman": 0.24518878486962642,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27304922509314383,
+              "brier": 0.022844770812573138,
+              "group_aware_spearman": 0.40262895494062945,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2661909679336567,
+              "brier": 0.021871799580440436,
+              "group_aware_spearman": 0.3395576382647417,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003394678523561283,
+          "brier_calibrated": 0.02442680879768256,
+          "seed": 20260806
+        }
+      ]
+    },
+    "deepsets_no_relations": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.3460760369871383,
+        "std": 0.0016661658465441716
+      },
+      "test_brier": {
+        "mean": 0.025002259804288503,
+        "std": 0.0005029940610812104
+      },
+      "test_ece": {
+        "mean": 0.008558400081138964,
+        "std": 0.0019371613024997344
+      },
+      "test_ece_calibrated": {
+        "mean": 0.004843368963895077,
+        "std": 0.0017948141744157208
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.46750687992623197,
+        "std": 0.00799619098768987
+      },
+      "test_pooled_spearman": {
+        "mean": 0.5227763300664362,
+        "std": 0.008915744713656939
+      },
+      "test_ndcg@3": {
+        "mean": 0.7095414829440613,
+        "std": 0.007338618817249098
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.7114845938375349,
+        "std": 0.013607795856012453
+      },
+      "test_mean_regret": {
+        "mean": 0.2013919213973799,
+        "std": 0.007694691670253523
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5970992122891097,
+          "std": 0.00712066609111039,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.4524260135336318,
+          "std": 0.006072890673562003,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.2220298460146603,
+          "std": 0.021481284041221887,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.3310835269677257,
+          "std": 0.022868392017037636,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.3284814604960181,
+          "std": 0.017787595398253468,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.3445320961559482,
+          "brier": 0.024823364616464432,
+          "ece": 0.007824740810190769,
+          "pooled_spearman": 0.5333603163725548,
+          "ndcg@3": 0.7031603921474304,
+          "top1_hit_rate": 0.6974789915966386,
+          "mean_regret": 0.20865174672489084,
+          "group_aware_spearman": 0.4783090287295317,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41634679776278627,
+              "brier": 0.029753167252578185,
+              "group_aware_spearman": 0.602659994025051,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.345205040753038,
+              "brier": 0.02295081648941047,
+              "group_aware_spearman": 0.46206965691730206,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.29768231128717776,
+              "brier": 0.02081350043314962,
+              "group_aware_spearman": 0.2566078444735629,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2847761673267645,
+              "brier": 0.026736700529340445,
+              "group_aware_spearman": 0.3610714363629427,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.27756290654318927,
+              "brier": 0.02614001316634258,
+              "group_aware_spearman": 0.35063858163136186,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.005931997197818303,
+          "brier_calibrated": 0.024726981005329735,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.3481121415292397,
+          "brier": 0.02568510324944277,
+          "ece": 0.006347634262080218,
+          "pooled_spearman": 0.5127771515782201,
+          "ndcg@3": 0.69925700837683,
+          "top1_hit_rate": 0.7058823529411765,
+          "mean_regret": 0.20953875545851527,
+          "group_aware_spearman": 0.45646749721432583,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4173430154781281,
+              "brier": 0.030108974993158892,
+              "group_aware_spearman": 0.5932377011336772,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.349074223900907,
+              "brier": 0.02404477544306642,
+              "group_aware_spearman": 0.4445643078861119,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3042785908303269,
+              "brier": 0.0227322459744849,
+              "group_aware_spearman": 0.21107665976800158,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2888707869063697,
+              "brier": 0.02701478193858799,
+              "group_aware_spearman": 0.3010182154299393,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.281910486106936,
+              "brier": 0.026313186233709377,
+              "group_aware_spearman": 0.29883628509037724,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0016843982643798539,
+          "brier_calibrated": 0.025625688925327666,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.3450021982091828,
+          "brier": 0.024649537271858125,
+          "ece": 0.006959164328145913,
+          "pooled_spearman": 0.5210438308243333,
+          "ndcg@3": 0.7160405616642087,
+          "top1_hit_rate": 0.7002801120448179,
+          "mean_regret": 0.20319323144104803,
+          "group_aware_spearman": 0.46296993386954405,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4192384823959329,
+              "brier": 0.030503633710220815,
+              "group_aware_spearman": 0.5969738886727675,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.346253284828495,
+              "brier": 0.023125876281502596,
+              "group_aware_spearman": 0.45091520779496774,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.2960085374408093,
+              "brier": 0.019779231444694158,
+              "group_aware_spearman": 0.21741739741427163,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.28216112741205035,
+              "brier": 0.025067096424008593,
+              "group_aware_spearman": 0.35402544484428194,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.27428313528687426,
+              "brier": 0.024163027593669516,
+              "group_aware_spearman": 0.33505626724783155,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.006413534816818557,
+          "brier_calibrated": 0.024670249147928758,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.3446306767379297,
+          "brier": 0.024365002626556106,
+          "ece": 0.010352085019972524,
+          "pooled_spearman": 0.532884011077138,
+          "ndcg@3": 0.7184241436091735,
+          "top1_hit_rate": 0.7198879551820728,
+          "mean_regret": 0.19637008733624453,
+          "group_aware_spearman": 0.4748518265747025,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41498212157831244,
+              "brier": 0.028680722844815036,
+              "group_aware_spearman": 0.6064717541856088,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.345317312664581,
+              "brier": 0.022699012592556116,
+              "group_aware_spearman": 0.4559833083504028,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.2997466959901475,
+              "brier": 0.021031620800796538,
+              "group_aware_spearman": 0.23239333817151434,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2851343783802355,
+              "brier": 0.025844351421641723,
+              "group_aware_spearman": 0.3161947923009301,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2786893709987783,
+              "brier": 0.025661680201732116,
+              "group_aware_spearman": 0.33811885802667013,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.006177909473811917,
+          "brier_calibrated": 0.02430058513611936,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.3481030723033911,
+          "brier": 0.02548829125712106,
+          "ece": 0.0113083759853054,
+          "pooled_spearman": 0.513816340479935,
+          "ndcg@3": 0.7108253089226636,
+          "top1_hit_rate": 0.7338935574229691,
+          "mean_regret": 0.18920578602620086,
+          "group_aware_spearman": 0.464936113243056,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41840438585185175,
+              "brier": 0.030213737332937984,
+              "group_aware_spearman": 0.5861527234284433,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34908445928061277,
+              "brier": 0.023985188764189085,
+              "group_aware_spearman": 0.4485975867193748,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3078051206105563,
+              "brier": 0.023513703176116306,
+              "group_aware_spearman": 0.19265399024595112,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.285665373319188,
+              "brier": 0.025493162290302157,
+              "group_aware_spearman": 0.32310774590053454,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.27847078949253573,
+              "brier": 0.024832182159556453,
+              "group_aware_spearman": 0.3197573104838496,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004009005066646755,
+          "brier_calibrated": 0.02535535599149134,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_no_kind": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.34927158275847103,
+        "std": 0.0006264033067843951
+      },
+      "test_brier": {
+        "mean": 0.025938717701296587,
+        "std": 0.00027599590545340704
+      },
+      "test_ece": {
+        "mean": 0.007399905927711586,
+        "std": 0.00270379482576046
+      },
+      "test_ece_calibrated": {
+        "mean": 0.0043353353580552105,
+        "std": 0.000976783766150911
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.45089236104619257,
+        "std": 0.004132818345254539
+      },
+      "test_pooled_spearman": {
+        "mean": 0.509380435482455,
+        "std": 0.004132777113893295
+      },
+      "test_ndcg@3": {
+        "mean": 0.6930399021478767,
+        "std": 0.003539579015203231
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.6963585434173669,
+        "std": 0.008040728344205788
+      },
+      "test_mean_regret": {
+        "mean": 0.2105349344978166,
+        "std": 0.002041294972850993
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5705899772048031,
+          "std": 0.005663185946218603,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.43320974904174303,
+          "std": 0.003073400478094322,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.22897537361383816,
+          "std": 0.011712468021766353,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.31425256970212634,
+          "std": 0.014822329847124843,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.26678957680697024,
+          "std": 0.010470701793043937,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.3483541115565054,
+          "brier": 0.025516353775555924,
+          "ece": 0.009001563559451918,
+          "pooled_spearman": 0.5087722837211083,
+          "ndcg@3": 0.6968079418970146,
+          "top1_hit_rate": 0.6974789915966386,
+          "mean_regret": 0.20892467248908297,
+          "group_aware_spearman": 0.45446578967200385,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.42106337051471626,
+              "brier": 0.030916502933655245,
+              "group_aware_spearman": 0.5694047978998407,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3497093477978611,
+              "brier": 0.024034499213875543,
+              "group_aware_spearman": 0.4340928327482599,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.29993838540918666,
+              "brier": 0.02150653260522907,
+              "group_aware_spearman": 0.22911258528974782,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.28714010510377286,
+              "brier": 0.02593234943663083,
+              "group_aware_spearman": 0.31846796713323583,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2785086131139116,
+              "brier": 0.02494588366543609,
+              "group_aware_spearman": 0.2717781596756759,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004245970541245798,
+          "brier_calibrated": 0.025350814320674653,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.3494495617858178,
+          "brier": 0.02606775651903522,
+          "ece": 0.006130505118501336,
+          "pooled_spearman": 0.5071259914948717,
+          "ndcg@3": 0.6917508711659227,
+          "top1_hit_rate": 0.6862745098039216,
+          "mean_regret": 0.212882096069869,
+          "group_aware_spearman": 0.452228655942472,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4226744658239147,
+              "brier": 0.031743437653018194,
+              "group_aware_spearman": 0.5601045928571778,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.35069774786363683,
+              "brier": 0.02456072348070468,
+              "group_aware_spearman": 0.4362293106906057,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30278169028577484,
+              "brier": 0.022079446525559158,
+              "group_aware_spearman": 0.2264257963694683,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2865995581810265,
+              "brier": 0.026159642338408222,
+              "group_aware_spearman": 0.315743230814343,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2786463926901436,
+              "brier": 0.025268780858954218,
+              "group_aware_spearman": 0.25025494816993965,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0034442283322723526,
+          "brier_calibrated": 0.025953574355862406,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.34911882541365746,
+          "brier": 0.025804708758589385,
+          "ece": 0.010303736454300392,
+          "pooled_spearman": 0.5173804528488422,
+          "ndcg@3": 0.6976307573192038,
+          "top1_hit_rate": 0.6890756302521008,
+          "mean_regret": 0.2074235807860262,
+          "group_aware_spearman": 0.4557214245490643,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4249187975820542,
+              "brier": 0.0318862110000705,
+              "group_aware_spearman": 0.5748734453379454,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3507830254655923,
+              "brier": 0.024503282273996473,
+              "group_aware_spearman": 0.4350898932272871,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3017819123423769,
+              "brier": 0.02158297338244123,
+              "group_aware_spearman": 0.2510200199707416,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2822056029657199,
+              "brier": 0.02487255246708665,
+              "group_aware_spearman": 0.3347128436306744,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2744467913736269,
+              "brier": 0.024112351900468537,
+              "group_aware_spearman": 0.2635613534220337,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0059452005885925994,
+          "brier_calibrated": 0.02553558948635497,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.3491401756297678,
+          "brier": 0.025956730944792148,
+          "ece": 0.0027234734352778677,
+          "pooled_spearman": 0.507984336887412,
+          "ndcg@3": 0.688906666600917,
+          "top1_hit_rate": 0.7086834733893558,
+          "mean_regret": 0.21206331877729256,
+          "group_aware_spearman": 0.4462510251001467,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4224961427036257,
+              "brier": 0.03150234492288635,
+              "group_aware_spearman": 0.5729839575267692,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.35122988579785286,
+              "brier": 0.024687641129449312,
+              "group_aware_spearman": 0.42739636064414827,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30102707751600205,
+              "brier": 0.021587819427488192,
+              "group_aware_spearman": 0.21856311781283397,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.28466963367657927,
+              "brier": 0.025770957340568872,
+              "group_aware_spearman": 0.3137700855446644,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2764020411463993,
+              "brier": 0.024805719696634667,
+              "group_aware_spearman": 0.28224941651454233,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0032529340502144267,
+          "brier_calibrated": 0.025932714380529385,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.35029523940660656,
+          "brier": 0.026348038508510255,
+          "ece": 0.008840251071026423,
+          "pooled_spearman": 0.5056391124600411,
+          "ndcg@3": 0.6901032737563256,
+          "top1_hit_rate": 0.7002801120448179,
+          "mean_regret": 0.21138100436681223,
+          "group_aware_spearman": 0.44579490996727605,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.42237521800176664,
+              "brier": 0.03172227344600618,
+              "group_aware_spearman": 0.5755830924022822,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.35158794839637797,
+              "brier": 0.024829270541386395,
+              "group_aware_spearman": 0.4332403478984142,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3063058582769908,
+              "brier": 0.023615163514868687,
+              "group_aware_spearman": 0.21975534862639903,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2876244581780287,
+              "brier": 0.026224177858570025,
+              "group_aware_spearman": 0.2885687213877141,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2789006356720065,
+              "brier": 0.025180706526638834,
+              "group_aware_spearman": 0.26610400625265956,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004788343277950876,
+          "brier_calibrated": 0.02615244109274121,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_state_only": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.4139878749315322,
+        "std": 0.0002541561650010986
+      },
+      "test_brier": {
+        "mean": 0.04676373599045618,
+        "std": 6.709084774653382e-05
+      },
+      "test_ece": {
+        "mean": 0.005643961508114555,
+        "std": 0.0023180955184453535
+      },
+      "test_ece_calibrated": {
+        "mean": 0.0031295545862633683,
+        "std": 0.000594450110467667
+      },
+      "test_group_aware_spearman": {
+        "mean": null,
+        "std": null
+      },
+      "test_pooled_spearman": {
+        "mean": 0.10259373157494238,
+        "std": 0.005519304911551801
+      },
+      "test_ndcg@3": {
+        "mean": 0.47408607046917106,
+        "std": 0.0
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.41456582633053224,
+        "std": 0.0
+      },
+      "test_mean_regret": {
+        "mean": 0.359375,
+        "std": 0.0
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 4030
+        },
+        "bank": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1832
+        },
+        "combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.4140361798265529,
+          "brier": 0.046787855546326654,
+          "ece": 0.006008825893739253,
+          "pooled_spearman": 0.09905592488456055,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5326597686921423,
+              "brier": 0.07075168858438308,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4142749802333818,
+              "brier": 0.04521351019438381,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33067931792149596,
+              "brier": 0.02846007293750629,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.31918831979474893,
+              "brier": 0.03280157085217158,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31109035747211766,
+              "brier": 0.03178985348249989,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.003493691860574283,
+          "brier_calibrated": 0.04675070827748827,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.41380815148945665,
+          "brier": 0.04671312301481214,
+          "ece": 0.0039842087159202965,
+          "pooled_spearman": 0.105279701994234,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5323001767387106,
+              "brier": 0.07072379272218611,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4141814574497375,
+              "brier": 0.045172458102946976,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33003782216859806,
+              "brier": 0.028245288387913587,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.31898970642598223,
+              "brier": 0.032654461232792045,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31083823801346533,
+              "brier": 0.03163479058743509,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0027054028675512444,
+          "brier_calibrated": 0.046708630612135635,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.4136486204548602,
+          "brier": 0.04667405487875328,
+          "ece": 0.0053742846566999436,
+          "pooled_spearman": 0.10930813168635499,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5325486579047207,
+              "brier": 0.07078086952075749,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.41403048116720476,
+              "brier": 0.0451331495763107,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.32942129326809627,
+              "brier": 0.02809323344625503,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3185217466136614,
+              "brier": 0.03255542188363688,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3104479424242185,
+              "brier": 0.03154767032420624,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0021702120763105195,
+          "brier_calibrated": 0.04665899945759351,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.4140464591379626,
+          "brier": 0.04677401363216509,
+          "ece": 0.009793978611842868,
+          "pooled_spearman": 0.10559183090473108,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5357674095529169,
+              "brier": 0.07158230818945435,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4143122626550088,
+              "brier": 0.04520061937810035,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3280336789478598,
+              "brier": 0.027735023189812347,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.31706235031862884,
+              "brier": 0.032202087377388784,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3084907943867439,
+              "brier": 0.03108953506314749,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0037242968117367644,
+          "brier_calibrated": 0.046688242346964254,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.4143999637488287,
+          "brier": 0.04686963288022375,
+          "ece": 0.0030585096623704107,
+          "pooled_spearman": 0.09373306840483135,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5318029030904191,
+              "brier": 0.07052499635435205,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4146800787481286,
+              "brier": 0.045298319014872704,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33119874079850586,
+              "brier": 0.028619753973669133,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3206715542839865,
+              "brier": 0.033165966769164335,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31288904036293613,
+              "brier": 0.032234455239105925,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0035541693151440283,
+          "brier_calibrated": 0.04682887883931698,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_candidate_only": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.3653778721040141,
+        "std": 0.0005476886719560348
+      },
+      "test_brier": {
+        "mean": 0.031926308847097004,
+        "std": 0.0001738346529509187
+      },
+      "test_ece": {
+        "mean": 0.00584549194253332,
+        "std": 0.0016654626023405504
+      },
+      "test_ece_calibrated": {
+        "mean": 0.003541245137079263,
+        "std": 0.000624463879846316
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.4142409202925578,
+        "std": 0.001207246020682795
+      },
+      "test_pooled_spearman": {
+        "mean": 0.4641897176585764,
+        "std": 0.002379891404793711
+      },
+      "test_ndcg@3": {
+        "mean": 0.6154716267895364,
+        "std": 0.00238385597494388
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.5910364145658263,
+        "std": 0.012897327096046296
+      },
+      "test_mean_regret": {
+        "mean": 0.27512281659388643,
+        "std": 0.005682069270140193
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5163819649696214,
+          "std": 0.0077035828090433215,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.38565742813468623,
+          "std": 0.00350908453056176,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.12339937938413285,
+          "std": 0.011793055130297964,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.26484838683070533,
+          "std": 0.016211360864006697,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.29861455200025044,
+          "std": 0.018205553251606256,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.3663725331383154,
+          "brier": 0.03220998309814298,
+          "ece": 0.00708040994501703,
+          "pooled_spearman": 0.4599492726932197,
+          "ndcg@3": 0.6176232500141801,
+          "top1_hit_rate": 0.6050420168067226,
+          "mean_regret": 0.26542030567685587,
+          "group_aware_spearman": 0.4124353497205506,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4471711109005374,
+              "brier": 0.04246398170828371,
+              "group_aware_spearman": 0.5041324302319294,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.369737154424607,
+              "brier": 0.031456507537426,
+              "group_aware_spearman": 0.3826600306699474,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31812948965878707,
+              "brier": 0.02555260969086345,
+              "group_aware_spearman": 0.114555174167095,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2897064209198761,
+              "brier": 0.026012315071396678,
+              "group_aware_spearman": 0.24035641255340354,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.28052981517301917,
+              "brier": 0.025164306468550956,
+              "group_aware_spearman": 0.26843637196653897,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0033817382119629875,
+          "brier_calibrated": 0.03217668728523413,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.3652302427133538,
+          "brier": 0.031857372554879415,
+          "ece": 0.007257744874738466,
+          "pooled_spearman": 0.4650056559525095,
+          "ndcg@3": 0.6175603119607447,
+          "top1_hit_rate": 0.6078431372549019,
+          "mean_regret": 0.27197052401746724,
+          "group_aware_spearman": 0.4134407054473601,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4443824425867958,
+              "brier": 0.04155847258745256,
+              "group_aware_spearman": 0.5277229086616996,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.36945393990095543,
+              "brier": 0.03127436479081535,
+              "group_aware_spearman": 0.38027695025510083,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3183259519053339,
+              "brier": 0.025583064597109042,
+              "group_aware_spearman": 0.14381088242325835,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2868893520019063,
+              "brier": 0.02567569128986702,
+              "group_aware_spearman": 0.26621360908480746,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.27861897742861635,
+              "brier": 0.02473922912149404,
+              "group_aware_spearman": 0.29129673413969076,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004628174621013102,
+          "brier_calibrated": 0.03176227845149624,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.36495973076188254,
+          "brier": 0.03175314825917519,
+          "ece": 0.0030947449767169404,
+          "pooled_spearman": 0.46341845229269507,
+          "ndcg@3": 0.6152532392505439,
+          "top1_hit_rate": 0.5770308123249299,
+          "mean_regret": 0.28063591703056767,
+          "group_aware_spearman": 0.41590598915542404,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44546677398712436,
+              "brier": 0.041766227579353464,
+              "group_aware_spearman": 0.5139661997983588,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.368881873779905,
+              "brier": 0.031087218150301184,
+              "group_aware_spearman": 0.3887785906154731,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31746266898334224,
+              "brier": 0.02552296580676938,
+              "group_aware_spearman": 0.1292139511567537,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.28667966314404225,
+              "brier": 0.02545308032575007,
+              "group_aware_spearman": 0.2676061039398718,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2774076880489324,
+              "brier": 0.024424585973589204,
+              "group_aware_spearman": 0.3054542279429242,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003015141149328987,
+          "brier_calibrated": 0.03173024332655098,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.36483037007415564,
+          "brier": 0.03177319440518178,
+          "ece": 0.004718854161847204,
+          "pooled_spearman": 0.4666585382605503,
+          "ndcg@3": 0.6158361811994647,
+          "top1_hit_rate": 0.5854341736694678,
+          "mean_regret": 0.2788618995633188,
+          "group_aware_spearman": 0.4144181422981667,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44511735590011686,
+              "brier": 0.04164994087245974,
+              "group_aware_spearman": 0.51621435594958,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.36892599612395244,
+              "brier": 0.031182959635318412,
+              "group_aware_spearman": 0.38809050637707243,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31750116724506416,
+              "brier": 0.02554624560067546,
+              "group_aware_spearman": 0.1175064245805638,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2859558510391254,
+              "brier": 0.025308123580817972,
+              "group_aware_spearman": 0.29080101568689387,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2772096136513735,
+              "brier": 0.024496345770384807,
+              "group_aware_spearman": 0.3233302481370257,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.002901493708430787,
+          "brier_calibrated": 0.031728418574439324,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.36549648383236344,
+          "brier": 0.03203784591810566,
+          "ece": 0.007075705754346961,
+          "pooled_spearman": 0.4659166690939071,
+          "ndcg@3": 0.6110851515227486,
+          "top1_hit_rate": 0.5798319327731093,
+          "mean_regret": 0.2787254366812227,
+          "group_aware_spearman": 0.4150044148412878,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.44556834259236255,
+              "brier": 0.04202378503247672,
+              "group_aware_spearman": 0.5198739302065395,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3695208310184171,
+              "brier": 0.03143757848137783,
+              "group_aware_spearman": 0.3884810627558375,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.31834237042884667,
+              "brier": 0.025675055902545575,
+              "group_aware_spearman": 0.11191046459299352,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.28719244533111443,
+              "brier": 0.02553713952800005,
+              "group_aware_spearman": 0.25926479288855014,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2780564906597809,
+              "brier": 0.024738481719011534,
+              "group_aware_spearman": 0.3045551778150724,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.003779677994660453,
+          "brier_calibrated": 0.031825790574659674,
+          "seed": 20260808
+        }
+      ]
+    },
+    "deepsets_pot_id": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.343238576135431,
+        "std": 0.0009103896625373132
+      },
+      "test_brier": {
+        "mean": 0.02431125897870475,
+        "std": 0.00032788233415046017
+      },
+      "test_ece": {
+        "mean": 0.007212815469485231,
+        "std": 0.0021700595281502846
+      },
+      "test_ece_calibrated": {
+        "mean": 0.004257358882081899,
+        "std": 0.0007712302317423691
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.479328169099107,
+        "std": 0.0031141892794030843
+      },
+      "test_pooled_spearman": {
+        "mean": 0.5368113459922312,
+        "std": 0.0017686550732878093
+      },
+      "test_ndcg@3": {
+        "mean": 0.7154361333880234,
+        "std": 0.0031434110473839154
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.7333333333333334,
+        "std": 0.015177834379993349
+      },
+      "test_mean_regret": {
+        "mean": 0.18969705240174672,
+        "std": 0.005118249558447945
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": 0.5938592589186023,
+          "std": 0.007468475254725292,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.4473764464337773,
+          "std": 0.0049339700153848655,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": 0.21609652259069242,
+          "std": 0.011325225652426068,
+          "n": 1832
+        },
+        "combo": {
+          "mean": 0.44261899594901405,
+          "std": 0.015250950064957103,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": 0.4313887453358924,
+          "std": 0.01342567255567037,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.34343138035299664,
+          "brier": 0.024405877461850106,
+          "ece": 0.006300739977255144,
+          "pooled_spearman": 0.5352420626372609,
+          "ndcg@3": 0.7095525238776677,
+          "top1_hit_rate": 0.7310924369747899,
+          "mean_regret": 0.19370906113537117,
+          "group_aware_spearman": 0.4795461145289923,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4176012596666206,
+              "brier": 0.030013227807086477,
+              "group_aware_spearman": 0.6041509668002372,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34764285917492505,
+              "brier": 0.023547043788972682,
+              "group_aware_spearman": 0.44193634002201565,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30243034657486817,
+              "brier": 0.021745221140733944,
+              "group_aware_spearman": 0.19935257050696967,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.26868572462702184,
+              "brier": 0.022295486091423282,
+              "group_aware_spearman": 0.458569685118977,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2589351997959557,
+              "brier": 0.02079033026880852,
+              "group_aware_spearman": 0.44192900001627805,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0032006238151401243,
+          "brier_calibrated": 0.024206828563615144,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.34353135607641944,
+          "brier": 0.024364745754621168,
+          "ece": 0.006091883079579548,
+          "pooled_spearman": 0.536292114153776,
+          "ndcg@3": 0.7155290784108753,
+          "top1_hit_rate": 0.7170868347338936,
+          "mean_regret": 0.19616539301310043,
+          "group_aware_spearman": 0.4779692377066933,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4163305167721379,
+              "brier": 0.029419783746843575,
+              "group_aware_spearman": 0.588562095208767,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3484098890559927,
+              "brier": 0.023761341594779616,
+              "group_aware_spearman": 0.442199331593063,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3015409703705816,
+              "brier": 0.021712364917453934,
+              "group_aware_spearman": 0.2347542358946122,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.26800961339082235,
+              "brier": 0.021633949300008837,
+              "group_aware_spearman": 0.4337567072861524,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2603474430335143,
+              "brier": 0.02120547405294819,
+              "group_aware_spearman": 0.44384276612325113,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0049411227256450155,
+          "brier_calibrated": 0.024316319719255134,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.3419826768146978,
+          "brier": 0.0238514469877564,
+          "ece": 0.009444190118809133,
+          "pooled_spearman": 0.5393544675277283,
+          "ndcg@3": 0.716041772104654,
+          "top1_hit_rate": 0.7535014005602241,
+          "mean_regret": 0.1818367903930131,
+          "group_aware_spearman": 0.48229153915982087,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.41660514992345454,
+              "brier": 0.029528758965486682,
+              "group_aware_spearman": 0.5928065554388143,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.3474749345989236,
+              "brier": 0.023420550395739686,
+              "group_aware_spearman": 0.450128004263142,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.300846213158456,
+              "brier": 0.021462369928525384,
+              "group_aware_spearman": 0.21558398058161907,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.2617269071775281,
+              "brier": 0.019702512449701094,
+              "group_aware_spearman": 0.46234382671338714,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.254597806510943,
+              "brier": 0.019308846111015465,
+              "group_aware_spearman": 0.43555581681059213,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.004434027065853068,
+          "brier_calibrated": 0.023813404671451578,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.34258759248585824,
+          "brier": 0.024102617473410106,
+          "ece": 0.004244946573369355,
+          "pooled_spearman": 0.5383641623794903,
+          "ndcg@3": 0.717332003955241,
+          "top1_hit_rate": 0.7478991596638656,
+          "mean_regret": 0.18640829694323144,
+          "group_aware_spearman": 0.48266871643423415,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4171592685395845,
+              "brier": 0.029880432458087847,
+              "group_aware_spearman": 0.5836410911522276,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34715011561703224,
+              "brier": 0.023389090002378224,
+              "group_aware_spearman": 0.45497108259718294,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30150145950537943,
+              "brier": 0.021663209341210313,
+              "group_aware_spearman": 0.21298872828836318,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.26472016817145255,
+              "brier": 0.02067544369907842,
+              "group_aware_spearman": 0.4355939596548849,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.2582181992494089,
+              "brier": 0.02027660959216783,
+              "group_aware_spearman": 0.4289617696107516,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0035371952830403034,
+          "brier_calibrated": 0.024052491577335175,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.3446598749471833,
+          "brier": 0.024831607215885974,
+          "ece": 0.009982317598412978,
+          "pooled_spearman": 0.5348039232629009,
+          "ndcg@3": 0.7187252885916784,
+          "top1_hit_rate": 0.7170868347338936,
+          "mean_regret": 0.19036572052401746,
+          "group_aware_spearman": 0.47416523766579416,
+          "n_states_ranked": 458,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.4186529716742611,
+              "brier": 0.030386796864221136,
+              "group_aware_spearman": 0.6001355859929653,
+              "n_states_ranked": 401
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.34884778383170556,
+              "brier": 0.024020191997819327,
+              "group_aware_spearman": 0.44764747369348296,
+              "n_states_ranked": 455
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.30247166413700455,
+              "brier": 0.022144438027441773,
+              "group_aware_spearman": 0.2178030976818981,
+              "n_states_ranked": 424
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.27044135984424206,
+              "brier": 0.022453038023211934,
+              "group_aware_spearman": 0.422830800971669,
+              "n_states_ranked": 318
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.26149528268882843,
+              "brier": 0.021356394785741535,
+              "group_aware_spearman": 0.40665437411858896,
+              "n_states_ranked": 330
+            }
+          },
+          "ece_calibrated": 0.0051738255207309835,
+          "brier_calibrated": 0.0247367319822526,
+          "seed": 20260808
+        }
+      ]
+    },
+    "zero_input_mlp": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.41671381087532045,
+        "std": 3.977889328034868e-06
+      },
+      "test_brier": {
+        "mean": 0.04735136582953968,
+        "std": 9.870053341773563e-07
+      },
+      "test_ece": {
+        "mean": 0.0013610690832138062,
+        "std": 0.00035415151717459376
+      },
+      "test_ece_calibrated": {
+        "mean": 0.001451292634010315,
+        "std": 1.1920928955078126e-08
+      },
+      "test_group_aware_spearman": {
+        "mean": 0.14794193031321956,
+        "std": 0.0
+      },
+      "test_pooled_spearman": {
+        "mean": 0.007134024475105614,
+        "std": 0.0
+      },
+      "test_ndcg@3": {
+        "mean": 0.47408607046917106,
+        "std": 0.0
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.41456582633053224,
+        "std": 0.0
+      },
+      "test_mean_regret": {
+        "mean": 0.359375,
+        "std": 0.0
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 4030
+        },
+        "bank": {
+          "mean": 0.2530742565541231,
+          "std": 0.0,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1832
+        },
+        "combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.4167134004536343,
+          "brier": 0.04735126494801598,
+          "ece": 0.0013700276613235474,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5358962220387266,
+              "brier": 0.07173429127769242,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.41650406907669474,
+              "brier": 0.04568110983285156,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3301277920881484,
+              "brier": 0.02808839337855493,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3239426548041438,
+              "brier": 0.03358391769786945,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31646650867975523,
+              "brier": 0.032696879041662234,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512836933135986,
+          "brier_calibrated": 0.04735149407228175,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.4167163572877218,
+          "brier": 0.04735199838754181,
+          "ece": 0.0016157180070877075,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5360323316055103,
+              "brier": 0.07176805374655706,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4165067920428093,
+              "brier": 0.0456817852605591,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33003401425684764,
+              "brier": 0.02806513142544793,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3238419668500543,
+              "brier": 0.03355894166316829,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3163574682695546,
+              "brier": 0.03266983114923528,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512836933135986,
+          "brier_calibrated": 0.04735149407181914,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.41670966533439774,
+          "brier": 0.04735033679686035,
+          "ece": 0.0009741336107254028,
+          "pooled_spearman": 0.007134024475105614,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": 0.14794193031321956,
+          "n_states_ranked": 1,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5356782605688534,
+              "brier": 0.0716801259815725,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4165007102213317,
+              "brier": 0.045680275186599846,
+              "group_aware_spearman": 0.2530742565541231,
+              "n_states_ranked": 1
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.330279691135338,
+              "brier": 0.028126141695793156,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3241056713880445,
+              "brier": 0.03362442882141875,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31664296333708575,
+              "brier": 0.032740729645444,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512836933135986,
+          "brier_calibrated": 0.047351494071356526,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.41670965519017866,
+          "brier": 0.047350334273073696,
+          "ece": 0.0009728074073791504,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5356775497882803,
+              "brier": 0.07167994914602496,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.416500701308599,
+              "brier": 0.04568027296919544,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3302801899976369,
+              "brier": 0.02812626580805948,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.32410620661066974,
+              "brier": 0.033624561979793584,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31664354250944055,
+              "brier": 0.032740873738099835,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014513134956359863,
+          "brier_calibrated": 0.04735149424482752,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.4167199761106698,
+          "brier": 0.04735289474220656,
+          "ece": 0.0018726587295532227,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5361754344525508,
+              "brier": 0.07180349984838097,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.416510165877575,
+              "brier": 0.04568262093243375,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3299362987690059,
+              "brier": 0.028040927595061996,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.32373701266936683,
+              "brier": 0.03353294483168988,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31624376448106073,
+              "brier": 0.03264166706785552,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512985944747925,
+          "brier_calibrated": 0.04735149415832244,
+          "seed": 20260808
+        }
+      ]
+    },
+    "zero_input_deepsets": {
+      "seeds": [
+        20260804,
+        20260805,
+        20260806,
+        20260807,
+        20260808
+      ],
+      "test_bce": {
+        "mean": 0.4167133164228294,
+        "std": 3.303160781943476e-06
+      },
+      "test_brier": {
+        "mean": 0.047351243376386735,
+        "std": 8.199803273282485e-07
+      },
+      "test_ece": {
+        "mean": 0.001326686143875122,
+        "std": 0.00030886224077903736
+      },
+      "test_ece_calibrated": {
+        "mean": 0.00145130455493927,
+        "std": 7.300048299977714e-09
+      },
+      "test_group_aware_spearman": {
+        "mean": null,
+        "std": null
+      },
+      "test_pooled_spearman": {
+        "mean": null,
+        "std": null
+      },
+      "test_ndcg@3": {
+        "mean": 0.47408607046917106,
+        "std": 0.0
+      },
+      "test_top1_hit_rate": {
+        "mean": 0.41456582633053224,
+        "std": 0.0
+      },
+      "test_mean_regret": {
+        "mean": 0.359375,
+        "std": 0.0
+      },
+      "per_kind_group_aware_spearman": {
+        "direct": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 4030
+        },
+        "bank": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 9526
+        },
+        "double-bank": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1832
+        },
+        "combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1609
+        },
+        "rail-combo": {
+          "mean": NaN,
+          "std": NaN,
+          "n": 1700
+        }
+      },
+      "per_seed": [
+        {
+          "bce": 0.41671288649189386,
+          "brier": 0.04735113735108883,
+          "ece": 0.0013226717710494995,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.535870044085073,
+              "brier": 0.07172779229385004,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.41650360019090304,
+              "brier": 0.04568099342655725,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3301459228633199,
+              "brier": 0.028092894556184796,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3239621174433469,
+              "brier": 0.03358874952636188,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3164875811797682,
+              "brier": 0.032702110536977115,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014513134956359863,
+          "brier_calibrated": 0.04735149424482752,
+          "seed": 20260804
+        },
+        {
+          "bce": 0.4167100661944193,
+          "brier": 0.04735043651241097,
+          "ece": 0.0010240375995635986,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5357056358001966,
+              "brier": 0.07168693568895994,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4165010637047652,
+              "brier": 0.045680363117018744,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33026049527401985,
+              "brier": 0.028121366641932006,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.32408507565891553,
+              "brier": 0.03361930554436932,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3166206755491021,
+              "brier": 0.0327351854614171,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512985944747925,
+          "brier_calibrated": 0.04735149415832244,
+          "seed": 20260805
+        },
+        {
+          "bce": 0.4167172264826103,
+          "brier": 0.04735221380241169,
+          "ece": 0.0016810446977615356,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5360686508954982,
+              "brier": 0.07177705486319526,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.41650759897354667,
+              "brier": 0.045681985244320496,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33000912916928216,
+              "brier": 0.028058964080433364,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.32381524203674644,
+              "brier": 0.033552318373489466,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3163285197289716,
+              "brier": 0.032662656746658206,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512985944747925,
+          "brier_calibrated": 0.04735149415832244,
+          "seed": 20260806
+        },
+        {
+          "bce": 0.41671697576299754,
+          "brier": 0.04735215167416085,
+          "ece": 0.0016624629497528076,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5360583175778934,
+              "brier": 0.07177449426969809,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.41650736596289645,
+              "brier": 0.04568192750434611,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.33001620339691784,
+              "brier": 0.02806071707226825,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3238228395130511,
+              "brier": 0.03355420102621291,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.3163367496703823,
+              "brier": 0.03266469612407586,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014513134956359863,
+          "brier_calibrated": 0.04735149424482752,
+          "seed": 20260807
+        },
+        {
+          "bce": 0.4167094271822257,
+          "brier": 0.04735027754186132,
+          "ece": 0.0009432137012481689,
+          "pooled_spearman": NaN,
+          "ndcg@3": 0.47408607046917106,
+          "top1_hit_rate": 0.41456582633053224,
+          "mean_regret": 0.359375,
+          "group_aware_spearman": NaN,
+          "n_states_ranked": 0,
+          "per_kind": {
+            "direct": {
+              "n": 4030,
+              "bce": 0.5356613213203257,
+              "brier": 0.07167591129978097,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "bank": {
+              "n": 9526,
+              "bce": 0.4165005014036754,
+              "brier": 0.04568022323036905,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "double-bank": {
+              "n": 1832,
+              "bce": 0.3302915862283532,
+              "brier": 0.028129101333150504,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "combo": {
+              "n": 1609,
+              "bce": 0.3241184332046916,
+              "brier": 0.03362760410968458,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            },
+            "rail-combo": {
+              "n": 1700,
+              "bce": 0.31665677278650545,
+              "brier": 0.032744165596914156,
+              "group_aware_spearman": NaN,
+              "n_states_ranked": 0
+            }
+          },
+          "ece_calibrated": 0.0014512985944747925,
+          "brier_calibrated": 0.04735149415832244,
+          "seed": 20260808
+        }
+      ]
+    }
+  },
+  "policy_note": "Test split read once, by this script, using checkpoints and validation-fit Platt parameters frozen beforehand. No selection or tuning happens here."
+}
