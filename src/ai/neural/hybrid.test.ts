@@ -183,7 +183,11 @@ describe("neural hybrid: material influence on real decisions", () => {
       expect(p.classical.trace!.mode).toBe("classical");
       expect(p.classical.trace!.modelId).toBeUndefined();
       expect(p.hybrid.trace!.mode).toBe("neural-hybrid");
-      expect(p.hybrid.trace!.modelId).toContain("showboat-ranker-phase2d");
+      // Derived from manifest.artifact at runtime (brain.ts), not hardcoded --
+      // this assertion tracks whichever model is currently staged in
+      // public/model/ranker/ (currently the Phase 2E Deep Sets ranker; see
+      // docs/repair/product-proof-sprint/showboat-model-research/REPORT.md).
+      expect(p.hybrid.trace!.modelId).toContain("showboat-ranker-phase2e-deepsets");
     }
   });
 });

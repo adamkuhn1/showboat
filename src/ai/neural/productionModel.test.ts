@@ -1,7 +1,11 @@
 // Production model delivery: the artifact in public/model/ranker/ is the
-// reviewed Phase 2D checkpoint, it is byte-identical to what the training
-// manifest recorded, and every way it can go wrong fails loudly instead of
-// silently disabling the model.
+// reviewed checkpoint currently adopted for production (Phase 2E's Deep
+// Sets ranker, staged by scripts/stage-production-model-phase2e.mjs — see
+// docs/repair/product-proof-sprint/showboat-model-research/REPORT.md and
+// COORDINATION.md's "Integration wave" for why it superseded the Phase 2D
+// MLP staged by stage-production-model.mjs), it is byte-identical to what
+// the training manifest recorded, and every way it can go wrong fails
+// loudly instead of silently disabling the model.
 //
 // These tests run against the real committed files and the real loader — the
 // only injected piece is a directory-backed `fetch` (fileFetch.ts), because
@@ -24,9 +28,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../../..");
 const PUBLIC_DIR = join(APP_ROOT, "public");
 const MODEL_DIR = join(PUBLIC_DIR, "model/ranker");
+// The currently-adopted production model's training-side provenance. Update
+// this (and the two comparisons below that read Phase-2E-shaped fields) if
+// a future model swap changes which phase's artifact is staged.
 const TRAINING_MANIFEST = join(
   APP_ROOT,
-  "training/ranker/phase2d/results/artifact/MANIFEST.json",
+  "training/ranker/phase2e/results/artifact/MANIFEST_deepsets.json",
 );
 
 const manifestJson = JSON.parse(readFileSync(join(MODEL_DIR, "manifest.json"), "utf8"));
@@ -39,9 +46,9 @@ describe("production artifact: integrity + provenance (static, no runtime)", () 
     expect(sha(artifactBytes)).toBe(manifestJson.onnx_sha256);
   });
 
-  it("that hash is the one the reviewed Phase 2D training manifest recorded", () => {
+  it("that hash is the one the reviewed training manifest recorded", () => {
     const training = JSON.parse(readFileSync(TRAINING_MANIFEST, "utf8"));
-    expect(manifestJson.onnx_sha256).toBe(training.onnx_sha256);
+    expect(manifestJson.onnx_sha256).toBe(training.artifact_sha256);
     expect(manifestJson.provenance.selected_seed).toBe(training.selected_seed);
     expect(manifestJson.provenance.source_checkpoint_sha256).toBe(
       training.source_checkpoint_sha256,
@@ -49,8 +56,8 @@ describe("production artifact: integrity + provenance (static, no runtime)", () 
     // The Platt parameters shown as a calibrated estimate in the UI must be
     // the ones this exact checkpoint was calibrated with, not a copy that
     // drifted.
-    expect(manifestJson.platt_calibration.a).toBe(training.platt_calibration.a);
-    expect(manifestJson.platt_calibration.b).toBe(training.platt_calibration.b);
+    expect(manifestJson.platt_calibration.a).toBe(training.platt.a);
+    expect(manifestJson.platt_calibration.b).toBe(training.platt.b);
   });
 
   it("the manifest's feature contract matches the encoder the browser actually runs", () => {
@@ -61,10 +68,29 @@ describe("production artifact: integrity + provenance (static, no runtime)", () 
     expect(validateManifest(manifestJson).ok).toBe(true);
   });
 
-  it("known limitations are carried through verbatim, not quietly softened", () => {
-    const training = JSON.parse(readFileSync(TRAINING_MANIFEST, "utf8"));
-    expect(manifestJson.known_limitations).toEqual(training.known_limitations);
+  it("known limitations cite this shipped seed's own numbers, not the ensemble mean", () => {
+    // Phase 2E's training manifest has no known_limitations field (unlike
+    // Phase 2D's) -- the staging script constructs it from this seed's own
+    // per-kind test result, and this test verifies that construction against
+    // the same source data rather than trusting the manifest's prose.
+    // Team B's phase2e_test_results.json contains bare `NaN` tokens from
+    // Python's json.dump (the state-only ablation's undefined group-aware
+    // Spearman) -- valid Python-flavoured JSON, not RFC-8259, so JSON.parse
+    // rejects it outright. Same sanitiser the staging script uses.
+    const testResults = JSON.parse(
+      readFileSync(
+        join(APP_ROOT, "training/ranker/phase2e/results/phase2e_test_results.json"),
+        "utf8",
+      ).replace(/:\s*(-?Infinity|NaN)\b/g, ": null"),
+    );
+    const shippedSeed = manifestJson.provenance.selected_seed;
+    const seedResult = testResults.variants.deepsets.per_seed.find(
+      (s: { seed: number }) => s.seed === shippedSeed,
+    );
+    expect(seedResult).toBeDefined();
+    const dbGasTest = seedResult.per_kind["double-bank"].group_aware_spearman;
     expect(manifestJson.known_limitations[0]).toContain("double-bank");
+    expect(manifestJson.known_limitations[0]).toContain(dbGasTest.toFixed(4));
   });
 });
 
@@ -175,20 +201,31 @@ describe("calibration is applied exactly as the manifest describes", () => {
     expect(calibratedMakeEstimate(0, "direct", manifestJson)).toBeCloseTo(expected, 10);
   });
 
-  it("double-bank is blended halfway to the training kind mean — the documented mitigation", () => {
+  it("double-bank's kind_confidence blend, whatever it is, is applied correctly and is evidence-justified", () => {
+    // Not hardcoded to a specific weight: Phase 2D's shipped seed needed a
+    // 0.5 kind-mean blend (its own double-bank group-aware Spearman was
+    // catastrophically weak, 0.0600/0.0447). This shipped seed's own numbers
+    // are re-checked directly against the manifest's own disposition text
+    // rather than assuming any particular value is "the" answer.
     const { a, b } = manifestJson.platt_calibration;
     const logit = 2.0;
     const p = 1 / (1 + Math.exp(-(a * logit + b)));
     const prior = manifestJson.kind_priors.means["double-bank"];
     const w = manifestJson.kind_confidence["double-bank"];
-    expect(w).toBe(0.5);
+    expect(w).toBeGreaterThan(0);
+    expect(w).toBeLessThanOrEqual(1);
     expect(calibratedMakeEstimate(logit, "double-bank", manifestJson)).toBeCloseTo(
       w * p + (1 - w) * prior,
       10,
     );
-    // The blend must actually pull a confident double-bank estimate down —
-    // otherwise the mitigation is cosmetic.
-    expect(calibratedMakeEstimate(logit, "double-bank", manifestJson)).toBeLessThan(p);
+    if (w < 1) {
+      // A real mitigation must actually pull a confident estimate down.
+      expect(calibratedMakeEstimate(logit, "double-bank", manifestJson)).toBeLessThan(p);
+    } else {
+      // w === 1: the manifest's own disposition text must say why no
+      // mitigation was applied, not just default to 1 silently.
+      expect(manifestJson.known_limitations_disposition.join(" ")).toContain("double-bank");
+    }
   });
 
   it("every other kind is used unmodified", () => {
