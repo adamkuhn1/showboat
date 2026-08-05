@@ -8,43 +8,48 @@ import {
 // The reasoning overlay.
 //
 // Rule for this file, enforced by review and by `overlayTruthfulness.test.ts`:
-// every number and label rendered here is read straight off the `SearchResult`
-// the AI actually decided with. There is no derived-for-display quantity, no
+// everything rendered here is read straight off the `SearchResult` the AI
+// actually decided with. There is no derived-for-display quantity, no
 // animation that implies work happening after the search already finished, and
 // no vocabulary the algorithm doesn't earn:
 //
 //   - not "MCTS": the search is a flat UCB bandit over candidates, so it says
 //     "physics search".
-//   - not "win probability": nothing here predicts game outcomes. `strength`
-//     is a bounded monotonic transform of the physics rollout value and is
-//     shown as a plain decimal.
-//   - not "AI confidence": the model's output IS a calibrated probability of a
-//     legal pot under execution noise (ECE measured pre/post-Platt on val AND
-//     test — see the manifest's calibration_evidence), so it is labelled
-//     exactly that, "make est.", and nothing more.
-//   - no fabricated natural-language reasoning. The one sentence at the bottom
-//     is `trace.selectionReason`, emitted by the selection function itself.
+//   - not "win probability" and not "AI confidence": nothing here predicts
+//     game outcomes, so nothing here claims to.
+//   - no fabricated natural-language reasoning. The last line is
+//     `trace.selectionReason`, emitted by the selection function itself.
+//
+// It is also, deliberately, three sentences long. It used to be a ranked table
+// of eight candidates carrying a model-internal enumeration index, two
+// unlabelled decimals set flush together, per-row bars several of which
+// rendered empty, five saturated hues, and raw pocket enum keys. Every number
+// in it was true and none of it was legible. What survives is the part a
+// player can actually use: that there were alternatives, which shot is being
+// played, and why that one.
 // ---------------------------------------------------------------------------
 
-const isTrickShot = (s: CandidateStat): boolean =>
-  s.candidate.banks >= 2 || s.candidate.kind === "combo" || s.candidate.kind === "rail-combo";
-
 const KIND_LABEL: Record<string, string> = {
-  direct: "direct",
+  direct: "direct pot",
   bank: "bank",
-  "double-bank": "2-rail",
-  combo: "combo",
-  "rail-combo": "rail+combo",
+  "double-bank": "two-rail bank",
+  combo: "combination",
+  "rail-combo": "rail combination",
 };
 
-const POCKET_SHORT: Record<string, string> = {
-  bl: "BL", tl: "TL", br: "BR", tr: "TR", sb: "SB", st: "ST",
+const POCKET_NAME: Record<string, string> = {
+  bl: "bottom-left",
+  tl: "top-left",
+  br: "bottom-right",
+  tr: "top-right",
+  sb: "bottom-side",
+  st: "top-side",
 };
 
 export const SELECTION_TEXT: Record<string, string> = {
-  "trick-qualified": `trick cleared the ${TRICK_RELIABILITY_THRESHOLD.toFixed(2)} reliability bar`,
-  "no-trick-qualified": "no trick cleared the reliability bar — best verified pot",
-  "no-verified-pot": "nothing potted in simulation — best available",
+  "trick-qualified": `the trick cleared the ${TRICK_RELIABILITY_THRESHOLD.toFixed(2)} reliability bar`,
+  "no-trick-qualified": "no trick cleared the reliability bar, so this is the best verified pot",
+  "no-verified-pot": "nothing potted in simulation, so this is the best available",
   none: "no candidate survived physics verification",
 };
 
@@ -55,6 +60,13 @@ export interface ModelBadge {
   fallbackReason?: string;
   /** Whether the artifact's sha256 was verified against the manifest. */
   hashVerified?: boolean;
+}
+
+/** "a bank on the 3, into the top-side pocket" — no key required to read it. */
+function describeCandidate(c: CandidateStat["candidate"]): string {
+  const kind = KIND_LABEL[c.kind] ?? c.kind;
+  const pocket = POCKET_NAME[c.pocket] ?? c.pocket;
+  return `a ${kind} on the ${c.target}, into the ${pocket} pocket`;
 }
 
 export function OverlayPanel({
@@ -74,7 +86,7 @@ export function OverlayPanel({
   // mode is only used before there is a decision to describe.
   const mode = trace?.mode ?? badge.mode;
   const usedNeural = mode === "neural-hybrid" && !trace?.fallbackReason;
-  const title = usedNeural ? "Neural evaluator + physics search" : "Physics search";
+  const title = usedNeural ? "Neural evaluator and physics search" : "Physics search";
 
   if (!result || result.stats.length === 0) {
     // Reachable in real play only when a search actually ran and found
@@ -83,103 +95,48 @@ export function OverlayPanel({
     // is no "nothing has happened yet" placeholder to write here.
     return (
       <aside className="overlay">
-        <div className="overlay-header">
-          <span className="overlay-title">{title}</span>
-        </div>
+        <p className="overlay-title">{title}</p>
         <p className="overlay-empty">
           {searching ? "searching…" : trace?.fallbackReason ?? "no shot to evaluate this turn"}
         </p>
         {badge.fallbackReason && (
-          <p className="overlay-warn">classical fallback — {badge.fallbackReason}</p>
+          <p className="overlay-warn">classical fallback: {badge.fallbackReason}</p>
         )}
       </aside>
     );
   }
 
-  const top = result.stats.slice(0, 8);
   const best = result.best;
-  const maxVisits = Math.max(1, ...top.map((s) => s.visits));
+  const considered = result.stats.length;
 
   return (
     <aside className="overlay" style={stale ? { opacity: 0.45 } : undefined}>
-      <div className="overlay-header">
-        <span className="overlay-title">{title}</span>
-        {stale && <span className="overlay-meta">prev. turn</span>}
-      </div>
+      <p className="overlay-title">
+        {title}
+        {stale && <span className="overlay-meta">last turn</span>}
+      </p>
 
-      {/* The raw search counters that used to live here (candidates
-          generated, physics-verified, scratched in sim, physics calls
-          spent) were process telemetry, not a shot's worth of reasoning —
-          they pushed the actually-interesting ranked list below the fold.
-          A model-load failure is still surfaced honestly, just as a plain
-          warning line rather than a numbered "stage". */}
       {trace?.fallbackReason && !usedNeural && (
-        <p className="overlay-warn">classical fallback — {trace.fallbackReason}</p>
+        <p className="overlay-warn">classical fallback: {trace.fallbackReason}</p>
       )}
 
-      <div className="cand-list">
-        <div className="cand-head">
-          <span>shot</span>
-          <span>{usedNeural ? "make est. · strength" : "strength"}</span>
-        </div>
-        {top.map((s, i) => {
-          const isBest = s === best;
-          const strengthPct = Math.round(s.strength * 100);
-          const kind = KIND_LABEL[s.candidate.kind] ?? s.candidate.kind;
-          const pocket = POCKET_SHORT[s.candidate.pocket] ?? s.candidate.pocket;
-          const isTrick = isTrickShot(s);
-          const visitShare = s.visits / maxVisits;
+      {/* What the panel says, and all it says: that alternatives existed, which
+          one is being played, and why that one. The ranked table that used to
+          sit here printed a model-internal enumeration index beside an already
+          sorted list and two unlabelled decimals flush together; it was a
+          scoreboard nobody could read. The alternatives themselves are already
+          drawn on the felt as dashed lines, which is the legible version of
+          the same fact. */}
+      <p className="overlay-line">
+        {considered === 1
+          ? "One shot survived physics verification this turn."
+          : `${considered} shots survived physics verification this turn.`}
+      </p>
 
-          return (
-            <div key={i} className={`cand-row ${isBest ? "cand-chosen" : ""}`}>
-              <div className="cand-shot">
-                <span className={`cand-kind kind-${s.candidate.kind.replace("-", "")}`}>
-                  {kind}·{s.candidate.target}
-                </span>
-                <span className="cand-pocket">{pocket}</span>
-                {isTrick && <span className="cand-star">★</span>}
-                {s.priorRank !== undefined && (
-                  <span className="cand-rank" title="rank the learned model gave this candidate">
-                    #{s.priorRank}
-                  </span>
-                )}
-              </div>
-              <div className="cand-bar-wrap">
-                <div
-                  className="cand-bar"
-                  style={{ width: `${strengthPct}%`, opacity: 0.5 + visitShare * 0.5 }}
-                />
-                <span className="cand-score">
-                  {s.priorScore !== undefined && (
-                    <span className="cand-prior" title="model's calibrated legal-pot estimate">
-                      {s.priorScore.toFixed(2)}
-                    </span>
-                  )}
-                  {s.strength.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {best && (
-        <div className="chosen-callout">
-          <span className="chosen-label">playing</span>
-          <span className={`chosen-kind kind-${best.candidate.kind.replace("-", "")}`}>
-            {KIND_LABEL[best.candidate.kind] ?? best.candidate.kind}·{best.candidate.target}
-          </span>
-          <span className="chosen-arrow">→</span>
-          <span className="chosen-pocket">
-            {POCKET_SHORT[best.candidate.pocket] ?? best.candidate.pocket}
-          </span>
-          {isTrickShot(best) && <span className="cand-star">★</span>}
-          <span className="chosen-score">strength {best.strength.toFixed(2)}</span>
-        </div>
-      )}
+      {best && <p className="overlay-line chosen-why">Playing {describeCandidate(best.candidate)}.</p>}
 
       {trace?.selectionReason && (
-        <p className="chosen-why">{SELECTION_TEXT[trace.selectionReason]}</p>
+        <p className="overlay-line overlay-reason">{SELECTION_TEXT[trace.selectionReason]}</p>
       )}
     </aside>
   );

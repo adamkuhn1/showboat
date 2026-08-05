@@ -81,7 +81,6 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     const text = textOf(markup);
     expect(text).toContain("Physics search");
     expect(text).not.toContain("Neural");
-    expect(text).not.toContain("make est.");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 
@@ -124,15 +123,51 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     expect(text).not.toContain("pruned before physics");
   });
 
-  it("candidate scores rendered match the stats to the displayed precision", () => {
+  it("the ranked candidate table is gone, and nothing numeric replaced it", () => {
+    // The panel used to print, per candidate, a model-internal enumeration
+    // index (`#6` beside an already-sorted list), a calibrated prior and a
+    // physics strength as two bare decimals set flush together, and a bar.
+    // Every value was real; none of it was legible without a key. The one
+    // number left is the count of candidates that survived verification,
+    // which is a sentence.
     const text = textOf(
       renderToStaticMarkup(
         <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
       ),
     );
+    expect(text).not.toContain("make est.");
+    expect(text).not.toMatch(/#\d/);
     for (const s of classical.stats.slice(0, 8)) {
-      expect(text).toContain(s.strength.toFixed(2));
+      if (s.priorScore !== undefined) expect(text).not.toContain(s.priorScore.toFixed(2));
     }
+    // Every number left in the panel is inside a sentence and is one of
+    // exactly three things: how many candidates survived, which ball is being
+    // played, and the reliability bar named in the selection reason. No bare
+    // decimal, no rank, no bar.
+    const allowed = new Set(
+      [
+        String(classical.stats.length),
+        String(classical.best!.candidate.target),
+        "0.50",
+      ],
+    );
+    const numbers = text.match(/\d+(\.\d+)?/g) ?? [];
+    expect(numbers.length).toBeLessThanOrEqual(3);
+    for (const n of numbers) expect(allowed).toContain(n);
+  });
+
+  it("the chosen shot is named in words a player can read without a key", () => {
+    const text = textOf(
+      renderToStaticMarkup(
+        <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
+      ),
+    );
+    const best = classical.best!;
+    // Kind and pocket come from the readable tables, not the raw enum keys
+    // (`BL` / `SB` / `ST`) the panel used to print.
+    expect(text).toContain(`on the ${best.candidate.target}`);
+    expect(text).toMatch(/into the (bottom|top)-(left|right|side) pocket/);
+    expect(text).not.toMatch(/\bBL\b|\bSB\b|\bST\b|\bTR\b|\bTL\b|\bBR\b/);
   });
 
   it("neural mode adds only fields the prior really supplied", () => {
@@ -141,16 +176,14 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
         <OverlayPanel result={hybridLike} searching={false} badge={{ mode: "neural-hybrid", hashVerified: true }} />,
       ),
     );
-    expect(text).toContain("Neural evaluator + physics search");
-    expect(text).toContain("make est.");
-    // Per-candidate model output (the prior's calibrated legal-pot estimate
-    // and the rank it gave the candidate before physics ran) is real,
-    // per-shot decision data and stays. The trace-level process counters
-    // (candidates scored, ms spent, pruned count, artifact id) do not — see
-    // "the deleted raw search counters do not reappear in the panel".
+    expect(text).toContain("Neural evaluator and physics search");
+    // Neural mode changes the panel's title, because the title names what
+    // decided. It adds no per-candidate readout: the prior's calibrated
+    // estimates are real decision data, but printed eight-to-a-panel as bare
+    // decimals they were a scoreboard, not reasoning.
     const withPrior = hybridLike.stats.slice(0, 8).filter((s) => s.priorScore !== undefined);
     expect(withPrior.length).toBeGreaterThan(0);
-    for (const s of withPrior) expect(text).toContain(s.priorScore!.toFixed(2));
+    for (const s of withPrior) expect(text).not.toContain(s.priorScore!.toFixed(2));
     expect(text).not.toContain("showboat-ranker-phase2d");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
@@ -184,7 +217,7 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     );
     const reason = classical.trace!.selectionReason!;
     const expected: Record<string, string> = {
-      "trick-qualified": "trick cleared the 0.50 reliability bar",
+      "trick-qualified": "the trick cleared the 0.50 reliability bar",
       "no-trick-qualified": "no trick cleared the reliability bar",
       "no-verified-pot": "nothing potted in simulation",
       none: "no candidate survived physics verification",

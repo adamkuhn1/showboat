@@ -19,13 +19,13 @@
 html, body, #root { height: 100%; margin: 0; }
 
 body {
-  /* Serif is the suite's voice. No webfont is loaded here (that would be a
-     new dependency this sprint doesn't take on) — this stack falls through
-     to whatever Garamond-family or system serif the browser has, the same
-     tail as the shell's --serif token. Mono survives only on the small
-     labelled roles below (the constitution's "Label" recipe): section /
-     eyebrow text and stat headers, never the whole application. */
-  font-family: Garamond, "Cormorant Garamond", "EB Garamond", Georgia, "Times New Roman", serif;
+  /* Byte-identical to the shell's --serif (apps/portfolio/src/index.css), and
+     the face is actually shipped — see src/main.tsx. The old stack led with
+     bare `Garamond`, loaded no webfont, and so resolved to Georgia, which is
+     why the embedded game rendered in a different family from the page
+     hosting it on every glyph. Mono survives only on the two roles the
+     constitution allows: a section label, and something you click. */
+  font-family: "EB Garamond", "Cormorant Garamond", Garamond, "Times New Roman", serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -65,11 +65,9 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* A sentence about what you are playing, so it is set as one. */
 .tag {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: 0.95rem;
   color: var(--muted);
   margin: 0;
 }
@@ -194,11 +192,8 @@ h1::after {
   display: flex;
   flex-direction: column;
   gap: 0.28rem;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.72rem;
+  font-size: 0.9rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
 }
 
 .controls label span { color: var(--text); font-weight: 600; }
@@ -246,16 +241,14 @@ button.secondary {
 }
 button.secondary:hover:not(:disabled) { border-color: var(--text); }
 
+/* `.controls label` is a column; this one is a row. The !important overrides
+   that used to undo a monospace-uppercase inheritance here are gone with the
+   recipe itself. */
 .toggle {
-  display: inline-flex !important;
-  flex-direction: row !important;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.32rem;
-  font-family: inherit !important;
-  text-transform: none !important;
-  letter-spacing: normal !important;
-  color: var(--muted) !important;
-  font-size: 0.80rem !important;
   cursor: pointer;
 }
 
@@ -274,7 +267,6 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
 .overlay {
   flex: 0 1 288px;
   min-width: 230px;
-  min-height: 180px;
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 0.85rem 1rem 0.9rem;
@@ -283,188 +275,53 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   transition: opacity 0.35s ease;
 }
 
-.overlay-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.65rem;
+/* The panel's own name, not a system title bar: prose, sentence case, at
+   reading size. It used to be monospace uppercase tracked at 0.10em, which is
+   the label recipe the constitution reserves for section headings. */
+.overlay-title {
+  margin: 0 0 0.6rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--border);
-}
-
-.overlay-title {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.78rem;
-  font-weight: 650;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.10em;
+  font-size: 0.92rem;
+  color: var(--text);
 }
 
 .overlay-meta {
-  font-size: 0.68rem;
+  font-size: 0.8rem;
   color: var(--muted);
-  margin-left: auto;
+  margin-left: 0.5rem;
 }
 
 .overlay-empty {
-  font-size: 0.76rem;
+  font-size: 0.9rem;
   color: var(--muted);
   margin: 0;
   line-height: 1.5;
 }
 
 .overlay-warn {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   color: #d9a441;
   margin: 0.5rem 0 0;
   line-height: 1.45;
 }
 
-/* Candidate rows */
-.cand-head {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.6rem;
+.overlay-line {
+  margin: 0.45rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0 0.35rem 0.2rem;
 }
 
-.cand-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.32rem;
-}
-
-.cand-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.14rem;
-  padding: 0.3rem 0.35rem;
-}
-
-/* The one accent event this panel gets: the row the physics/model actually
-   picked, marked with a rule (never a fill) on its left edge. */
-.cand-chosen {
-  border-left: 2px solid var(--accent);
-  padding-left: calc(0.35rem - 2px);
-}
-
-.cand-shot {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  font-size: 0.74rem;
-}
-
-.cand-kind {
-  font-weight: 600;
-}
-
-.kind-direct      { color: #8cc8ff; }
-.kind-bank        { color: #e8a84a; }
-.kind-doublebank  { color: #ff8888; }
-.kind-combo       { color: #bf8fff; }
-.kind-railcombo   { color: #ffd166; }
-
-.cand-pocket {
-  color: var(--muted);
-  font-size: 0.68rem;
-}
-
-.cand-star {
-  color: #ffb830;
-  font-size: 0.68rem;
-}
-
-/* The rank the learned model gave this candidate before any physics ran. */
-.cand-rank {
-  margin-left: auto;
-  font-size: 0.62rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The model's calibrated legal-pot estimate, shown next to (never instead of)
-   the physics-derived strength. */
-.cand-prior {
-  color: var(--muted);
-  margin-right: 0.35rem;
-}
-
-/* Candidate strength bar — a relative, uncalibrated score, not a probability */
-.cand-bar-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  height: 5px;
-  position: relative;
-}
-
-.cand-bar {
-  height: 100%;
-  background: var(--muted);
-  min-width: 2px;
-  max-width: 100%;
-  transition: width 0.2s ease;
-}
-
-.cand-score {
-  font-size: 0.64rem;
-  color: var(--muted);
-  min-width: 2.5ch;
-  line-height: 1;
-}
-
-/* Chosen callout */
-.chosen-callout {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.7rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--border);
-  font-size: 0.72rem;
-  flex-wrap: wrap;
-}
-
-.chosen-label {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  font-size: 0.65rem;
-}
-
-.chosen-kind { font-weight: 650; }
-
-.chosen-arrow { color: var(--muted); }
-
-.chosen-pocket {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.chosen-score {
-  margin-left: auto;
-  font-weight: 650;
-  color: var(--text);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The one sentence of prose in the panel. It is not generated text: it is a
-   direct lookup of `trace.selectionReason`, which the selection function
-   itself emits, so it can never describe a different decision than the one
-   that was made. */
+/* The one line the panel exists for: what is being played. */
 .chosen-why {
-  margin: 0.35rem 0 0;
-  font-size: 0.68rem;
-  color: var(--muted);
-  line-height: 1.45;
+  color: var(--text);
+}
+
+.overlay-reason {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.6rem;
 }
 
 /* ── Win / loss screen ───────────────────────────────────────────── */
@@ -495,10 +352,7 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
 
 .win-eyebrow {
   margin: 0;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.70rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-size: 0.9rem;
   color: var(--muted);
 }
 
