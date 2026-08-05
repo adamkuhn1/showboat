@@ -31,6 +31,7 @@
     "eval:gate": "tsx eval/gateReport.ts"
   },
   "dependencies": {
+    "@fontsource/eb-garamond": "^5.3.0",
     "onnxruntime-web": "^1.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
