@@ -268,7 +268,7 @@ export default function App() {
       if (o.gameOver) {
         msg = `${playerName(o.winner ?? 0)} win${o.winner === 0 && ai ? "" : "s"}!${o.foul ? ` (${o.foulReason})` : ""}`;
       } else if (o.foul) {
-        msg = `foul — ${o.foulReason}. ball in hand.`;
+        msg = `foul, ${o.foulReason}. ball in hand.`;
       } else if (o.assignedGroups) {
         msg = trace;
       } else if (o.turnPasses) {
@@ -417,7 +417,7 @@ export default function App() {
     const cx = Math.max(-hx, Math.min(hx, wx));
     const cy = Math.max(-hy, Math.min(hy, wy));
     setState(placeCueBall(state, cx, cy));
-    setMessage("placed — shoot when ready");
+    setMessage("placed · shoot when ready");
   };
 
   const shoot = () => {
@@ -451,7 +451,7 @@ export default function App() {
     setSearch(null);
     setLastSearch(null);
     setPhase("aiming");
-    setMessage("new game — break to start");
+    setMessage("new game · break to start");
   };
 
   const grp = state.groups[state.turn];
