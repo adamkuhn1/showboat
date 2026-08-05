@@ -27,8 +27,10 @@ import {
   isLegalPot,
   defaultConfig,
   DEFAULT_PRIOR_KEEP_TOP,
+  DEFAULT_PRIOR_RESERVE,
   type SearchResult,
   type SearchConfig,
+  type SelectionReason,
 } from "../src/ai/shotSearch";
 import { legalTargets } from "../src/ai/turn";
 import { NeuralCandidateEvaluator } from "../src/ai/neural/evaluator";
@@ -196,6 +198,17 @@ export interface DecisionRecord {
   recallHits: number;
   recallTotal: number;
   recallByKind: Record<string, { hits: number; total: number }>;
+  // --- direct-fallback preservation (the search-policy repair's target) ---
+  /** Oracle-potting `direct` candidates that existed at all in this state. */
+  pottingDirects: number;
+  /** Of those, how many the agent actually spent a physics simulation on. */
+  verifiedPottingDirects: number;
+  /** Any `direct` candidate at all (potting or not) that reached physics. */
+  verifiedDirects: number;
+  /** Candidates the kind reserve rescued from pruning. 0 in classical mode. */
+  reservePromotions: number;
+  /** Which branch of the selection rule fired. */
+  selectionReason: SelectionReason | null;
 }
 
 /**
@@ -242,6 +255,7 @@ export async function runDecision(
   oracleEntries: OracleEntry[],
   keepTop = DEFAULT_PRIOR_KEEP_TOP,
   perKindFloor = 0,
+  reserve: Partial<Record<CandidateKind, number>> | undefined = DEFAULT_PRIOR_RESERVE,
 ): Promise<DecisionRecord> {
   const candidates = generateCandidates(fixture.balls, table, fixture.targets);
   const t0 = performance.now();
@@ -262,6 +276,7 @@ export async function runDecision(
       prior: {
         scores: applyPerKindFloor(scored.scores, candidates, perKindFloor),
         keepTop,
+        reserve,
         source: manifest.artifact,
         inferenceMs: scored.inferenceMs,
       },
@@ -334,6 +349,12 @@ export async function runDecision(
     recallHits,
     recallTotal: potting.length,
     recallByKind,
+    pottingDirects: potting.filter((o) => o.kind === "direct").length,
+    verifiedPottingDirects: potting.filter((o) => o.kind === "direct" && verifiedIdx.has(o.index))
+      .length,
+    verifiedDirects: [...verifiedIdx].filter((i) => candidates[i]?.kind === "direct").length,
+    reservePromotions: result.trace?.reservePromotions ?? 0,
+    selectionReason: result.trace?.selectionReason ?? null,
   };
 }
 
@@ -365,6 +386,7 @@ export async function playGame(
   config: SearchConfig,
   maxShots = 90,
   perKindFloor = 0,
+  reserve: Partial<Record<CandidateKind, number>> | undefined = DEFAULT_PRIOR_RESERVE,
 ): Promise<GameRecord> {
   const rng = mulberry32(seed);
   const { state: initial } = makeGame();
@@ -417,6 +439,7 @@ export async function playGame(
           ? {
               scores: applyPerKindFloor(scored.scores, candidates, perKindFloor),
               keepTop: DEFAULT_PRIOR_KEEP_TOP,
+              reserve,
               source: manifest.artifact,
             }
           : undefined,
@@ -465,6 +488,54 @@ export function pairedDiff(a: number[], b: number[]): { diff: number; ci: [numbe
   const sd = Math.sqrt(d.reduce((s, x) => s + (x - m) ** 2, 0) / (d.length - 1));
   const se = sd / Math.sqrt(d.length);
   return { diff: m, ci: [m - 1.96 * se, m + 1.96 * se], n: d.length };
+}
+
+const lnGamma = (z: number): number => {
+  // Lanczos approximation, g=7, n=9. Accurate to ~1e-13 for the range used here.
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+    1.5056327351493116e-7,
+  ];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
+  z -= 1;
+  let x = c[0];
+  for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+  const t = z + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+};
+
+const lnChoose = (n: number, k: number): number =>
+  lnGamma(n + 1) - lnGamma(k + 1) - lnGamma(n - k + 1);
+
+/**
+ * Exact McNemar test on paired binary outcomes (`a` = hybrid, `b` = classical).
+ *
+ * Reported alongside the normal-approximation CI because for a rate near 0.9 at
+ * n=210 the two can disagree at the margin, and the discordant-pair counts are
+ * the transparent version of the same evidence: concordant pairs carry no
+ * information about a difference, so only `aOnly`/`bOnly` do.
+ *
+ * Two-sided exact binomial p-value under H0: a discordant pair is equally
+ * likely to fall either way.
+ */
+export function mcnemarExact(
+  a: number[],
+  b: number[],
+): { aOnly: number; bOnly: number; nDiscordant: number; p: number } {
+  let aOnly = 0;
+  let bOnly = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] > b[i]) aOnly++;
+    else if (a[i] < b[i]) bOnly++;
+  }
+  const n = aOnly + bOnly;
+  if (n === 0) return { aOnly, bOnly, nDiscordant: 0, p: 1 };
+  const k = Math.min(aOnly, bOnly);
+  let tail = 0;
+  for (let i = 0; i <= k; i++) tail += Math.exp(lnChoose(n, i) + n * Math.log(0.5));
+  return { aOnly, bOnly, nDiscordant: n, p: Math.min(1, 2 * tail) };
 }
 
 export const median = (xs: number[]): number => {

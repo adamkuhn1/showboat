@@ -7,6 +7,7 @@ import {
   defaultConfig,
   searchCandidates,
   DEFAULT_PRIOR_KEEP_TOP,
+  DEFAULT_PRIOR_RESERVE,
 } from "./shotSearch";
 import { generateCandidates } from "./candidates";
 import { legalTargets } from "./turn";
@@ -54,6 +55,7 @@ const emptyResult = (mode: DecisionTrace["mode"], reason: string): SearchResult 
     legalPots: 0,
     scratched: 0,
     physicsCalls: 0,
+    reservePromotions: 0,
     fallbackReason: reason,
   },
 });
@@ -77,6 +79,7 @@ export const classicalBrain = (): Brain => ({
 export const neuralHybridBrain = (
   evaluator: NeuralCandidateEvaluator = neuralEvaluator,
   keepTop: number = DEFAULT_PRIOR_KEEP_TOP,
+  reserve = DEFAULT_PRIOR_RESERVE,
 ): Brain => ({
   kind: "neural-hybrid",
   label: "Neural evaluator + physics search",
@@ -114,6 +117,7 @@ export const neuralHybridBrain = (
       prior: {
         scores: scored.scores,
         keepTop,
+        reserve,
         source: manifest.artifact.replace(/\.onnx$/, ""),
         inferenceMs: scored.inferenceMs,
       },
