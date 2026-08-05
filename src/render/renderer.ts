@@ -142,13 +142,9 @@ export const drawTable = (
     ctx.beginPath();
     ctx.arc(px, py, pr + 1, 0, Math.PI * 2);
     ctx.stroke();
-
-    // Pocket ID label centered in the void — matches search panel abbreviations
-    ctx.fillStyle = "rgba(255,255,255,0.22)";
-    ctx.font = `bold ${Math.round(pr * 0.72)}px ui-monospace, monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(p.id.toUpperCase(), px, py);
+    // No pocket-id label here on purpose — a real table doesn't print BL/TR/
+    // etc. into its pockets. The reasoning panel still names the target
+    // pocket in its own (secondary, non-table) text.
   }
 };
 

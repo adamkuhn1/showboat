@@ -11,7 +11,7 @@ import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { legalTargets } from "./ai/turn";
-import { getBrain, brainLabel } from "./ai/brain";
+import { getBrain } from "./ai/brain";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import type { SearchResult } from "./ai/shotSearch";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
@@ -479,8 +479,14 @@ export default function App() {
     <main className="shell">
       <header className="topbar">
         <h1>Showboat</h1>
+        {/* Introduces the opponent by what it does, not what it's built from —
+            "physics-search opponent" / "neural + physics opponent" named an
+            implementation. Which mode is actually running is still stated
+            accurately, just not here: the "neural ranking" toggle below and
+            the reasoning panel's own title (OverlayPanel.tsx, derived from
+            the search's real trace) are the honest, mode-specific readouts. */}
         <p className="tag">
-          eight-ball · {vsAI ? `you vs ${brainLabel(useNeural)}` : "two player"}
+          eight-ball · {vsAI ? "you vs an opponent that goes looking for the bank shot" : "two player"}
         </p>
       </header>
 
@@ -580,7 +586,7 @@ export default function App() {
             className="toggle"
             title={
               modelAvailable
-                ? "On by default. The trained Phase 2E relational ranker orders and prunes candidates before the same physics search, at the same physics budget — physics still verifies every shot. Default since a corrected decision gate, frozen before this evaluation ran, passed every measurable criterion on 400 fresh held-out fixtures: shot quality is non-inferior (legal-pot -0.25pp, CI -2.27 to +1.77) and multi-wall-combo shots (double-bank/combo/rail-combo) rise 8.8%→25.5% of decisions (+16.75pp, CI excludes zero). Uncheck to compare against the classical physics-only search."
+                ? "Ranks candidate shots with a trained model, then verifies them with the same physics search either way; turn it off to compare against physics search alone."
                 : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
             }
           >

@@ -85,27 +85,43 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 
-  it("every stage number rendered is a number the search actually produced", () => {
+  it("the trace's own counts stay internally consistent, even though the panel no longer prints them", () => {
+    // The raw search counters (candidates generated / physics-verified /
+    // scratched in sim / physics calls spent) were deleted from the panel —
+    // they're process telemetry that pushed the actually-interesting ranked
+    // list below the fold — but the underlying trace data they came from is
+    // untouched, and is still the thing the rendered candidate list must
+    // agree with. This test now checks the data model directly rather than
+    // the markup, since the markup is where those fields used to be.
     const t = classical.trace!;
+    expect(t.physicsVerified).toBe(t.verifiedIndices.length);
+    // `legalPots` counts pots among ALL verified candidates, which can exceed
+    // the pots visible in `stats`: a candidate can be simulated (and pot) and
+    // then be dropped for `visits === 0` when the budget ran out before its
+    // rollout, so >= is the correct relationship here.
+    expect(t.legalPots).toBeGreaterThanOrEqual(
+      classical.stats.filter((s) => s.potsTarget).length,
+    );
+  });
+
+  it("the deleted raw search counters do not reappear in the panel", () => {
+    // Regression guard for the DELETE_LIST item (D4): these four numbers, and
+    // the neural-mode-only "learned ranking" / "pruned before physics" rows
+    // that used to sit alongside them, are gone. The reasoning that's left —
+    // mode, per-candidate strength/rank, the chosen shot, the selection
+    // sentence — is exactly what's asserted as present in the other tests
+    // in this file.
     const text = textOf(
       renderToStaticMarkup(
         <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
       ),
     );
-    expect(text).toContain(`candidates generated ${t.candidatesGenerated}`);
-    expect(text).toContain(`scratched in sim ${t.scratched}`);
-    expect(text).toContain(`physics calls spent ${t.physicsCalls}`);
-    expect(text).toContain(`physics-verified ${t.physicsVerified}`);
-    // And the trace's own counts are internally consistent with the stats list.
-    expect(t.physicsVerified).toBe(t.verifiedIndices.length);
-    // `legalPots` counts pots among ALL verified candidates, which can exceed
-    // the pots visible in `stats`: a candidate can be simulated (and pot) and
-    // then be dropped for `visits === 0` when the budget ran out before its
-    // rollout. The trace line reads "physics-verified N · M legal pots", which
-    // is exactly that quantity, so >= is the correct relationship here.
-    expect(t.legalPots).toBeGreaterThanOrEqual(
-      classical.stats.filter((s) => s.potsTarget).length,
-    );
+    expect(text).not.toContain("candidates generated");
+    expect(text).not.toContain("physics-verified");
+    expect(text).not.toContain("scratched in sim");
+    expect(text).not.toContain("physics calls spent");
+    expect(text).not.toContain("learned ranking");
+    expect(text).not.toContain("pruned before physics");
   });
 
   it("candidate scores rendered match the stats to the displayed precision", () => {
@@ -126,11 +142,16 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
       ),
     );
     expect(text).toContain("Neural evaluator + physics search");
-    expect(text).toContain("learned ranking");
     expect(text).toContain("make est.");
-    expect(text).toContain(`pruned before physics ${hybridLike.trace!.prunedByPrior}`);
-    expect(text).toContain("1.2ms"); // the measured inferenceMs, to 1dp
-    expect(text).toContain("showboat-ranker-phase2d");
+    // Per-candidate model output (the prior's calibrated legal-pot estimate
+    // and the rank it gave the candidate before physics ran) is real,
+    // per-shot decision data and stays. The trace-level process counters
+    // (candidates scored, ms spent, pruned count, artifact id) do not — see
+    // "the deleted raw search counters do not reappear in the panel".
+    const withPrior = hybridLike.stats.slice(0, 8).filter((s) => s.priorScore !== undefined);
+    expect(withPrior.length).toBeGreaterThan(0);
+    for (const s of withPrior) expect(text).toContain(s.priorScore!.toFixed(2));
+    expect(text).not.toContain("showboat-ranker-phase2d");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 

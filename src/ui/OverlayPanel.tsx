@@ -107,50 +107,14 @@ export function OverlayPanel({
         {stale && <span className="overlay-meta">prev. turn</span>}
       </div>
 
-      {trace && (
-        <div className="stage-list">
-          <div className="stage">
-            <span className="stage-name">candidates generated</span>
-            <span className="stage-val">{trace.candidatesGenerated}</span>
-          </div>
-          {usedNeural ? (
-            <>
-              <div className="stage">
-                <span className="stage-name">learned ranking</span>
-                <span className="stage-val">
-                  {trace.candidatesGenerated} scored
-                  {trace.neuralInferenceMs !== undefined &&
-                    ` · ${trace.neuralInferenceMs.toFixed(1)}ms`}
-                </span>
-              </div>
-              <div className="stage">
-                <span className="stage-name">pruned before physics</span>
-                <span className="stage-val">{trace.prunedByPrior}</span>
-              </div>
-            </>
-          ) : (
-            trace.fallbackReason && (
-              <div className="stage stage-warn">
-                <span className="stage-name">classical fallback</span>
-                <span className="stage-val">{trace.fallbackReason}</span>
-              </div>
-            )
-          )}
-          <div className="stage">
-            <span className="stage-name">physics-verified</span>
-            <span className="stage-val">
-              {trace.physicsVerified} · {trace.legalPots} legal pot{trace.legalPots === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="stage">
-            <span className="stage-name">scratched in sim</span>
-            <span className="stage-val">{trace.scratched}</span>
-          </div>
-          <div className="stage">
-            <span className="stage-name">physics calls spent</span>
-            <span className="stage-val">{trace.physicsCalls}</span>
-          </div>
-        </div>
+      {/* The raw search counters that used to live here (candidates
+          generated, physics-verified, scratched in sim, physics calls
+          spent) were process telemetry, not a shot's worth of reasoning —
+          they pushed the actually-interesting ranked list below the fold.
+          A model-load failure is still surfaced honestly, just as a plain
+          warning line rather than a numbered "stage". */}
+      {trace?.fallbackReason && !usedNeural && (
+        <p className="overlay-warn">classical fallback — {trace.fallbackReason}</p>
       )}
 
       <div className="cand-list">
@@ -210,21 +174,12 @@ export function OverlayPanel({
             {POCKET_SHORT[best.candidate.pocket] ?? best.candidate.pocket}
           </span>
           {isTrickShot(best) && <span className="cand-star">★</span>}
-          <span className="chosen-score">
-            strength {best.strength.toFixed(2)} · style {best.styleScore}
-          </span>
+          <span className="chosen-score">strength {best.strength.toFixed(2)}</span>
         </div>
       )}
 
       {trace?.selectionReason && (
         <p className="chosen-why">{SELECTION_TEXT[trace.selectionReason]}</p>
-      )}
-
-      {usedNeural && trace?.modelId && (
-        <p className="overlay-foot">
-          {trace.modelId}
-          {badge.hashVerified === false && " · hash unverified (no WebCrypto)"}
-        </p>
       )}
     </aside>
   );
