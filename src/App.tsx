@@ -84,14 +84,21 @@ export default function App() {
   // Neural ranking is OPT-IN, not the default.
   //
   // `eval/hybridEval.ts` ran the two modes paired, at an identical 60-unit
-  // physics budget, over 120 fixed fixtures and 24 full games. The hybrid gets
-  // measurably more trick candidates in front of the physics engine (bank
-  // recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo 21.0% vs 11.3%,
-  // rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp, CI
-  // [+3.9, +17.7]) — but it does NOT play better: legal-pot rate 90.0% vs
-  // 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8-12. So
-  // the default stays classical and the model ships as an honest, labelled,
-  // user-enabled comparison mode. See
+  // physics budget, on two independent fixture seeds (120 fixtures + 24 games,
+  // and 90 fixtures + 16 games).
+  //
+  // Consistent across both seeds: the hybrid attempts more tricks (+10.8pp and
+  // +5.6pp) and retrieves more makeable trick candidates for physics
+  // verification (e.g. combo recall 21.0% vs 11.3%, and 10.5% vs 2.6%).
+  //
+  // NOT consistent: shot quality. Legal-pot rate came out -3.3pp on the first
+  // seed and +1.1pp on the second; every 95% CI includes zero, and the sign
+  // flips. Full-game record across both seeds is 11-19 to classical (p ~ 0.10,
+  // not significant), while game-level pot rate also flips sign between seeds.
+  //
+  // So there is no measurable quality advantage in either direction, which is
+  // not enough to move a default. Classical stays default; the model ships as
+  // an honest, labelled, user-enabled comparison mode. Full numbers:
   // docs/repair/product-proof-sprint/showboat-live/REPORT.md section 5.
   const [useNeural, setUseNeural] = useState(false);
   const useNeuralRef = useRef(useNeural);
