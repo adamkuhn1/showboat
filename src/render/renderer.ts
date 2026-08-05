@@ -384,6 +384,16 @@ export const render = (
   table: Table,
   v: ViewTransform,
 ): void => {
+  // Clear the WHOLE canvas first, not just the table+rail box `drawTable`
+  // repaints. `drawAim` draws the cue stick deliberately unclipped ("can extend
+  // into rail area"), and at low power / shallow angles it lands outside that
+  // box — where nothing ever painted over it again, so stick pixels
+  // accumulated as permanent tan smears along the canvas edges for the life of
+  // the page. Found in live Chrome QA (visible in
+  // docs/repair/release-candidate/showboat/); invisible to the headless suites,
+  // which never rasterise. `clearRect` over the intrinsic canvas size is the
+  // correct scope: the CSS box may be smaller, but the drawing surface is not.
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   drawTable(ctx, table, v);
   for (const b of state.balls) drawBall(ctx, b, v);
 };
