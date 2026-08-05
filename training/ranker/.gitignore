@@ -31,3 +31,15 @@ phase2c/data/
 # the actual evidence backing TRAINING_REPORT.md/ABLATIONS.md and are cheap
 # to track, same precedent as Phase 2C's perturbation_benchmark_results.json.
 phase2d/results/artifact/parity_fixture.json
+
+# Phase 2E (relational-architecture research): same root policy again.
+# Checkpoints (*.pt) and ONNX exports are already covered by the root
+# .gitignore's blanket rules; excluded here additionally are the cached
+# dataset (a pure re-encoding of the uncommitted phase2c/data/baseline
+# shards -- rebuild with `python phase2e/data.py`) and the parity fixtures
+# (raw feature vectors + checkpoint-derived logits, meaningless without the
+# uncommitted .onnx they were generated alongside). The metric-summary JSONs
+# under phase2e/results/ ARE tracked -- they are the evidence behind the
+# report, same precedent as Phase 2D.
+phase2e/results/dataset.npz
+phase2e/results/artifact/parity_fixture_*.json
