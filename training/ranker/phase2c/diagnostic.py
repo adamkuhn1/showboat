@@ -152,10 +152,22 @@ def constant_mean_bce(train_y: np.ndarray, eval_y: np.ndarray) -> float:
 
 
 def pooled_spearman(pred: np.ndarray, target: np.ndarray) -> float:
+    """Spearman's rho with proper tie-averaged ranks (scipy.stats.rankdata,
+    method='average'), NOT the double-argsort ordinal-rank shortcut used
+    earlier -- ordinal ranks silently break ties by array order, which
+    matters a great deal here: legal_pot_rate only takes 9 or 33 distinct
+    values (n_perturbations=8 or 32), so a large fraction of within-state
+    pairs are genuinely tied (measured ~30% on the baseline dataset, with
+    42.7% of all rows at exactly 0). Found by independent review comparing
+    this function's output against a tie-corrected reference implementation
+    on real checkpoint predictions -- see PHASE_2D REVIEW section of
+    docs/repair/showboat-ml/phase-2d/REVIEW.md."""
     if len(pred) < 3 or np.std(pred) == 0 or np.std(target) == 0:
         return float("nan")
-    rp = np.argsort(np.argsort(pred))
-    rt = np.argsort(np.argsort(target))
+    from scipy.stats import rankdata
+
+    rp = rankdata(pred, method="average")
+    rt = rankdata(target, method="average")
     return float(np.corrcoef(rp, rt)[0, 1])
 
 

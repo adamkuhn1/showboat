@@ -1,0 +1,11 @@
+{
+  "seed": 20260804,
+  "n_train": 84513,
+  "n_val": 17234,
+  "constant_mean_baseline_val_bce": 0.41416562963028314,
+  "shuffled_label_val_bce": 0.4135712683200836,
+  "shuffled_label_val_brier": 0.046431079506874084,
+  "best_epoch": 38,
+  "collapses_to_baseline_or_worse": true,
+  "note": "Re-run of diagnostic.py's shuffled-label control at full baseline dataset scale (120k rows vs. the pilot's much smaller set). collapses_to_baseline_or_worse=True means training on shuffled labels could not beat the constant-mean baseline by more than the 0.02 BCE tolerance -- i.e. no leak lets the model cheat."
+}
