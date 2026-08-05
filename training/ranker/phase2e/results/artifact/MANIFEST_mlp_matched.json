@@ -1,0 +1,49 @@
+{
+  "phase": "2E",
+  "variant": "mlp_matched",
+  "architecture": "TinyNet",
+  "n_params": 3297,
+  "selected_seed": 20260808,
+  "selection_rule": "cross-seed median validation BCE (Phase 2D rule, computed from variant JSON)",
+  "source_checkpoint": "results/checkpoints/mlp_matched_seed20260808.pt",
+  "source_checkpoint_sha256": "4f4b077fa46d17ae7fb6bac3f5cebb5ab68ab0ba9fd4b5bab9580f481e1e2a3b",
+  "artifact": "results/artifact/showboat_ranker_phase2e_mlp_matched.onnx",
+  "artifact_sha256": "9fa26a2f12224bc65f20d5461c924ffdb64e7667767677e222c466d679a286bd",
+  "artifact_bytes": 14401,
+  "opset": 17,
+  "io_contract": {
+    "input": {
+      "name": "candidate_features",
+      "shape": [
+        "N",
+        68
+      ],
+      "dtype": "float32"
+    },
+    "output": {
+      "name": "logit",
+      "shape": [
+        "N",
+        1
+      ],
+      "dtype": "float32"
+    },
+    "note": "identical to the Phase 2D artifact contract; entity construction happens inside the graph"
+  },
+  "platt": {
+    "a": 0.9228522181510925,
+    "b": -0.07746611535549164,
+    "fit_on": "validation only"
+  },
+  "parity_pytorch_vs_onnxruntime_python": {
+    "n_rows": 150,
+    "max_abs_diff": 9.5367431640625e-07,
+    "mean_abs_diff": 2.782791739264212e-07,
+    "tolerance": 0.0001,
+    "pass": true
+  },
+  "dynamic_batch_check": {
+    "max_abs_diff_batch1_vs_batch150": 0.0,
+    "pass": true
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "seed": 20260804,
+  "n_eval_rows": 512,
+  "split_used": "val",
+  "permutation_invariance_deepsets": {
+    "max_abs_logit_change_over_20_permutations": 7.152557373046875e-07,
+    "n_rows": 512,
+    "passes_1e-5": true
+  },
+  "permutation_invariance_flat_entity_mlp": {
+    "max_abs_logit_change_over_20_permutations": 4.412413597106934,
+    "n_rows": 512,
+    "passes_1e-5": false
+  },
+  "same_group_relabel_invariance": {
+    "n_rows": 512,
+    "n_rows_swapped": 494,
+    "deepsets": {
+      "max_abs_logit_change": 5.066394805908203e-07,
+      "mean_abs_logit_change": 3.157765604555607e-08,
+      "invariant_1e-5": true
+    },
+    "mlp_matched": {
+      "max_abs_logit_change": 1.394904375076294,
+      "mean_abs_logit_change": 0.1514066755771637,
+      "invariant_1e-5": false
+    },
+    "flat_entity_mlp": {
+      "max_abs_logit_change": 0.5334358215332031,
+      "mean_abs_logit_change": 0.09516850113868713,
+      "invariant_1e-5": false
+    }
+  },
+  "pocketed_ball_coordinate_garbage": {
+    "n_rows": 512,
+    "n_rows_with_pocketed_balls": 180,
+    "deepsets": {
+      "max_abs_logit_change": 0.0,
+      "mean_abs_logit_change": 0.0,
+      "unaffected_1e-5": true
+    },
+    "mlp_matched": {
+      "max_abs_logit_change": 1.6111390590667725,
+      "mean_abs_logit_change": 0.09677527844905853,
+      "unaffected_1e-5": false
+    },
+    "flat_entity_mlp": {
+      "max_abs_logit_change": 0.0,
+      "mean_abs_logit_change": 0.0,
+      "unaffected_1e-5": true
+    }
+  },
+  "remove_one_irrelevant_live_ball": {
+    "n_rows": 512,
+    "n_rows_modified": 508,
+    "deepsets": {
+      "finite": true,
+      "mean_abs_logit_change": 0.04673729091882706,
+      "p99_abs_logit_change": 0.3758295476436615,
+      "max_abs_logit_change": 1.1176750659942627
+    },
+    "mlp_matched": {
+      "finite": true,
+      "mean_abs_logit_change": 0.21785053610801697,
+      "p99_abs_logit_change": 0.9635253548622131,
+      "max_abs_logit_change": 1.1250460147857666
+    },
+    "flat_entity_mlp": {
+      "finite": true,
+      "mean_abs_logit_change": 0.10423891246318817,
+      "p99_abs_logit_change": 0.4282875955104828,
+      "max_abs_logit_change": 0.654249370098114
+    }
+  }
+}

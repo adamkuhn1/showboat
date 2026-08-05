@@ -350,8 +350,14 @@ def main():
         s["env"] = {"torch": torch.__version__, "platform": platform.platform()}
         with open(args.out / f"variant_{name}{args.tag}.json", "w") as f:
             json.dump(s, f, indent=2)
-        print(f"[phase2e] {name}: val BCE {s['val_bce']['mean']:.4f}+-{s['val_bce']['std']:.4f}  "
-              f"GAS {s['val_group_aware_spearman']['mean']:.4f}+-{s['val_group_aware_spearman']['std']:.4f}")
+        # A control whose predictions are constant (the all-zero-input arm) has
+        # NO defined ranking metric — group_aware_spearman aggregates to None.
+        # Print that as "undefined" rather than crashing or, worse, coercing it
+        # to a number; the whole point of Phase 2D's tie-handling fix was that
+        # an undefined ordering must not be silently invented.
+        gas = s["val_group_aware_spearman"]
+        gas_s = "undefined (constant predictions)" if gas["mean"] is None else f"{gas['mean']:.4f}+-{gas['std']:.4f}"
+        print(f"[phase2e] {name}: val BCE {s['val_bce']['mean']:.4f}+-{s['val_bce']['std']:.4f}  GAS {gas_s}")
 
 
 if __name__ == "__main__":

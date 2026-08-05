@@ -1,0 +1,400 @@
+{
+  "name": "deepsets_state_only",
+  "note": "Candidate block zeroed (Phase 2D ablation 1, relational arm).",
+  "seeds": [
+    20260804,
+    20260805,
+    20260806,
+    20260807,
+    20260808
+  ],
+  "n_params": 24257,
+  "input_dim": 68,
+  "train_seconds": {
+    "mean": 44.73950610160828,
+    "std": 4.342662848129875
+  },
+  "val_bce": {
+    "mean": 0.411243617615164,
+    "std": 0.00013629253351083682
+  },
+  "val_group_aware_spearman": {
+    "mean": -0.08770903474154024,
+    "std": 0.10387806999771071
+  },
+  "val_pooled_spearman": {
+    "mean": 0.11402139483892201,
+    "std": 0.0021687331286796762
+  },
+  "val_brier": {
+    "mean": 0.045906585426044505,
+    "std": 3.21188486407151e-05
+  },
+  "val_ece": {
+    "mean": 0.0029156434335557272,
+    "std": 0.0026345196276900073
+  },
+  "val_ece_calibrated": {
+    "mean": 0.0006104010061852766,
+    "std": 0.0005483085249918802
+  },
+  "val_ndcg@3": {
+    "mean": 0.500977691219332,
+    "std": 0.00016733445306411026
+  },
+  "val_top1_hit_rate": {
+    "mean": 0.4609467455621302,
+    "std": 0.001183431952662728
+  },
+  "val_mean_regret": {
+    "mean": 0.32176624129930387,
+    "std": 0.0005879679504847239
+  },
+  "latency_median_ms": {
+    "mean": 1.0986252000179775,
+    "std": 0.008982431218769632
+  },
+  "per_kind_group_aware_spearman": {
+    "direct": {
+      "mean": -0.008215976041888756,
+      "std": 0.546590320482466,
+      "n": 3659
+    },
+    "bank": {
+      "mean": 0.04446769405353075,
+      "std": 0.11340190568241214,
+      "n": 8759
+    },
+    "double-bank": {
+      "mean": -0.3262143993567535,
+      "std": 0.16411980941825866,
+      "n": 1724
+    },
+    "combo": {
+      "mean": -0.49519951988449623,
+      "std": 0.11446099611561487,
+      "n": 1489
+    },
+    "rail-combo": {
+      "mean": 0.15178060042049318,
+      "std": 0.34662483379308656,
+      "n": 1603
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 20260804,
+      "n_params": 24257,
+      "best_epoch": 35,
+      "train_seconds": 52.667635917663574,
+      "val": {
+        "bce": 0.4110133773387207,
+        "brier": 0.04584754047335837,
+        "ece": 0.0012448914988910818,
+        "pooled_spearman": 0.11624893462977436,
+        "ndcg@3": 0.5007632291539365,
+        "top1_hit_rate": 0.46153846153846156,
+        "mean_regret": 0.32141821345707655,
+        "group_aware_spearman": -0.023401736634527315,
+        "n_states_ranked": 5,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.5340689980262213,
+            "brier": 0.07097542033630591,
+            "group_aware_spearman": -0.07348557925738114,
+            "n_states_ranked": 2
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.4148588251454317,
+            "brier": 0.0450365131112329,
+            "group_aware_spearman": 0.08474452190220746,
+            "n_states_ranked": 5
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.32132733567656047,
+            "brier": 0.02578123129909115,
+            "group_aware_spearman": -0.12200846792814621,
+            "n_states_ranked": 2
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.30879031089692727,
+            "brier": 0.029839125384468434,
+            "group_aware_spearman": -0.5773502691896257,
+            "n_states_ranked": 1
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.30052434946775847,
+            "brier": 0.029373256836506066,
+            "group_aware_spearman": 0.4553418012614795,
+            "n_states_ranked": 2
+          }
+        }
+      },
+      "val_brier_calibrated": 0.04583265164542312,
+      "val_ece_calibrated": 0.00020510803882602862,
+      "platt_a": 0.8850902318954468,
+      "platt_b": -0.19235025346279144,
+      "latency": {
+        "median_ms": 1.115250499992726,
+        "p95_ms": 1.2402536500189851
+      }
+    },
+    {
+      "seed": 20260805,
+      "n_params": 24257,
+      "best_epoch": 22,
+      "train_seconds": 41.893620014190674,
+      "val": {
+        "bce": 0.4112455770805002,
+        "brier": 0.04590699398891375,
+        "ece": 0.0019890160004888153,
+        "pooled_spearman": 0.11367689236212342,
+        "ndcg@3": 0.5012212962408228,
+        "top1_hit_rate": 0.46153846153846156,
+        "mean_regret": 0.3214907192575406,
+        "group_aware_spearman": -0.057595000312723854,
+        "n_states_ranked": 3,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.5341301007528515,
+            "brier": 0.07108996274330769,
+            "group_aware_spearman": 0.8660254037844387,
+            "n_states_ranked": 1
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.4147716832479162,
+            "brier": 0.04503246886103229,
+            "group_aware_spearman": 0.03877840799394281,
+            "n_states_ranked": 3
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.3213875760027082,
+            "brier": 0.025742431458602687,
+            "group_aware_spearman": -0.2721655269759087,
+            "n_states_ranked": 1
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.3101047224533368,
+            "brier": 0.030034203577745118,
+            "group_aware_spearman": -0.5749149571305298,
+            "n_states_ranked": 2
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.30207170955737467,
+            "brier": 0.02963361510386861,
+            "group_aware_spearman": 0.3333333333333333,
+            "n_states_ranked": 1
+          }
+        }
+      },
+      "val_brier_calibrated": 0.04590520368656492,
+      "val_ece_calibrated": 0.0002736297783102363,
+      "platt_a": 1.0015252828598022,
+      "platt_b": 0.013878528028726578,
+      "latency": {
+        "median_ms": 1.0895624999989195,
+        "p95_ms": 1.1152750000576361
+      }
+    },
+    {
+      "seed": 20260806,
+      "n_params": 24257,
+      "best_epoch": 19,
+      "train_seconds": 39.98281383514404,
+      "val": {
+        "bce": 0.4113664411382753,
+        "brier": 0.045934251028259265,
+        "ece": 0.003386029142925741,
+        "pooled_spearman": 0.11103414018355257,
+        "ndcg@3": 0.5009198860133984,
+        "top1_hit_rate": 0.45857988165680474,
+        "mean_regret": 0.3229408352668213,
+        "group_aware_spearman": -0.1503876611136263,
+        "n_states_ranked": 5,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.5357893737524875,
+            "brier": 0.07147456997905687,
+            "group_aware_spearman": -0.18991481939237018,
+            "n_states_ranked": 3
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.4152197442528867,
+            "brier": 0.04513702429976437,
+            "group_aware_spearman": 0.12092450207677706,
+            "n_states_ranked": 4
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.3201809513884906,
+            "brier": 0.025449549673613524,
+            "group_aware_spearman": -0.3333333333333333,
+            "n_states_ranked": 1
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.3083220443762316,
+            "brier": 0.029628831184112223,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.3000890229792158,
+            "brier": 0.02916898412698824,
+            "group_aware_spearman": -0.3333333333333333,
+            "n_states_ranked": 1
+          }
+        }
+      },
+      "val_brier_calibrated": 0.04592091265045794,
+      "val_ece_calibrated": 0.0002742837092066304,
+      "platt_a": 0.9559862017631531,
+      "platt_b": -0.05077438801527023,
+      "latency": {
+        "median_ms": 1.0993959999723302,
+        "p95_ms": 1.220860750021302
+      }
+    },
+    {
+      "seed": 20260807,
+      "n_params": 24257,
+      "best_epoch": 25,
+      "train_seconds": 45.151264905929565,
+      "val": {
+        "bce": 0.4113943707750436,
+        "brier": 0.045936676442743046,
+        "ece": 0.007758697392188771,
+        "pooled_spearman": 0.11668336880105645,
+        "ndcg@3": 0.5011163495492512,
+        "top1_hit_rate": 0.46153846153846156,
+        "mean_regret": 0.3214907192575406,
+        "group_aware_spearman": -0.2527088116259382,
+        "n_states_ranked": 1,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.5380088605478146,
+            "brier": 0.07201696203027586,
+            "group_aware_spearman": -0.6354889093022424,
+            "n_states_ranked": 1
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.4151772187707839,
+            "brier": 0.045117309637194604,
+            "group_aware_spearman": -0.17016812407481316,
+            "n_states_ranked": 1
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.3190445942330972,
+            "brier": 0.025151675491621246,
+            "group_aware_spearman": -0.5773502691896257,
+            "n_states_ranked": 1
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.30674350387561244,
+            "brier": 0.029248705031702973,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.2982438853716185,
+            "brier": 0.02873817360792636,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          }
+        }
+      },
+      "val_brier_calibrated": 0.045875746517975866,
+      "val_ece_calibrated": 0.0006340688961944213,
+      "platt_a": 0.9792935252189636,
+      "platt_b": 0.026679513975977898,
+      "latency": {
+        "median_ms": 1.0966460000645384,
+        "p95_ms": 1.1452704999101115
+      }
+    },
+    {
+      "seed": 20260808,
+      "n_params": 24257,
+      "best_epoch": 24,
+      "train_seconds": 44.002195835113525,
+      "val": {
+        "bce": 0.41119832174327975,
+        "brier": 0.04590746519694811,
+        "ece": 0.00019958313328422692,
+        "pooled_spearman": 0.11246363821810326,
+        "ndcg@3": 0.5008676951392516,
+        "top1_hit_rate": 0.46153846153846156,
+        "mean_regret": 0.3214907192575406,
+        "group_aware_spearman": 0.04554803597911451,
+        "n_states_ranked": 1,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.5336610325066897,
+            "brier": 0.07091307150219996,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.4151934426952199,
+            "brier": 0.045143926029393704,
+            "group_aware_spearman": 0.1480591623695396,
+            "n_states_ranked": 1
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.3212508457033675,
+            "brier": 0.02578330107452097,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.3093882024281113,
+            "brier": 0.029938736677692063,
+            "group_aware_spearman": -0.3333333333333333,
+            "n_states_ranked": 1
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.30114242233699984,
+            "brier": 0.029478158777689917,
+            "group_aware_spearman": NaN,
+            "n_states_ranked": 0
+          }
+        }
+      },
+      "val_brier_calibrated": 0.04589242275103212,
+      "val_ece_calibrated": 0.0016649146083890668,
+      "platt_a": 0.8874131441116333,
+      "platt_b": -0.1960393488407135,
+      "latency": {
+        "median_ms": 1.0922710000613733,
+        "p95_ms": 1.2027453499854346
+      }
+    }
+  ],
+  "env": {
+    "torch": "2.8.0",
+    "platform": "macOS-26.5-arm64-arm-64bit"
+  }
+}
