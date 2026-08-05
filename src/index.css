@@ -72,9 +72,26 @@ h1 {
 
 /* ── Board ───────────────────────────────────────────────────────── */
 
-/* This used to read `line-height: 0`, inherited by `.msg` below — see the
-   comment on `.msg` for what that broke. `.table` is already
-   `display: block`, so nothing here actually needed the line-height hack. */
+/* This used to read only `line-height: 0`, inherited by `.msg` below — see
+   the comment on `.msg` for what that broke. `.table` is already
+   `display: block`, so nothing here actually needed the line-height hack.
+   `flex: 1 1 480px; min-width: 0` is a separate, layout fix: `.layout`
+   wraps (below) using each item's *hypothetical* (pre-shrink) main size —
+   i.e. its flex-basis — not what it could shrink to. With `flex-basis: auto`
+   that hypothetical size was `.board`'s full 900px content width, so
+   `.board` (900) + `.overlay` (288) never fit inside the portfolio's
+   ~1154px usable embed width and `.layout` wrapped, which pushed the
+   reasoning panel below the table and, with it, the power/english/draw
+   sliders and the Shoot button below the visible 736px embed frame. A
+   smaller explicit basis gives the wrap decision room to spare; `flex-grow:
+   1` then hands `.board` back all the leftover space once it's confirmed to
+   share a line, so the table still renders as large as the row allows
+   (~850px wide at the 1178px embed width) rather than staying pinned at the
+   480px basis. `min-width: 0` lets it actually shrink that far — a flex
+   item's automatic minimum width otherwise defaults to its content size for
+   a replaced element like <canvas>, which is what made `.table`'s existing
+   `max-width: 100%` ineffective here. */
+.board { flex: 1 1 480px; min-width: 0; }
 
 .table {
   border-radius: 10px;
@@ -115,7 +132,7 @@ h1 {
 .msg {
   color: #b8b8b8;
   /* Explicit and non-zero regardless of what an ancestor ever sets. This used
-     to be the missing piece: `.board { line-height: 0 }` (below) was
+     to be the missing piece: `.board { line-height: 0 }` (above) was
      inherited here, so this box measured 0px tall and `overflow: hidden`
      clipped every status message — "break to start", all shot narration,
      foul reasons, "click the table to place the cue ball", even "couldn't
