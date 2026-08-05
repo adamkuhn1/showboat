@@ -555,7 +555,7 @@ export default function App() {
             className="toggle"
             title={
               modelAvailable
-                ? "Trained candidate ranker (Phase 2D) orders and prunes candidates before the same physics search. Off by default: at equal physics budget it attempts more tricks but does not pot more."
+                ? "Trained candidate ranker (Phase 2E, relational) orders and prunes candidates before the same physics search. Off by default: the equal-budget evaluation against the original Phase 2D MLP found no measurable quality edge either way, and hasn't been re-run yet against this model."
                 : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
             }
           >
