@@ -1,0 +1,86 @@
+{
+  "phase": "2E",
+  "written_before_reading_test_split": true,
+  "declaration": [
+    "Every choice below was made from train/val results only. This file is written",
+    "and committed BEFORE evaluate_test.py runs for the first time. The test split's",
+    "numbers for Phase 2D's MLP were already published in",
+    "docs/repair/showboat-ml/phase-2d/ before this phase started, so this comparison",
+    "is not perfectly blind and is not claimed to be; what is preserved is that no",
+    "architecture, width, learning rate, batch size, seed, calibration parameter,",
+    "ablation, or recommendation in this phase was chosen using test data."
+  ],
+  "selected_architecture": {
+    "name": "deepsets",
+    "class": "DeepSetsRanker",
+    "hidden": 64,
+    "phi_hidden": 64,
+    "n_params": 24257,
+    "input_contract": "[N, 68] float32 -> [N, 1] float32 logit (IDENTICAL to the Phase 2D artifact)",
+    "why_this_config": "best validation group-aware Spearman in search.py's 9-point grid (search.json), fastest to converge of the DS arms; deepsets_small (8,033 params) is statistically indistinguishable on validation and is reported as a cheaper alternative, but the frozen selection is not changed after the fact"
+  },
+  "baseline_for_comparison": {
+    "primary": "mlp_matched — Phase 2D's exact TinyNet(68, 32), retrained under this phase's identical minibatch protocol so no comparison is confounded by optimizer differences",
+    "historical_reference": "Phase 2D's published full-batch numbers (val BCE 0.3703, val group-aware Spearman 0.3818; test 0.3744 / 0.3684) — cited, not re-derived",
+    "note": "the matched-protocol MLP is STRONGER than Phase 2D's published MLP on validation, so the relational model is being compared against the better of the two MLPs, not the weaker one"
+  },
+  "training_protocol": {
+    "optimizer": "Adam",
+    "lr": 0.003,
+    "batch_size": 4096,
+    "max_epochs": 200,
+    "early_stopping": "patience 20 epochs on validation BCE, best checkpoint kept",
+    "loss": "soft-label BCE against legal_pot_rate (identical target to Phase 2D)",
+    "seeds": [20260804, 20260805, 20260806, 20260807, 20260808],
+    "calibration": "two-parameter Platt (a, b) fit on validation predictions only, applied unchanged to test"
+  },
+  "recommendation_made_before_test": {
+    "verdict": "ADOPT the relational (Deep Sets) model, replacing the candidate-conditioned MLP",
+    "decision_rule_this_was_judged_against": [
+      "meaningful improvement in at least one important dimension without unacceptable regression elsewhere"
+    ],
+    "validation_evidence_supporting_it": {
+      "group_aware_spearman": "0.4700 +- 0.0073 vs 0.4017 +- 0.0058 (+17.0% relative)",
+      "bce": "0.3423 +- 0.0003 vs 0.3656 +- 0.0013",
+      "double_bank_group_aware_spearman": "0.1916 +- 0.0132 vs 0.1238 +- 0.0333 (the predeclared weak point, +55% relative, and ~2.5x less seed variance)",
+      "ndcg@3": "0.7304 vs 0.6518",
+      "top1_hit_rate": "0.7337 vs 0.6089",
+      "mean_regret": "0.1850 vs 0.2531",
+      "ece": "0.0087 vs 0.0121",
+      "physics_budget_proxy": "recall-of-best@5 0.774 vs the MLP needing k=8 for 0.781 — ~1.6x fewer candidates to simulate for equal quality",
+      "seed_stability": "equal or better across-seed std on every headline metric"
+    },
+    "accepted_costs": {
+      "training_time": "~49s vs ~1.4s per seed (35x, both trivial in absolute terms)",
+      "browser_inference": "median 1.09-1.92 ms vs 0.040-0.043 ms per 24-candidate batch in onnxruntime-web (~30-45x), p95 2.6-6.7 ms, worst observed single call 12.9 ms — still 4-19x under the 50 ms budget and well below one physics rollout (~23 ms, derived from phase2c/perturbation_benchmark_results.json)",
+      "artifact_size": "177 KB vs 14 KB"
+    },
+    "what_would_have_reversed_it": [
+      "browser p95 latency at or above the 50 ms budget, or above the cost of a single physics rollout",
+      "ONNX export or onnxruntime-web parity failing",
+      "requiring a change to Team A's [N,68] input contract",
+      "any headline validation metric regressing versus the matched-protocol MLP"
+    ]
+  },
+  "not_recommended_and_why": {
+    "deepsets_attn": "the attention/GNN arm matches plain Deep Sets within noise (val BCE 0.3414 +- 0.0004 vs 0.3423 +- 0.0003; group-aware Spearman 0.4733 +- 0.0046 vs 0.4700 +- 0.0073) for 1.7x the parameters and ~3.5x the training time — no justification for the extra machinery",
+    "deepsets_pot_id": "adds the intended pot-ball id as a 69th input. Real but small gain (group-aware Spearman 0.4762 +- 0.0043 vs 0.4700). Requires changing encode.ts's feature contract, which is Team A's/the lead's call, not an engineering swap — flagged, not adopted",
+    "deepsets_small": "statistically indistinguishable from the selected config on validation with 3x fewer parameters; kept out of the frozen selection only because the selection rule was fixed before these 5-seed numbers existed"
+  },
+  "evaluate_on_test": [
+    "mlp_matched",
+    "mlp_wide",
+    "flat_entity_mlp",
+    "deepsets",
+    "deepsets_small",
+    "deepsets_attn",
+    "deepsets_no_relations",
+    "deepsets_no_kind",
+    "deepsets_state_only",
+    "deepsets_candidate_only",
+    "deepsets_pot_id",
+    "zero_input_mlp",
+    "zero_input_deepsets"
+  ],
+  "evaluate_on_test_note": "Evaluating several variants in one pass is not test-set tuning: the recommendation above is already fixed, and nothing downstream selects on these numbers. The ablations and controls are included so the report's test column is complete rather than selectively reported."
+}
