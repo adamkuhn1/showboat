@@ -81,7 +81,8 @@ export class NeuralCandidateEvaluator {
 
   /**
    * Cheap startup check: fetch and validate the manifest (~5 KB) and hash the
-   * artifact bytes (~14 KB), WITHOUT importing onnxruntime-web or creating a
+   * artifact bytes (currently ~177 KB, the Phase 2E Deep Sets model — still
+   * small next to the runtime below), WITHOUT importing onnxruntime-web or creating a
    * session. That's the ~27 MB WASM runtime deferred until the model is
    * actually going to be used, while still catching a missing / corrupted /
    * schema-mismatched artifact loudly at startup.

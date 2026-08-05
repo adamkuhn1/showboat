@@ -47,7 +47,8 @@ const manifestPath = join(DIST_MODEL_DIR, "manifest.json");
 if (!existsSync(manifestPath)) {
   fail(
     `${manifestPath} is missing. The neural-enabled build requires the staged model.\n` +
-      `  Fix: node scripts/stage-production-model.mjs (see public/model/ranker/README.md).`,
+      `  Fix: node scripts/stage-production-model-phase2e.mjs (see public/model/ranker/README.md;\n` +
+      `  stage-production-model.mjs stages the superseded Phase 2D MLP instead).`,
   );
 }
 
