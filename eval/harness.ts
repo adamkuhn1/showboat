@@ -198,6 +198,41 @@ export interface DecisionRecord {
   recallByKind: Record<string, { hits: number; total: number }>;
 }
 
+/**
+ * EXPLORATORY prior transform, evaluation-only — deliberately not in the
+ * production search.
+ *
+ * The headline run showed the hybrid's one clear regression: pruning to the
+ * model's global top-K crowds `direct` candidates out (recall 83.0% vs the
+ * classical order's 99.1%), because the generator emits 24 banks to 12 directs
+ * and the model's scores don't separate them by enough to compensate. A
+ * per-kind floor guarantees each kind's own top-N candidates survive pruning,
+ * by lifting their score above every un-floored candidate while preserving the
+ * model's ordering *within* the floored set. `floor = 0` is the identity.
+ *
+ * This is a search-policy question (how to spend a fixed budget across kinds),
+ * not a model change, which is why it can be tested purely as a score
+ * transform without touching `searchCandidates`.
+ */
+export function applyPerKindFloor(
+  scores: number[],
+  candidates: Candidate[],
+  floor: number,
+): number[] {
+  if (floor <= 0) return scores;
+  const out = scores.slice();
+  for (const k of KINDS) {
+    const idx = candidates
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => c.kind === k)
+      .sort((a, b) => scores[b.i] - scores[a.i])
+      .slice(0, floor)
+      .map(({ i }) => i);
+    for (const i of idx) out[i] = scores[i] + 1;
+  }
+  return out;
+}
+
 export async function runDecision(
   fixture: Fixture,
   table: Table,
@@ -206,6 +241,7 @@ export async function runDecision(
   config: SearchConfig,
   oracleEntries: OracleEntry[],
   keepTop = DEFAULT_PRIOR_KEEP_TOP,
+  perKindFloor = 0,
 ): Promise<DecisionRecord> {
   const candidates = generateCandidates(fixture.balls, table, fixture.targets);
   const t0 = performance.now();
@@ -224,7 +260,7 @@ export async function runDecision(
     result = searchCandidates(candidates, fixture.balls, fixture.targets, {
       ...config,
       prior: {
-        scores: scored.scores,
+        scores: applyPerKindFloor(scored.scores, candidates, perKindFloor),
         keepTop,
         source: manifest.artifact,
         inferenceMs: scored.inferenceMs,
@@ -328,6 +364,7 @@ export async function playGame(
   hybridPlayer: 0 | 1,
   config: SearchConfig,
   maxShots = 90,
+  perKindFloor = 0,
 ): Promise<GameRecord> {
   const rng = mulberry32(seed);
   const { state: initial } = makeGame();
@@ -377,7 +414,11 @@ export async function playGame(
         ...config,
         seed: config.seed + shot,
         prior: scored
-          ? { scores: scored.scores, keepTop: DEFAULT_PRIOR_KEEP_TOP, source: manifest.artifact }
+          ? {
+              scores: applyPerKindFloor(scored.scores, candidates, perKindFloor),
+              keepTop: DEFAULT_PRIOR_KEEP_TOP,
+              source: manifest.artifact,
+            }
           : undefined,
       });
     } else {

@@ -17,14 +17,22 @@ browser, and a **live reasoning overlay** driven entirely by actual search data.
 > and how many candidates it pruned before physics ran.
 >
 > It is **off by default because the evidence says so**, not because it isn't
-> wired up. At an identical physics budget over 120 fixed fixtures and 24 full
-> games, the hybrid gets meaningfully more *trick* candidates in front of the
-> physics engine (bank recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo
-> 21.0% vs 11.3%, rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp,
-> 95% CI [+3.9, +17.7]) — but it does not play better: legal-pot rate 90.0% vs
-> 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8–12. Full
-> numbers and method: `docs/repair/product-proof-sprint/showboat-live/REPORT.md`
-> and `eval/results/hybrid_eval.json`. Reproduce with `npm run eval:hybrid`.
+> wired up. Two independent fixture seeds, paired, at an identical 60-unit
+> physics budget (120 fixtures + 24 games, and 90 fixtures + 16 games):
+>
+> - **Consistent:** the hybrid attempts more tricks (+10.8pp and +5.6pp) and
+>   gets meaningfully more makeable *trick* candidates in front of the physics
+>   engine (combo recall 21.0% vs 11.3% and 10.5% vs 2.6%; similar for bank,
+>   double-bank and rail-combo).
+> - **Not consistent:** shot quality. Legal-pot rate came out **-3.3pp** on one
+>   seed and **+1.1pp** on the other; every 95% CI includes zero and the sign
+>   flips. The full-game record is 11–19 to classical across both seeds
+>   (p ≈ 0.10, not significant), and game-level pot rate flips sign too.
+>
+> No measurable quality advantage in either direction is not enough to move a
+> default. Full numbers and method:
+> `docs/repair/product-proof-sprint/showboat-live/REPORT.md` and
+> `eval/results/*.json`. Reproduce with `npm run eval:hybrid`.
 
 ## ML status (2026-08-03, redirected — read before touching training/)
 

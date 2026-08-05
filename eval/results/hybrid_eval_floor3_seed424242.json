@@ -1,0 +1,574 @@
+{
+  "generated_at": "2026-08-05T01:38:08.837Z",
+  "config": {
+    "fixtures": 90,
+    "games": 16,
+    "seed": 424242,
+    "budget": 60,
+    "keep_top": 16,
+    "per_kind_floor": 3
+  },
+  "model": {
+    "artifact": "showboat-ranker-phase2d.onnx",
+    "sha256": "46e0fa2b2fe909bbfa2ad858f62412f80ae2cf75c40de1120aab6f2401d5f578",
+    "selected_seed": 20260804
+  },
+  "budget_equality": {
+    "max_physics_calls_seen": 60,
+    "over_budget_decisions": 0,
+    "identical_per_fixture": false
+  },
+  "decisions": {
+    "classical": {
+      "n": 90,
+      "legal_pot_rate": 0.8555555555555555,
+      "foul_rate": 0.022222222222222223,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.8333333333333334,
+      "trick_success_rate": 0.96,
+      "mean_regret": 0.08888888888888889,
+      "candidate_recall": 0.5899390243902439,
+      "mean_physics_calls": 59.56666666666667,
+      "mean_candidates_generated": 41.2,
+      "mean_verified": 17.81111111111111,
+      "decision_ms_median": 2568.687458500004,
+      "decision_ms_p95": 4918.356582999928,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid": {
+      "n": 90,
+      "legal_pot_rate": 0.8777777777777778,
+      "foul_rate": 0.011111111111111112,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.9333333333333333,
+      "trick_success_rate": 0.9285714285714286,
+      "mean_regret": 0.06666666666666667,
+      "candidate_recall": 0.5487804878048781,
+      "mean_physics_calls": 59.77777777777778,
+      "mean_candidates_generated": 41.2,
+      "mean_verified": 14.755555555555556,
+      "decision_ms_median": 2698.906750499991,
+      "decision_ms_p95": 5304.090709000011,
+      "neural_ms_median": 0.9686249999504071,
+      "neural_ms_p95": 5.68216699999175,
+      "neural_encode_ms_median": 0.19041700000525452,
+      "neural_run_ms_median": 0.7595204999815905,
+      "neural_run_ms_p95": 4.742291000002297
+    },
+    "classical_with_viable_trick": {
+      "n": 85,
+      "legal_pot_rate": 0.9058823529411765,
+      "foul_rate": 0.023529411764705882,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.8588235294117647,
+      "trick_success_rate": 0.9863013698630136,
+      "mean_regret": 0.09411764705882353,
+      "candidate_recall": 0.5899390243902439,
+      "mean_physics_calls": 59.576470588235296,
+      "mean_candidates_generated": 42.55294117647059,
+      "mean_verified": 18.188235294117646,
+      "decision_ms_median": 2564.6822500000126,
+      "decision_ms_p95": 4886.061374999932,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid_with_viable_trick": {
+      "n": 85,
+      "legal_pot_rate": 0.9294117647058824,
+      "foul_rate": 0.011764705882352941,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.9647058823529412,
+      "trick_success_rate": 0.9512195121951219,
+      "mean_regret": 0.07058823529411765,
+      "candidate_recall": 0.5487804878048781,
+      "mean_physics_calls": 59.811764705882354,
+      "mean_candidates_generated": 42.55294117647059,
+      "mean_verified": 14.988235294117647,
+      "decision_ms_median": 2700.1688339999964,
+      "decision_ms_p95": 4734.107416999992,
+      "neural_ms_median": 1.2202079999260604,
+      "neural_ms_p95": 5.68216699999175,
+      "neural_encode_ms_median": 0.20566599996527657,
+      "neural_run_ms_median": 0.9989579999819398,
+      "neural_run_ms_p95": 4.742291000002297
+    },
+    "classical_without_viable_trick": {
+      "n": 5,
+      "legal_pot_rate": 0,
+      "foul_rate": 0,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.4,
+      "trick_success_rate": 0,
+      "mean_regret": 0,
+      "candidate_recall": null,
+      "mean_physics_calls": 59.4,
+      "mean_candidates_generated": 18.2,
+      "mean_verified": 11.4,
+      "decision_ms_median": 2628.0209160000086,
+      "decision_ms_p95": 6924.214750000043,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid_without_viable_trick": {
+      "n": 5,
+      "legal_pot_rate": 0,
+      "foul_rate": 0,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.4,
+      "trick_success_rate": 0,
+      "mean_regret": 0,
+      "candidate_recall": null,
+      "mean_physics_calls": 59.2,
+      "mean_candidates_generated": 18.2,
+      "mean_verified": 10.8,
+      "decision_ms_median": 2559.622625000018,
+      "decision_ms_p95": 7550.988332999987,
+      "neural_ms_median": 0.4793340000323951,
+      "neural_ms_p95": 0.5340419999556616,
+      "neural_encode_ms_median": 0.08283299999311566,
+      "neural_run_ms_median": 0.3374590000603348,
+      "neural_run_ms_p95": 0.45224999997299165
+    }
+  },
+  "paired_differences_hybrid_minus_classical": {
+    "legal_pot": {
+      "diff": 0.022222222222222223,
+      "ci": [
+        -0.03954741770918911,
+        0.08399186215363355
+      ],
+      "n": 90
+    },
+    "foul": {
+      "diff": -0.011111111111111112,
+      "ci": [
+        -0.0328888888888889,
+        0.010666666666666673
+      ],
+      "n": 90
+    },
+    "scratch": {
+      "diff": 0,
+      "ci": [
+        0,
+        0
+      ],
+      "n": 90
+    },
+    "regret": {
+      "diff": -0.022222222222222223,
+      "ci": [
+        -0.08399186215363355,
+        0.03954741770918911
+      ],
+      "n": 90
+    },
+    "trick_attempt": {
+      "diff": 0.1,
+      "ci": [
+        0.017766387400294167,
+        0.18223361259970583
+      ],
+      "n": 90
+    },
+    "candidate_recall_per_fixture": {
+      "diff": -0.03696631909351208,
+      "ci": [
+        -0.10326902905055241,
+        0.02933639086352826
+      ],
+      "n": 90
+    },
+    "physics_calls": {
+      "diff": 0.2111111111111111,
+      "ci": [
+        0.08157081396881341,
+        0.3406514082534088
+      ],
+      "n": 90
+    },
+    "decision_ms": {
+      "diff": 23.02924635555638,
+      "ci": [
+        -73.47424677676001,
+        119.53273948787277
+      ],
+      "n": 90
+    }
+  },
+  "candidate_recall_by_kind": {
+    "classical": {
+      "direct": {
+        "hits": 195,
+        "total": 195,
+        "recall": 1
+      },
+      "bank": {
+        "hits": 184,
+        "total": 338,
+        "recall": 0.5443786982248521
+      },
+      "double-bank": {
+        "hits": 8,
+        "total": 46,
+        "recall": 0.17391304347826086
+      },
+      "combo": {
+        "hits": 0,
+        "total": 38,
+        "recall": 0
+      },
+      "rail-combo": {
+        "hits": 0,
+        "total": 39,
+        "recall": 0
+      }
+    },
+    "hybrid": {
+      "direct": {
+        "hits": 126,
+        "total": 195,
+        "recall": 0.6461538461538462
+      },
+      "bank": {
+        "hits": 131,
+        "total": 338,
+        "recall": 0.3875739644970414
+      },
+      "double-bank": {
+        "hits": 37,
+        "total": 46,
+        "recall": 0.8043478260869565
+      },
+      "combo": {
+        "hits": 32,
+        "total": 38,
+        "recall": 0.8421052631578947
+      },
+      "rail-combo": {
+        "hits": 34,
+        "total": 39,
+        "recall": 0.8717948717948718
+      }
+    }
+  },
+  "outcome_by_chosen_kind": {
+    "classical": {
+      "direct": {
+        "n": 15,
+        "legal_pot_rate": 0.3333333333333333,
+        "scratch_rate": 0
+      },
+      "bank": {
+        "n": 71,
+        "legal_pot_rate": 0.9577464788732394,
+        "scratch_rate": 0
+      },
+      "double-bank": {
+        "n": 4,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "combo": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      },
+      "rail-combo": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      },
+      "none": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      }
+    },
+    "hybrid": {
+      "direct": {
+        "n": 6,
+        "legal_pot_rate": 0.16666666666666666,
+        "scratch_rate": 0
+      },
+      "bank": {
+        "n": 38,
+        "legal_pot_rate": 0.9473684210526315,
+        "scratch_rate": 0
+      },
+      "double-bank": {
+        "n": 22,
+        "legal_pot_rate": 0.9545454545454546,
+        "scratch_rate": 0
+      },
+      "combo": {
+        "n": 17,
+        "legal_pot_rate": 0.8235294117647058,
+        "scratch_rate": 0
+      },
+      "rail-combo": {
+        "n": 7,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "none": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      }
+    }
+  },
+  "decisions_that_differed": 65,
+  "games": {
+    "n_games": 16,
+    "n_decided": 9,
+    "hybrid_wins": 4,
+    "classical_wins": 5,
+    "hybrid_win_rate": 0.4444444444444444,
+    "mean_shots_per_game": 7.375,
+    "mean_shots_to_win_hybrid": 4.25,
+    "mean_shots_to_win_classical": 5,
+    "hybrid_pot_rate": 0.7380952380952381,
+    "classical_pot_rate": 0.7833333333333333,
+    "hybrid_trick_attempt_rate": 0.9523809523809523,
+    "classical_trick_attempt_rate": 0.9166666666666666,
+    "hybrid_trick_success_rate": 0.775,
+    "classical_trick_success_rate": 0.8545454545454545
+  },
+  "raw_games": [
+    {
+      "seed": 424242,
+      "hybridPlayer": 1,
+      "winner": 0,
+      "shots": 7,
+      "hybridShots": 0,
+      "classicalShots": 6,
+      "hybridPots": 0,
+      "classicalPots": 5,
+      "hybridTrickAttempts": 0,
+      "hybridTrickSuccesses": 0,
+      "classicalTrickAttempts": 6,
+      "classicalTrickSuccesses": 5
+    },
+    {
+      "seed": 424243,
+      "hybridPlayer": 0,
+      "winner": 0,
+      "shots": 7,
+      "hybridShots": 6,
+      "classicalShots": 0,
+      "hybridPots": 5,
+      "classicalPots": 0,
+      "hybridTrickAttempts": 6,
+      "hybridTrickSuccesses": 5,
+      "classicalTrickAttempts": 0,
+      "classicalTrickSuccesses": 0
+    },
+    {
+      "seed": 424244,
+      "hybridPlayer": 1,
+      "winner": null,
+      "shots": 5,
+      "hybridShots": 0,
+      "classicalShots": 4,
+      "hybridPots": 0,
+      "classicalPots": 3,
+      "hybridTrickAttempts": 0,
+      "hybridTrickSuccesses": 0,
+      "classicalTrickAttempts": 3,
+      "classicalTrickSuccesses": 3
+    },
+    {
+      "seed": 424245,
+      "hybridPlayer": 0,
+      "winner": 1,
+      "shots": 6,
+      "hybridShots": 5,
+      "classicalShots": 0,
+      "hybridPots": 4,
+      "classicalPots": 0,
+      "hybridTrickAttempts": 5,
+      "hybridTrickSuccesses": 4,
+      "classicalTrickAttempts": 0,
+      "classicalTrickSuccesses": 0
+    },
+    {
+      "seed": 424246,
+      "hybridPlayer": 1,
+      "winner": 0,
+      "shots": 8,
+      "hybridShots": 0,
+      "classicalShots": 7,
+      "hybridPots": 0,
+      "classicalPots": 6,
+      "hybridTrickAttempts": 0,
+      "hybridTrickSuccesses": 0,
+      "classicalTrickAttempts": 6,
+      "classicalTrickSuccesses": 6
+    },
+    {
+      "seed": 424247,
+      "hybridPlayer": 0,
+      "winner": 1,
+      "shots": 9,
+      "hybridShots": 3,
+      "classicalShots": 5,
+      "hybridPots": 3,
+      "classicalPots": 5,
+      "hybridTrickAttempts": 3,
+      "hybridTrickSuccesses": 3,
+      "classicalTrickAttempts": 5,
+      "classicalTrickSuccesses": 5
+    },
+    {
+      "seed": 424248,
+      "hybridPlayer": 1,
+      "winner": 1,
+      "shots": 12,
+      "hybridShots": 4,
+      "classicalShots": 7,
+      "hybridPots": 2,
+      "classicalPots": 5,
+      "hybridTrickAttempts": 3,
+      "hybridTrickSuccesses": 2,
+      "classicalTrickAttempts": 7,
+      "classicalTrickSuccesses": 5
+    },
+    {
+      "seed": 424249,
+      "hybridPlayer": 0,
+      "winner": null,
+      "shots": 8,
+      "hybridShots": 3,
+      "classicalShots": 4,
+      "hybridPots": 2,
+      "classicalPots": 4,
+      "hybridTrickAttempts": 3,
+      "hybridTrickSuccesses": 2,
+      "classicalTrickAttempts": 4,
+      "classicalTrickSuccesses": 4
+    },
+    {
+      "seed": 424250,
+      "hybridPlayer": 1,
+      "winner": null,
+      "shots": 4,
+      "hybridShots": 0,
+      "classicalShots": 3,
+      "hybridPots": 0,
+      "classicalPots": 2,
+      "hybridTrickAttempts": 0,
+      "hybridTrickSuccesses": 0,
+      "classicalTrickAttempts": 2,
+      "classicalTrickSuccesses": 2
+    },
+    {
+      "seed": 424251,
+      "hybridPlayer": 0,
+      "winner": null,
+      "shots": 6,
+      "hybridShots": 5,
+      "classicalShots": 0,
+      "hybridPots": 5,
+      "classicalPots": 0,
+      "hybridTrickAttempts": 5,
+      "hybridTrickSuccesses": 5,
+      "classicalTrickAttempts": 0,
+      "classicalTrickSuccesses": 0
+    },
+    {
+      "seed": 424252,
+      "hybridPlayer": 1,
+      "winner": null,
+      "shots": 9,
+      "hybridShots": 2,
+      "classicalShots": 6,
+      "hybridPots": 2,
+      "classicalPots": 5,
+      "hybridTrickAttempts": 2,
+      "hybridTrickSuccesses": 2,
+      "classicalTrickAttempts": 6,
+      "classicalTrickSuccesses": 5
+    },
+    {
+      "seed": 424253,
+      "hybridPlayer": 0,
+      "winner": 0,
+      "shots": 9,
+      "hybridShots": 5,
+      "classicalShots": 3,
+      "hybridPots": 3,
+      "classicalPots": 2,
+      "hybridTrickAttempts": 5,
+      "hybridTrickSuccesses": 3,
+      "classicalTrickAttempts": 3,
+      "classicalTrickSuccesses": 2
+    },
+    {
+      "seed": 424254,
+      "hybridPlayer": 1,
+      "winner": 1,
+      "shots": 8,
+      "hybridShots": 2,
+      "classicalShots": 5,
+      "hybridPots": 1,
+      "classicalPots": 3,
+      "hybridTrickAttempts": 2,
+      "hybridTrickSuccesses": 1,
+      "classicalTrickAttempts": 5,
+      "classicalTrickSuccesses": 3
+    },
+    {
+      "seed": 424255,
+      "hybridPlayer": 0,
+      "winner": 1,
+      "shots": 8,
+      "hybridShots": 0,
+      "classicalShots": 7,
+      "hybridPots": 0,
+      "classicalPots": 6,
+      "hybridTrickAttempts": 0,
+      "hybridTrickSuccesses": 0,
+      "classicalTrickAttempts": 6,
+      "classicalTrickSuccesses": 6
+    },
+    {
+      "seed": 424256,
+      "hybridPlayer": 1,
+      "winner": null,
+      "shots": 9,
+      "hybridShots": 5,
+      "classicalShots": 3,
+      "hybridPots": 3,
+      "classicalPots": 1,
+      "hybridTrickAttempts": 4,
+      "hybridTrickSuccesses": 3,
+      "classicalTrickAttempts": 2,
+      "classicalTrickSuccesses": 1
+    },
+    {
+      "seed": 424257,
+      "hybridPlayer": 0,
+      "winner": null,
+      "shots": 3,
+      "hybridShots": 2,
+      "classicalShots": 0,
+      "hybridPots": 1,
+      "classicalPots": 0,
+      "hybridTrickAttempts": 2,
+      "hybridTrickSuccesses": 1,
+      "classicalTrickAttempts": 0,
+      "classicalTrickSuccesses": 0
+    }
+  ]
+}
