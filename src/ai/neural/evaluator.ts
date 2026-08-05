@@ -1,5 +1,7 @@
-// NeuralCandidateEvaluator — the one boundary between the trained Phase 2D
-// ranker and the rest of Showboat.
+// NeuralCandidateEvaluator — the one boundary between the trained ranker
+// (currently Phase 2E's Deep Sets model; the manifest-driven design means
+// this class doesn't care which phase produced the staged artifact) and
+// the rest of Showboat.
 //
 // Responsibilities, and deliberately nothing else:
 //   1. Fetch + validate the production manifest, then load + integrity-check

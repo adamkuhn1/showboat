@@ -12,8 +12,16 @@
 //   - dist/model/ranker/manifest.json parses and declares the current schema
 //   - the artifact it names exists, is the declared byte length, and hashes to
 //     the declared sha256
-//   - that sha256 still matches the Phase 2D training manifest's own
-//     onnx_sha256, so provenance is unbroken end to end
+//   - that sha256 still matches the training manifest's own hash, so
+//     provenance is unbroken end to end
+//
+// Generic across whichever phase's model is currently staged: the training
+// manifest's path is read from the shipped manifest's own
+// `provenance.training_manifest` field (written by whichever
+// stage-production-model*.mjs script staged it), never hardcoded to one
+// phase — a lesson from the Phase 2D->2E swap, where this script originally
+// hardcoded the Phase 2D path and broke silently-in-spirit (loudly in
+// practice, but for the wrong reason) the moment a different model shipped.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -63,18 +71,20 @@ if (hash !== manifest.onnx_sha256) {
 }
 
 // Provenance chain back to the training phase that produced and reviewed it.
-const trainingManifestPath = join(
-  APP_ROOT,
-  "training/ranker/phase2d/results/artifact/MANIFEST.json",
-);
+// The path is declared by the shipped manifest itself, not assumed.
+if (!manifest.provenance?.training_manifest) {
+  fail(`manifest.provenance.training_manifest is missing — provenance cannot be established`);
+}
+const trainingManifestPath = join(APP_ROOT, manifest.provenance.training_manifest);
 if (!existsSync(trainingManifestPath)) {
   fail(`training manifest ${trainingManifestPath} is missing — provenance cannot be established`);
 }
 const training = JSON.parse(readFileSync(trainingManifestPath, "utf8"));
-if (training.onnx_sha256 !== hash) {
+const trainingHash = training.onnx_sha256 ?? training.artifact_sha256;
+if (trainingHash !== hash) {
   fail(
-    `shipped artifact sha256 ${hash} != Phase 2D training manifest onnx_sha256 ` +
-      `${training.onnx_sha256}. The bundle would ship a model that is not the reviewed one.`,
+    `shipped artifact sha256 ${hash} != training manifest hash ` +
+      `${trainingHash} (${manifest.provenance.training_manifest}). The bundle would ship a model that is not the reviewed one.`,
   );
 }
 
@@ -92,5 +102,5 @@ if (manifest.total_dim !== schema.total_dim) {
 
 console.log(
   `[verify-build-model] OK — ${manifest.artifact} (${bytes.length} bytes, sha256 ${hash.slice(0, 16)}…) ` +
-    `matches the manifest, the Phase 2D training manifest, and schema ${schema.schema_version}.`,
+    `matches the manifest, the training manifest, and schema ${schema.schema_version}.`,
 );
