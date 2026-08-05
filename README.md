@@ -1,15 +1,30 @@
 # Showboat
 
 2D bar-pool game with a from-scratch event-based physics engine, a search-driven
-opponent, and a **live reasoning overlay** driven by actual search data. A real
-ML foundation (a trained candidate-ranking model) is in progress — see "ML
-status" below before repeating any claim about a trained AI.
+opponent, a **trained candidate-ranking model** that ships and runs in the
+browser, and a **live reasoning overlay** driven entirely by actual search data.
 
-> **Which brain is playing, today?** The shipped app runs the **pure-search
-> baseline** (`src/ai/shotSearch.ts`, a flat UCB bandit over the candidate-shot set —
-> not a mislabeled "MCTS") and says so in the UI ("search baseline"/"the AI").
-> No model file ships to `public/model/`, so this is the only thing a visitor
-> ever plays against right now.
+> **Which brain is playing, today?**
+>
+> By default, the **classical physics search** (`src/ai/shotSearch.ts` — a flat
+> UCB bandit over the candidate-shot set, not a mislabeled "MCTS"). The UI says
+> "the physics-search opponent".
+>
+> A **trained neural ranker** (Phase 2D) also ships, is hash-verified at build
+> time and at load time, and can be switched on with the **neural ranking**
+> toggle. When it is on, the UI says "the neural + physics opponent" and the
+> overlay shows the model's per-candidate calibrated make-estimate, its ranking,
+> and how many candidates it pruned before physics ran.
+>
+> It is **off by default because the evidence says so**, not because it isn't
+> wired up. At an identical physics budget over 120 fixed fixtures and 24 full
+> games, the hybrid gets meaningfully more *trick* candidates in front of the
+> physics engine (bank recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo
+> 21.0% vs 11.3%, rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp,
+> 95% CI [+3.9, +17.7]) — but it does not play better: legal-pot rate 90.0% vs
+> 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8–12. Full
+> numbers and method: `docs/repair/product-proof-sprint/showboat-live/REPORT.md`
+> and `eval/results/hybrid_eval.json`. Reproduce with `npm run eval:hybrid`.
 
 ## ML status (2026-08-03, redirected — read before touching training/)
 
@@ -18,9 +33,12 @@ Two separate ML tracks exist; do not conflate them:
 1. **`training/ranker/` — active, real, small.** A candidate-ranking MLP
    trained on data generated from the authoritative Rust/WASM physics (the
    exact binary this app ships), with a real checkpoint, a real ONNX export,
-   and an automated test proving it changes candidate ordering. See
-   `training/ranker/README.md` for reproduction commands and honest
-   limitations. **Not yet wired into live gameplay** — Phase 2F does that.
+   and automated tests proving it changes candidate ordering, budget
+   allocation, and final shot selection. See `training/ranker/README.md` for
+   reproduction commands and honest limitations, and
+   `public/model/ranker/README.md` for how the shipped artifact is delivered
+   and verified. **Now wired into live gameplay** as an opt-in mode (see the
+   banner above).
 2. **`training/showboat_env/` — parked.** The original PoolTool+LightZero
    self-play pipeline described further down this README. It has never been
    executed (PoolTool needs Python ≥3.10; the dev box is 3.9) — no checkpoint
@@ -43,9 +61,11 @@ Verify:
 
 ```bash
 npm run typecheck -w @portfolio-suite/showboat   # tsc, strict
-npm test -w @portfolio-suite/showboat            # vitest (TS engine + game + AI)
+npm test -w @portfolio-suite/showboat            # vitest (TS engine + game + AI + model)
+npm run build -w @portfolio-suite/showboat       # vite build + the shipped-model gate
 npm run test:wasm -w @portfolio-suite/showboat   # cargo test (Rust physics/rollout)
 npm run build:wasm -w @portfolio-suite/showboat  # regenerate src/wasm from Rust
+npm run eval:hybrid -w @portfolio-suite/showboat # classical vs neural at equal budget
 ```
 
 The committed `src/wasm/` pkg means a plain `npm run build` needs **no Rust
@@ -63,6 +83,9 @@ physics-core/  (Rust → WASM)   event-based Han-2005 physics + UCB search rollo
   src/wasm/                    committed wasm-pack output (JS build needs no cargo)
 src/game/                      8-ball ruleset + game controller (engine-agnostic)
 src/ai/                        candidate generator, UCB shot search, ONNX loader, brain seam
+src/ai/neural/                 NeuralCandidateEvaluator: manifest validation + batched inference
+public/model/ranker/           the shipped, hash-verified trained artifact + its manifest
+eval/                          equal-budget classical-vs-hybrid evaluation harness
 src/render/ + src/ui/          canvas render + reasoning overlay
 training/      (Python)        pooltool + LightZero self-play → ONNX
 ```
@@ -118,34 +141,72 @@ policy/value MLP exports to **ONNX**. Never executed on this dev box
 (PoolTool needs Python 3.10+; the box is 3.9) or anywhere else — see
 `training/README.md`'s status banner.
 
-**Play (browser), today:** `src/ai/shotSearch.ts`'s flat UCB bandit searches over
-the candidate-shot set using the Rust physics for rollouts — **uniform
-priors + a physics rollout value**, no model involved. This is the pure-search
-baseline every visitor plays against right now.
+**Play (browser), today:** `src/ai/shotSearch.ts`'s flat UCB bandit searches
+over the candidate-shot set using the Rust physics for rollouts. Default mode
+is uniform priors + a physics rollout value, no model involved.
+
+With **neural ranking** enabled, `src/ai/neural/evaluator.ts` encodes every
+generated candidate with the same `encode.ts` the training data was built with,
+runs one batched `session.run()` through the committed ONNX artifact, applies
+the manifest's Platt calibration, blends `double-bank` scores halfway toward
+the training-split kind mean (the artifact's own documented weak kind), and
+hands the result to `searchCandidates` as a **prior only**. The prior decides
+the order candidates are physics-verified in, and which ones are dropped before
+any simulation runs. It never supplies a value: `potsTarget` still comes from
+`isLegalPot()` on a real WASM simulation, `strength` still comes from real
+rollouts, and the trick-reliability threshold is still applied to that
+physics-derived strength. `src/ai/neural/hybrid.test.ts` proves those
+guarantees with an adversarial prior, so they hold for any score vector the
+model could ever emit — not just for the ones it happens to emit today.
 
 ## How the overlay maps to real decisions
 
 Every number and line the overlay draws is **actual search output** — nothing is
-decorative (the `qa-audit` hard constraint):
+decorative (the `qa-audit` hard constraint). `src/ui/overlayTruthfulness.test.tsx`
+renders the real component against a real search result and fails if a number
+appears that the search didn't produce, or if the copy uses vocabulary the
+algorithm hasn't earned (MCTS, win probability, confidence, "thinking").
 
+- **Decision stages** come from `SearchResult.trace` (`DecisionTrace`), which
+  `searchCandidates` fills in as it runs: candidates generated, candidates
+  scored by the learned ranker and how many milliseconds that took, candidates
+  pruned before physics, candidates physics-verified and how many of them
+  legally potted, how many scratched the cue in simulation, and physics-engine
+  call units actually spent.
+- **Per-candidate strength** is the squashed rollout value the search optimized
+  — a relative, uncalibrated score (`CandidateStat.strength`), never displayed
+  as a percentage and never called a probability.
+- **Per-candidate make estimate** (neural mode only) is the model's *calibrated*
+  legal-pot probability. Calling it a probability is allowed here because it was
+  measured: ECE 0.0067–0.0155 post-Platt on the held-out test split. The
+  ranker's rank for each candidate is shown as `#n`.
 - **Ghost candidate paths** are the geometric aiming routes the search
-  enumerated: **direct** pot, **single-cushion bank** (pocket mirrored across a
-  rail), and **combo** (through an intermediate ball). Line weight/opacity tracks
-  each candidate's **UCB visit share**.
-- **Per-candidate strength score** is the squashed **rollout value** the search
-  optimized — a relative, uncalibrated score (`CandidateStat.strength`), never
-  displayed as a percentage or called a probability/confidence, since nothing
-  has measured it against real outcome frequencies. **Visits** are the real UCB
-  visit counts. **Rails** is the number of cushions before the pot, measured
-  from the **actual simulated event trace**.
-- The chosen shot is the **most-visited** candidate. A bank or combo only appears
-  as the pick when the search *values* it — trick shots are selected, never
-  canned.
+  enumerated. Line weight/opacity tracks each candidate's real UCB visit share.
+- The chosen shot is whatever `selectBestWithReason` returned, and the one line
+  of prose under it is that function's own `selectionReason` — the display
+  cannot describe a different decision than the one played.
 - The shot caption ("cue → rail → 3-ball → corner") is generated from the real
-  physics event trace (`src/ai/trace.ts`), the same mechanism as CueTip.
+  physics event trace (`src/ai/trace.ts`).
 
-## Metrics (PLAN.md §6)
+There is one timing concession, stated plainly: after the search finishes, the
+overlay is held on screen for a bounded 350–1100 ms before the balls move, so
+the decision is readable. Nothing is computed during that hold and nothing on
+screen animates as if it were.
 
-Instrumented as real search output: physics rollouts per decision and candidate
-count are shown live in the overlay panel; win-rate vs. the baseline and average
-shots-to-win are the training-time metrics recorded during the Colab run.
+## Metrics
+
+Live, in the overlay: candidates generated, candidates pruned before physics,
+candidates physics-verified, legal pots and scratches seen in simulation,
+physics calls spent, and (neural mode) inference milliseconds.
+
+Offline, reproducible with `npm run eval:hybrid` and written to
+`eval/results/hybrid_eval.json`: legal-pot / foul / scratch rate, trick attempt
+and success rate, candidate recall against an exhaustive physics oracle, final
+regret, physics calls per turn, decision and inference latency — each broken
+out per candidate kind, paired between the two modes at an identical budget,
+with 95% CIs — plus full-game win rate and shots-to-win over fixed seeds.
+
+Training-time metrics (5 seeds, held-out test, calibration, ablations, per-kind
+breakdown, sanity controls including the full-scale zeroed-feature control)
+live in `docs/repair/showboat-ml/phase-2d/` and
+`training/ranker/phase2d/results/*.json`.

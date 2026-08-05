@@ -21,7 +21,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DIST_MODEL_DIR = join(APP_ROOT, "dist/model/ranker");
+// `--dist <dir>` exists so `scripts/verifyBuildModel.test.ts` can point this
+// exact script (not a reimplementation of it) at fixture directories that are
+// deliberately broken, and assert it rejects them.
+const distArgIndex = process.argv.indexOf("--dist");
+const DIST_MODEL_DIR =
+  distArgIndex >= 0 && process.argv[distArgIndex + 1]
+    ? resolve(process.argv[distArgIndex + 1])
+    : join(APP_ROOT, "dist/model/ranker");
 
 const fail = (msg) => {
   console.error(`\n[verify-build-model] BUILD REJECTED: ${msg}\n`);

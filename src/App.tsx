@@ -81,12 +81,25 @@ export default function App() {
   const searchRef = useRef<SearchResult | null>(null);
   const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
-  // Model-disabled comparison mode. Defaults on; flipping it off runs the
-  // identical physics search with no model in the loop, which is exactly the
-  // A/B `eval/hybridEval.ts` measures offline.
-  const [useNeural, setUseNeural] = useState(true);
+  // Neural ranking is OPT-IN, not the default.
+  //
+  // `eval/hybridEval.ts` ran the two modes paired, at an identical 60-unit
+  // physics budget, over 120 fixed fixtures and 24 full games. The hybrid gets
+  // measurably more trick candidates in front of the physics engine (bank
+  // recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo 21.0% vs 11.3%,
+  // rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp, CI
+  // [+3.9, +17.7]) — but it does NOT play better: legal-pot rate 90.0% vs
+  // 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8-12. So
+  // the default stays classical and the model ships as an honest, labelled,
+  // user-enabled comparison mode. See
+  // docs/repair/product-proof-sprint/showboat-live/REPORT.md section 5.
+  const [useNeural, setUseNeural] = useState(false);
   const useNeuralRef = useRef(useNeural);
   const [modelBadge, setModelBadge] = useState<ModelBadge>({ mode: "classical" });
+  // Preflight succeeded: the artifact is present, hash-verified and
+  // schema-compatible, so the toggle can be offered. Distinct from "loaded" —
+  // the onnxruntime session is only created on first use.
+  const [modelAvailable, setModelAvailable] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const aimLockedRef = useRef(false);
   const shootRef = useRef<() => void>(() => {});
@@ -113,17 +126,19 @@ export default function App() {
       .catch(() => setMessage("couldn't load the physics engine"))
       .finally(postEmbedReady);
 
-    neuralEvaluator.load().then((modelState) => {
-      if (modelState.status === "ready") {
-        setModelBadge({ mode: "neural-hybrid", hashVerified: modelState.hashVerified });
+    // Preflight only: validates the manifest and hashes the 14 KB artifact
+    // without importing onnxruntime-web, so a missing/corrupted/schema-
+    // mismatched model is caught loudly at startup while the ~27 MB WASM
+    // runtime is deferred until someone actually turns the model on.
+    neuralEvaluator.preflight().then((pre) => {
+      if (pre.ok) {
+        setModelAvailable(true);
       } else {
-        // Loud, not silent: a production build that cannot load its model says
-        // so in the console AND in the overlay, and the AI is relabelled.
         console.error(
-          `[showboat] neural ranker unavailable (${modelState.status}): ${modelState.reason} — ` +
-            `falling back to the classical physics search.`,
+          `[showboat] ranker artifact failed preflight: ${pre.reason} — the neural mode will be ` +
+            `unavailable and the opponent stays on the classical physics search.`,
         );
-        setModelBadge({ mode: "classical", fallbackReason: modelState.reason });
+        setModelBadge({ mode: "classical", fallbackReason: pre.reason });
       }
     });
   }, []);
@@ -270,10 +285,17 @@ export default function App() {
       if (cancelled) return;
       setPhase("searching");
       setMessage("searching…");
-      // Idempotent: resolves immediately once the background load above
-      // finished. On the very first opponent turn of a cold load this is what
-      // waits for the model instead of the initial paint.
-      if (useNeuralRef.current) await neuralEvaluator.load();
+      // First neural turn pays for the onnxruntime-web session (idempotent
+      // afterwards). A failure here is reported, never silently downgraded.
+      if (useNeuralRef.current) {
+        const loaded = await neuralEvaluator.load();
+        if (loaded.status === "ready") {
+          setModelBadge({ mode: "neural-hybrid", hashVerified: loaded.hashVerified });
+        } else {
+          console.error(`[showboat] neural ranker failed to load: ${loaded.reason}`);
+          setModelBadge({ mode: "classical", fallbackReason: loaded.reason });
+        }
+      }
       if (cancelled) return;
       const brain = getBrain(useNeuralRef.current);
       const result = await brain.plan(planState, table, AI_PLAYER);
@@ -522,15 +544,18 @@ export default function App() {
             <input type="checkbox" checked={showOverlay} onChange={(e) => setShowOverlay(e.target.checked)} />
             overlay
           </label>
-          <label className="toggle" title={
-            modelBadge.mode === "neural-hybrid"
-              ? "learned candidate ranking on top of the same physics search"
-              : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
-          }>
+          <label
+            className="toggle"
+            title={
+              modelAvailable
+                ? "Trained candidate ranker (Phase 2D) orders and prunes candidates before the same physics search. Off by default: at equal physics budget it attempts more tricks but does not pot more."
+                : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
+            }
+          >
             <input
               type="checkbox"
-              checked={useNeural && modelBadge.mode === "neural-hybrid"}
-              disabled={modelBadge.mode !== "neural-hybrid"}
+              checked={useNeural && modelAvailable}
+              disabled={!modelAvailable}
               onChange={(e) => setUseNeural(e.target.checked)}
             />
             neural ranking
