@@ -1,25 +1,25 @@
-# Trained model drop point
+# Model directory
 
-Place the trained ONNX network here as `showboat.onnx`.
+**The model the game actually uses lives in [`ranker/`](./ranker/README.md).**
+That is the trained Phase 2D candidate ranker: committed, hash-verified, and
+wired into live shot selection through `src/ai/neural/evaluator.ts`.
 
-When this file is present and loads, the app switches from the **search baseline**
-to the **trained net (ONNX)** brain, and the UI label updates to say so
-(`src/ai/brain.ts`). Until then the app runs the pure-search MCTS baseline and
-says "search baseline" — we never present the baseline as the trained AI.
+## `showboat.onnx` — the parked whole-board policy/value slot
 
-Produce this file from the training pipeline:
+This directory's original purpose was a drop point for a whole-board
+policy/value network from the LightZero/PoolTool self-play pipeline
+(`training/`). That network **was never trained**, and the architecture review
+(`docs/repair/showboat-ml/ARCHITECTURE_DECISION.md`) parked that track in
+favour of candidate-conditioned ranking, which is what the audit found actually
+missing: a whole-board scalar cannot tell two candidate shots at the same board
+apart, which is the decision the AI has to make every turn.
 
-```
-cd apps/showboat/training
-python export_onnx.py --checkpoint runs/showboat_8ball_sez/ckpt/best.pt \
-                      --out ../public/model/showboat.onnx
-```
+The loader for it (`tryLoadModel`/`evaluate` in `src/ai/onnx.ts`) is kept, not
+deleted, per that decision's disposition — but **no live code path calls it**.
+`src/App.tsx` loads the ranker in `model/ranker/`, not this slot. If the parked
+RL track is ever revived, note that its Python observation layout is 50 floats
+while `onnx.ts`'s `OBS_DIM` is 48; that mismatch is documented and unfixed in
+`docs/ACTIVE_PLAN.md` and would have to be resolved first.
 
-The I/O contract the browser expects (see `src/ai/onnx.ts`):
-- input  `obs`    float32[1, 50]
-- output `value`  float32[1, 1]  (win expectation, tanh)
-- output `policy` float32[1, 4]  (action mean over phi/V0/a/b, tanh)
-
-A randomly-initialized net exported the same way is a valid *plumbing* smoke
-test, but must NOT be shipped as `showboat.onnx` — that would misrepresent an
-untrained net as the trained AI.
+A randomly-initialized net exported as `showboat.onnx` would be a plumbing
+smoke test only, and must never be presented as a trained AI.

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5175 --strictPort",
-    "build": "vite build",
+    "build": "vite build && node scripts/verify-build-model.mjs",
     "preview": "vite preview --port 5175 --strictPort",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
@@ -23,7 +23,10 @@
     "ranker:split-check": "tsx training/ranker/phase2c/split_check.ts",
     "ranker:perturbation-benchmark": "tsx training/ranker/phase2c/perturbation_benchmark.ts",
     "ranker:throughput-profile": "tsx training/ranker/phase2c/throughput_profile.ts",
-    "ranker:clean-tmp": "find training/ranker/phase2c/data -name '*.tmp' -delete"
+    "ranker:clean-tmp": "find training/ranker/phase2c/data -name '*.tmp' -delete",
+    "model:stage": "node scripts/stage-production-model.mjs",
+    "model:verify": "node scripts/verify-build-model.mjs",
+    "eval:hybrid": "tsx eval/hybridEval.ts"
   },
   "dependencies": {
     "onnxruntime-web": "^1.27.0",

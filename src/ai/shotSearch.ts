@@ -63,12 +63,58 @@ export interface CandidateStat {
   rails: number;
   potsTarget: boolean;
   styleScore: number;
+  // --- learned-prior fields; undefined/false in pure classical mode ---
+  // Calibrated make-estimate from the trained ranker (sigmoid(a*logit+b),
+  // blended per the manifest's per-kind confidence). This is a *prior over
+  // which candidates deserve physics*, never a substitute for the physics
+  // result — `value`/`strength`/`potsTarget` are always physics-derived.
+  priorScore?: number;
+  // 1-based rank by priorScore, i.e. the order the model wanted candidates
+  // examined in, before any simulation ran.
+  priorRank?: number;
+  // Did the authoritative physics search actually simulate this candidate?
+  // False for candidates pruned by the prior or cut off by the budget — those
+  // can never be selected, since selectBest only sees visits>0 stats.
+  verified: boolean;
+}
+
+/**
+ * Everything the reasoning overlay is allowed to display, and nothing else.
+ * Every field here is read directly off the real search that just ran; there
+ * is no second, decorative copy of any of it.
+ */
+export interface DecisionTrace {
+  mode: "classical" | "neural-hybrid";
+  candidatesGenerated: number;
+  /** Candidates handed to the authoritative physics search. */
+  candidatesConsidered: number;
+  /** Candidates dropped by the learned prior before any physics ran. */
+  prunedByPrior: number;
+  /** Candidates that actually got a real WASM shot simulation. */
+  physicsVerified: number;
+  /** Of those, how many the real simulation showed legally pot their ball. */
+  legalPots: number;
+  /** Candidates whose seeding simulation scratched the cue (excluded outright). */
+  scratched: number;
+  /** Physics-engine call units actually spent, against `config.simulations`. */
+  physicsCalls: number;
+  /** Encode + batched ONNX inference, ms. Only set in neural-hybrid mode. */
+  neuralInferenceMs?: number;
+  /** Model identity, so the overlay never claims a model it isn't running. */
+  modelId?: string;
+  /** Why the classical path was taken, when it was taken involuntarily. */
+  fallbackReason?: string;
+  /** Which branch of `selectBestWithReason` actually chose the shot. */
+  selectionReason?: SelectionReason;
+  /** Verified tricks that pot AND clear `TRICK_RELIABILITY_THRESHOLD`. */
+  qualifyingTricks?: number;
 }
 
 export interface SearchResult {
   best: CandidateStat | null;
   stats: CandidateStat[];
   simulations: number;
+  trace?: DecisionTrace;
 }
 
 const UCB_C = 1.2;
@@ -94,7 +140,50 @@ export interface SearchConfig {
   // missing before (see docs/repair/showboat-ml/ARCHITECTURE_DECISION.md).
   // Takes priority over `netSeedValue` when both are present.
   netSeedScores?: number[];
+  // Phase 2F hybrid agent: a learned prior over the candidate list. Unlike
+  // `netSeedScores` above, this NEVER supplies a candidate's value — it only
+  // decides the order candidates are physics-verified in, and which ones get
+  // dropped before physics runs at all. See `CandidatePrior`.
+  prior?: CandidatePrior;
 }
+
+/**
+ * A learned ordering over `generateCandidates`'s output. The whole contract:
+ *
+ *  - `scores[i]` corresponds to candidate `i` in generation order.
+ *  - Candidates are sorted by score descending and the top `keepTop` are the
+ *    only ones the authoritative physics search spends budget on.
+ *  - Everything after that is unchanged classical search: real WASM shot
+ *    simulation, real `isLegalPot`, real rollout values, the same
+ *    `selectBest` trick-preference rule against the same physics-derived
+ *    reliability threshold.
+ *
+ * So the model can change *which shots get examined* and *how much of the
+ * budget each gets*, and through that the final choice — but it cannot make
+ * an illegal shot legal, cannot make an unreliable trick clear the threshold,
+ * and cannot put a number on screen that the physics didn't produce.
+ */
+export interface CandidatePrior {
+  scores: number[];
+  keepTop: number;
+  /** Model identity for the trace, e.g. "showboat-ranker-phase2d". */
+  source: string;
+  /** Encode + inference cost, ms, for the trace. */
+  inferenceMs?: number;
+}
+
+// How many candidates the learned prior forwards to physics by default.
+//
+// Derivation, not a guess: seeding costs 1 shot simulation + `rolloutsPerEval`
+// (2) rollout units per candidate = 3 units, against `defaultConfig.simulations`
+// = 60. Classical search therefore reaches at most 20 candidates in raw
+// generation order and never looks at the rest. Keeping 16 leaves 60 - 48 = 12
+// units — six UCB refinement rounds — for the candidates the model rated
+// highest, instead of spending the entire budget on a fixed prefix of the
+// generation order. Same total physics budget either way; different
+// allocation of it. `eval/hybridEval.ts` measures whether that trade is worth
+// it rather than assuming.
+export const DEFAULT_PRIOR_KEEP_TOP = 16;
 
 export const defaultConfig: SearchConfig = {
   simulations: 60,
@@ -108,10 +197,40 @@ export const searchBaseline = (
   table: Table,
   targets: number[],
   config: SearchConfig = defaultConfig,
+): SearchResult => searchCandidates(generateCandidates(balls, table, targets), balls, targets, config);
+
+/**
+ * The authoritative shot search, over an already-generated candidate list.
+ *
+ * Split out from `searchBaseline` so the hybrid agent can generate candidates,
+ * score them with the trained ranker, and hand the same list back here —
+ * without the search having to know or care where the prior came from. Every
+ * legality, reliability and value judgement below is made by the real physics
+ * engine on this exact list, identically in both modes.
+ */
+export const searchCandidates = (
+  candidates: Candidate[],
+  balls: Ball[],
+  targets: number[],
+  config: SearchConfig = defaultConfig,
 ): SearchResult => {
-  const candidates = generateCandidates(balls, table, targets);
+  const prior = config.prior;
+  const usePrior = prior !== undefined && prior.scores.length === candidates.length;
+  const baseTrace = (): DecisionTrace => ({
+    mode: usePrior ? "neural-hybrid" : "classical",
+    candidatesGenerated: candidates.length,
+    candidatesConsidered: 0,
+    prunedByPrior: 0,
+    physicsVerified: 0,
+    legalPots: 0,
+    scratched: 0,
+    physicsCalls: 0,
+    neuralInferenceMs: usePrior ? prior!.inferenceMs : undefined,
+    modelId: usePrior ? prior!.source : undefined,
+  });
+
   if (candidates.length === 0) {
-    return { best: null, stats: [], simulations: 0 };
+    return { best: null, stats: [], simulations: 0, trace: baseTrace() };
   }
 
   // Separate any overlapping balls before handing to Rust — the TS animation
@@ -127,7 +246,27 @@ export const searchBaseline = (
     rails: c.banks,
     potsTarget: false,
     styleScore: 0,
+    verified: false,
   }));
+
+  // Visit order + pruning. Classical mode walks the raw generation order (by
+  // kind, then shortest path first) and simply runs out of budget partway
+  // through on a busy table. Hybrid mode walks the learned prior's order and
+  // hands physics only the top `keepTop` — the same budget, spent on the
+  // candidates the trained model rates highest instead of on a fixed prefix.
+  let order: number[] = candidates.map((_, i) => i);
+  let prunedByPrior = 0;
+  if (usePrior) {
+    const scores = prior!.scores;
+    order = order.slice().sort((a, b) => scores[b] - scores[a] || a - b);
+    order.forEach((ci, rank) => {
+      stats[ci].priorScore = scores[ci];
+      stats[ci].priorRank = rank + 1;
+    });
+    const keep = Math.max(1, Math.min(prior!.keepTop, order.length));
+    prunedByPrior = order.length - keep;
+    order = order.slice(0, keep);
+  }
 
   let seed = config.seed >>> 0;
   const nextSeed = (): number => {
@@ -157,17 +296,30 @@ export const searchBaseline = (
   const SEED_TIMEOUT_MS = 2000;
   const seedStart = performance.now();
 
-  for (let ci = 0; ci < stats.length; ci++) {
+  let physicsVerified = 0;
+  let legalPots = 0;
+  let scratched = 0;
+
+  for (const ci of order) {
     if (performance.now() - seedStart > SEED_TIMEOUT_MS) break;
     if (sims + 1 > BUDGET) break; // can't even afford the seeding shot sim
     const s = stats[ci];
     const copy = workBalls.map(cloneBall);
     const sim = simulateShotWasm(copy, s.candidate.action);
     sims += 1;
+    s.verified = true;
+    physicsVerified++;
     // Cue ball id is always 0. A scratch is a foul regardless of what else was
     // pocketed — skip the candidate entirely so it can't win UCB selection.
-    if (sim.pocketed.includes(0)) continue;
+    if (sim.pocketed.includes(0)) {
+      scratched++;
+      continue;
+    }
+    // Legality is decided here, by the real simulation, in both modes. No
+    // prior score reaches this line — a candidate the model loved and a
+    // candidate it hated are judged by exactly the same physics.
     s.potsTarget = isLegalPot(sim, s.candidate);
+    if (s.potsTarget) legalPots++;
     s.rails = railsBeforePot(sim);
     const isComboLike =
       s.candidate.kind === "combo" ||
@@ -225,8 +377,20 @@ export const searchBaseline = (
     .filter(s => s.visits > 0)
     .sort((a, b) => b.visits - a.visits || b.value - a.value);
 
-  const best = selectBest(sorted);
-  return { best, stats: sorted, simulations: sims };
+  const selection = selectBestWithReason(sorted);
+  const best = selection.best;
+  const trace: DecisionTrace = {
+    ...baseTrace(),
+    candidatesConsidered: order.length,
+    prunedByPrior,
+    physicsVerified,
+    legalPots,
+    scratched,
+    physicsCalls: sims,
+    selectionReason: selection.reason,
+    qualifyingTricks: selection.qualifyingTricks,
+  };
+  return { best, stats: sorted, simulations: sims, trace };
 };
 
 // A trick candidate must clear this strength score to be considered reliable
@@ -262,13 +426,40 @@ const trickUtility = (s: CandidateStat): number => s.strength + STYLE_WEIGHT * s
  * this same result, so the reasoning display can never disagree with it.
  */
 export function selectBest(sorted: CandidateStat[]): CandidateStat | null {
+  return selectBestWithReason(sorted).best;
+}
+
+/** Which branch of `selectBest` fired. The overlay renders this string; it is
+ *  produced by the selection itself, so the displayed reason cannot disagree
+ *  with the shot that was actually chosen. */
+export type SelectionReason =
+  | "trick-qualified"
+  | "no-trick-qualified"
+  | "no-verified-pot"
+  | "none";
+
+export function selectBestWithReason(sorted: CandidateStat[]): {
+  best: CandidateStat | null;
+  reason: SelectionReason;
+  qualifyingTricks: number;
+} {
   const qualifyingTricks = sorted.filter(
     (s) => s.potsTarget && s.candidate.kind !== "direct" && s.strength >= TRICK_RELIABILITY_THRESHOLD,
   );
   if (qualifyingTricks.length > 0) {
-    return qualifyingTricks.reduce((a, b) => (trickUtility(b) > trickUtility(a) ? b : a));
+    return {
+      best: qualifyingTricks.reduce((a, b) => (trickUtility(b) > trickUtility(a) ? b : a)),
+      reason: "trick-qualified",
+      qualifyingTricks: qualifyingTricks.length,
+    };
   }
-  return sorted.find((s) => s.potsTarget) ?? sorted[0] ?? null;
+  const pot = sorted.find((s) => s.potsTarget);
+  if (pot) return { best: pot, reason: "no-trick-qualified", qualifyingTricks: 0 };
+  return {
+    best: sorted[0] ?? null,
+    reason: sorted.length > 0 ? "no-verified-pot" : "none",
+    qualifyingTricks: 0,
+  };
 }
 
 export const chooseShot = (

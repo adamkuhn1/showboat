@@ -57,6 +57,7 @@ function stat(kind: CandidateKind, opts: { strength: number; potsTarget: boolean
     rails: 0,
     potsTarget: opts.potsTarget,
     styleScore: opts.styleScore ?? 0,
+    verified: true,
   };
 }
 
