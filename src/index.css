@@ -1,20 +1,31 @@
+/* ==========================================================================
+   Palette. Paper/ink logic translated to a dark table: one ground (the same
+   dark the rest of the suite uses to stage the card — apps/portfolio/src/
+   styles/site.css --ground), one warm accent (the Showboat accent declared in
+   apps/portfolio/src/config/site.ts), and neutral tones in between. No second
+   dark, no generic blue.
+   ========================================================================== */
 :root {
   color-scheme: dark;
-  --accent: #7ea8c8;
-  --p0: #6fb7ff;
-  --p1: #e8a84a;
-  --bg: #0c1812;
-  --surface: #111e16;
-  --border: #1e3028;
-  --muted: #7a7a7a;
-  --text: #e4e0d4;
+  --accent: #8a6a3a;
+  --bg: #0b0b0c;
+  --surface: #17181a;
+  --border: #2e2f31;
+  --muted: #a39a86;
+  --text: #e7e2d4;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 
 body {
-  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", "Consolas", monospace;
+  /* Serif is the suite's voice. No webfont is loaded here (that would be a
+     new dependency this sprint doesn't take on) — this stack falls through
+     to whatever Garamond-family or system serif the browser has, the same
+     tail as the shell's --serif token. Mono survives only on the small
+     labelled roles below (the constitution's "Label" recipe): section /
+     eyebrow text and stat headers, never the whole application. */
+  font-family: Garamond, "Cormorant Garamond", "EB Garamond", Georgia, "Times New Roman", serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -55,6 +66,7 @@ body {
 }
 
 .tag {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.68rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -66,8 +78,20 @@ h1 {
   margin: 0;
   font-size: clamp(1.4rem, 4vw, 1.9rem);
   font-weight: 700;
-  letter-spacing: -0.025em;
-  color: var(--accent);
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* The suite's declared Showboat accent (site.ts), used exactly once, as a
+   mark under the title — the same pattern the shell itself uses for a
+   project heading (apps/portfolio/src/styles/site.css .project-head h3::after).
+   Never a fill, never repeated on interactive elements. */
+h1::after {
+  content: "";
+  display: block;
+  width: 2.75rem;
+  margin-top: 0.4rem;
+  border-top: 2px solid var(--accent);
 }
 
 /* ── Board ───────────────────────────────────────────────────────── */
@@ -119,27 +143,15 @@ h1 {
 
 .turn {
   font-weight: 650;
-  padding: 0.18rem 0.6rem;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--border);
   white-space: nowrap;
 }
 
-.turn.p0 { color: var(--p0); }
-.turn.p1 { color: var(--p1); }
-
 .msg {
-  color: #b8b8b8;
-  /* Explicit and non-zero regardless of what an ancestor ever sets. This used
-     to be the missing piece: `.board { line-height: 0 }` (above) was
-     inherited here, so this box measured 0px tall and `overflow: hidden`
-     clipped every status message — "break to start", all shot narration,
-     foul reasons, "click the table to place the cue ball", even "couldn't
-     load the physics engine" — to nothing. Fixed on both ends: `.board` no
-     longer zeroes it, and `.msg` no longer depends on inheriting the right
-     value from an ancestor to begin with. See
-     src/ui/statusMessageVisibility.test.ts for the regression test. */
+  color: var(--text);
+  /* Explicit and non-zero regardless of what an ancestor ever sets — this is
+     the property a previous rule (`.board { line-height: 0 }`) zeroed out,
+     which clipped every status message ("break to start", shot narration,
+     foul reasons) to 0px tall. See src/ui/statusMessageVisibility.test.ts. */
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -182,14 +194,21 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.28rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.72rem;
-  color: #8a8a8a;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 
-.controls label span { color: #e8e8e8; font-weight: 600; }
-.controls input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.controls label span { color: var(--text); font-weight: 600; }
+
+.controls input[type="range"] { width: 100%; accent-color: var(--text); cursor: pointer; }
+
+input[type="checkbox"] {
+  accent-color: var(--text);
+  cursor: pointer;
+}
 
 .buttons {
   display: flex;
@@ -201,52 +220,56 @@ h1 {
   border-top: 1px solid var(--border);
 }
 
+/* Printed-rule buttons, not filled pills: a border and an invert on hover, no
+   colour fill from the accent, no radius (radius is reserved for the table —
+   the one physical object on this page). */
 button {
   font: inherit;
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
   padding: 0.46rem 1.35rem;
-  border-radius: 6px;
-  border: none;
-  background: var(--accent);
-  color: #05161e;
+  border: 1px solid var(--text);
+  background: var(--text);
+  color: var(--bg);
   cursor: pointer;
-  transition: background 0.12s, transform 0.08s;
-  letter-spacing: 0.01em;
+  transition: background 0.12s, color 0.12s, transform 0.08s;
 }
 
-button:hover:not(:disabled) { background: #92bcda; }
+button:hover:not(:disabled) { background: transparent; color: var(--text); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.38; cursor: not-allowed; }
 
 button.secondary {
-  background: var(--surface);
-  color: #c0bcb4;
+  background: transparent;
+  color: var(--text);
   border: 1px solid var(--border);
 }
-button.secondary:hover:not(:disabled) { background: #182420; }
+button.secondary:hover:not(:disabled) { border-color: var(--text); }
 
 .toggle {
   display: inline-flex !important;
   flex-direction: row !important;
   align-items: center;
   gap: 0.32rem;
+  font-family: inherit !important;
   text-transform: none !important;
   letter-spacing: normal !important;
-  color: #a0a0a0 !important;
+  color: var(--muted) !important;
   font-size: 0.80rem !important;
   cursor: pointer;
 }
 
 .hint {
-  font-size: 0.70rem;
-  color: #525252;
+  font-size: 0.78rem;
+  color: var(--muted);
   max-width: 72ch;
   text-align: center;
   line-height: 1.5;
 }
 
 /* ── Overlay panel ───────────────────────────────────────────────── */
+/* Mounted only once there is a real decision to show (see App.tsx) — before
+   the opponent's first turn, nothing renders here at all. */
 
 .overlay {
   flex: 0 1 288px;
@@ -254,10 +277,9 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   min-height: 180px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
   padding: 0.85rem 1rem 0.9rem;
   text-align: left;
-  flex-shrink: 0;
+  flex-shrink: 1;
   transition: opacity 0.35s ease;
 }
 
@@ -271,9 +293,10 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 }
 
 .overlay-title {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.78rem;
   font-weight: 650;
-  color: var(--accent);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.10em;
 }
@@ -286,7 +309,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 
 .overlay-empty {
   font-size: 0.76rem;
-  color: #5a5a5a;
+  color: var(--muted);
   margin: 0;
   line-height: 1.5;
 }
@@ -298,46 +321,13 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   line-height: 1.45;
 }
 
-/* Decision stages — one row per real step of the search that just ran.
-   Deliberately no animation: by the time this panel renders, the search has
-   already finished, and a progress-style animation here would be theatre. */
-.stage-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  margin-bottom: 0.65rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.stage {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  font-size: 0.68rem;
-}
-
-.stage-name {
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-
-.stage-val {
-  margin-left: auto;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.stage-warn .stage-name,
-.stage-warn .stage-val { color: #d9a441; }
-
 /* Candidate rows */
 .cand-head {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   display: flex;
   justify-content: space-between;
   font-size: 0.6rem;
-  color: #5a5a5a;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0 0.35rem 0.2rem;
@@ -346,7 +336,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 .cand-list {
   display: flex;
   flex-direction: column;
-  gap: 0.28rem;
+  gap: 0.32rem;
 }
 
 .cand-row {
@@ -354,14 +344,11 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   flex-direction: column;
   gap: 0.14rem;
   padding: 0.3rem 0.35rem;
-  border-radius: 4px;
-  transition: background 0.08s;
 }
 
-.cand-row:hover { background: rgba(255,255,255,0.03); }
-
+/* The one accent event this panel gets: the row the physics/model actually
+   picked, marked with a rule (never a fill) on its left edge. */
 .cand-chosen {
-  background: rgba(126, 168, 200, 0.09);
   border-left: 2px solid var(--accent);
   padding-left: calc(0.35rem - 2px);
 }
@@ -378,7 +365,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 }
 
 .kind-direct      { color: #8cc8ff; }
-.kind-bank        { color: var(--p1); }
+.kind-bank        { color: #e8a84a; }
 .kind-doublebank  { color: #ff8888; }
 .kind-combo       { color: #bf8fff; }
 .kind-railcombo   { color: #ffd166; }
@@ -397,14 +384,14 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 .cand-rank {
   margin-left: auto;
   font-size: 0.62rem;
-  color: #5f7f96;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 /* The model's calibrated legal-pot estimate, shown next to (never instead of)
    the physics-derived strength. */
 .cand-prior {
-  color: #5f7f96;
+  color: var(--muted);
   margin-right: 0.35rem;
 }
 
@@ -419,8 +406,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 
 .cand-bar {
   height: 100%;
-  border-radius: 2px;
-  background: var(--accent);
+  background: var(--muted);
   min-width: 2px;
   max-width: 100%;
   transition: width 0.2s ease;
@@ -446,6 +432,7 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 }
 
 .chosen-label {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -463,8 +450,8 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 
 .chosen-score {
   margin-left: auto;
-  font-weight: 600;
-  color: var(--accent);
+  font-weight: 650;
+  color: var(--text);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
 }
@@ -480,13 +467,6 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   line-height: 1.45;
 }
 
-.overlay-foot {
-  margin: 0.5rem 0 0;
-  font-size: 0.6rem;
-  color: #4e4e4e;
-  letter-spacing: 0.03em;
-}
-
 /* ── Win / loss screen ───────────────────────────────────────────── */
 
 .win-screen {
@@ -496,7 +476,6 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(4px);
   z-index: 200;
   animation: fadein 0.25s ease;
 }
@@ -506,18 +485,17 @@ button.secondary:hover:not(:disabled) { background: #182420; }
 .win-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
   padding: 2.8rem 3.5rem 2.4rem;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.6rem;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(126,168,200,0.10);
 }
 
 .win-eyebrow {
   margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.70rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -528,14 +506,14 @@ button.secondary:hover:not(:disabled) { background: #182420; }
   margin: 0;
   font-size: clamp(1.8rem, 5vw, 2.6rem);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--accent);
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .win-sub {
   margin: 0;
   font-size: 0.82rem;
-  color: #686868;
+  color: var(--muted);
 }
 
 .win-btn {
