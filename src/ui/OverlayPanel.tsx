@@ -59,12 +59,13 @@ export interface ModelBadge {
 
 export function OverlayPanel({
   result,
-  thinking,
+  searching,
   stale = false,
   badge,
 }: {
   result: SearchResult | null;
-  thinking: boolean;
+  /** True while the physics search is actually running for this turn. */
+  searching: boolean;
   stale?: boolean;
   badge: ModelBadge;
 }) {
@@ -82,7 +83,7 @@ export function OverlayPanel({
           <span className="overlay-title">{title}</span>
         </div>
         <p className="overlay-empty">
-          {thinking ? "searching…" : "candidates appear here on the opponent's turn"}
+          {searching ? "searching…" : "candidates appear here on the opponent's turn"}
         </p>
         {badge.fallbackReason && (
           <p className="overlay-warn">classical fallback — {badge.fallbackReason}</p>

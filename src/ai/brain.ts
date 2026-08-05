@@ -50,6 +50,7 @@ const emptyResult = (mode: DecisionTrace["mode"], reason: string): SearchResult 
     candidatesConsidered: 0,
     prunedByPrior: 0,
     physicsVerified: 0,
+    verifiedIndices: [],
     legalPots: 0,
     scratched: 0,
     physicsCalls: 0,

@@ -47,6 +47,11 @@ export interface CandidateScores {
   logits: number[];
   /** Wall-clock ms for encode + the single batched session.run(). */
   inferenceMs: number;
+  /** Of that, the feature-encoding half (pure TS, no ONNX). */
+  encodeMs: number;
+  /** Of that, the `session.run()` half. Reported separately because Phase 2D's
+   *  latency measurement only covered this part, and the two differ. */
+  runMs: number;
   /** How many candidates were in the batch. */
   batchSize: number;
 }
@@ -107,6 +112,7 @@ export class NeuralCandidateEvaluator {
         expectedSha256: manifest.onnx_sha256,
         expectedBytes: manifest.bytes,
         expectedInputDim: manifest.total_dim,
+        fetchImpl,
       });
 
       const status: RankerStatus = rankerModelStatus();
@@ -133,8 +139,10 @@ export class NeuralCandidateEvaluator {
     for (let i = 0; i < candidates.length; i++) {
       rows.set(encodeRow(balls, table, candidates[i]), i * TOTAL_DIM);
     }
+    const t1 = performance.now();
     const out = await evaluateCandidateRows(rows, candidates.length, TOTAL_DIM);
-    const inferenceMs = performance.now() - t0;
+    const t2 = performance.now();
+    const inferenceMs = t2 - t0;
     if (!out || out.length !== candidates.length) return null;
 
     const logits: number[] = [];
@@ -144,7 +152,14 @@ export class NeuralCandidateEvaluator {
       logits.push(logit);
       scores.push(calibratedMakeEstimate(logit, candidates[i].kind, manifest));
     }
-    return { scores, logits, inferenceMs, batchSize: candidates.length };
+    return {
+      scores,
+      logits,
+      inferenceMs,
+      encodeMs: t1 - t0,
+      runMs: t2 - t1,
+      batchSize: candidates.length,
+    };
   }
 }
 
