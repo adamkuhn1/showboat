@@ -1,0 +1,274 @@
+{
+  "name": "deepsets_attn",
+  "note": "GNN arm: one masked self-attention layer over the 16-ball set. 3 seeds (cost).",
+  "seeds": [
+    20260804,
+    20260805,
+    20260806
+  ],
+  "n_params": 41025,
+  "input_dim": 68,
+  "train_seconds": {
+    "mean": 167.24977246920267,
+    "std": 22.624940871787377
+  },
+  "val_bce": {
+    "mean": 0.34141988057479433,
+    "std": 0.00037314986483582614
+  },
+  "val_group_aware_spearman": {
+    "mean": 0.47332046226738383,
+    "std": 0.004605655712253505
+  },
+  "val_pooled_spearman": {
+    "mean": 0.5266235731870798,
+    "std": 0.001826651747410139
+  },
+  "val_brier": {
+    "mean": 0.0235028174631578,
+    "std": 0.00014876913582783367
+  },
+  "val_ece": {
+    "mean": 0.006417450325487246,
+    "std": 0.000769676477211898
+  },
+  "val_ece_calibrated": {
+    "mean": 0.003166191331766398,
+    "std": 0.00026819329758187506
+  },
+  "val_ndcg@3": {
+    "mean": 0.7342580121982559,
+    "std": 0.003134284198039939
+  },
+  "val_top1_hit_rate": {
+    "mean": 0.7307692307692308,
+    "std": 0.008709823339573809
+  },
+  "val_mean_regret": {
+    "mean": 0.18515564578499613,
+    "std": 0.004190029569367616
+  },
+  "latency_median_ms": {
+    "mean": 1.6120766666366155,
+    "std": 0.028482615866441043
+  },
+  "per_kind_group_aware_spearman": {
+    "direct": {
+      "mean": 0.628322070391299,
+      "std": 0.004835448860265685,
+      "n": 3659
+    },
+    "bank": {
+      "mean": 0.42757375864976804,
+      "std": 0.0011276318730749537,
+      "n": 8759
+    },
+    "double-bank": {
+      "mean": 0.21497733703805946,
+      "std": 0.007946641169218545,
+      "n": 1724
+    },
+    "combo": {
+      "mean": 0.40781079344483695,
+      "std": 0.016920140409006846,
+      "n": 1489
+    },
+    "rail-combo": {
+      "mean": 0.3723117448252358,
+      "std": 0.017578598335917718,
+      "n": 1603
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 20260804,
+      "n_params": 41025,
+      "best_epoch": 31,
+      "train_seconds": 185.05389714241028,
+      "val": {
+        "bce": 0.34123236115957317,
+        "brier": 0.023369267364047933,
+        "ece": 0.00534240213434962,
+        "pooled_spearman": 0.5287761651214552,
+        "ndcg@3": 0.736179743046448,
+        "top1_hit_rate": 0.7396449704142012,
+        "mean_regret": 0.18351218097447797,
+        "group_aware_spearman": 0.47164720429971757,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.4101673795810602,
+            "brier": 0.02704895947152336,
+            "group_aware_spearman": 0.6293259310567434,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3476559169715645,
+            "brier": 0.02280477818374332,
+            "group_aware_spearman": 0.42750316249042913,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2939212845415761,
+            "brier": 0.019297024820586574,
+            "group_aware_spearman": 0.22240905739963068,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.2687523962247856,
+            "brier": 0.022191310310054224,
+            "group_aware_spearman": 0.43159542202219275,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.26699019404533286,
+            "brier": 0.023528276414178633,
+            "group_aware_spearman": 0.3500460865849328,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.02332603071883915,
+      "val_ece_calibrated": 0.003230166200319714,
+      "platt_a": 0.959189772605896,
+      "platt_b": -0.10958905518054962,
+      "latency": {
+        "median_ms": 1.6523540002708614,
+        "p95_ms": 1.9549832999473438
+      }
+    },
+    {
+      "seed": 20260805,
+      "n_params": 41025,
+      "best_epoch": 36,
+      "train_seconds": 181.37143230438232,
+      "val": {
+        "bce": 0.34194082710819296,
+        "brier": 0.02371038193679441,
+        "ece": 0.006807304656348566,
+        "pooled_spearman": 0.5243104482573749,
+        "ndcg@3": 0.7367563112775417,
+        "top1_hit_rate": 0.7337278106508875,
+        "mean_regret": 0.1810469837587007,
+        "group_aware_spearman": 0.4796085362559795,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.41356073106778635,
+            "brier": 0.028290758047588845,
+            "group_aware_spearman": 0.6219621074243517,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3493737206210184,
+            "brier": 0.023386999240662745,
+            "group_aware_spearman": 0.4262293492972343,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2950180845662376,
+            "brier": 0.019600753823920333,
+            "group_aware_spearman": 0.2185622171046073,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.2648265873539329,
+            "brier": 0.021131539644101163,
+            "group_aware_spearman": 0.39364794843214734,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.2599420549743398,
+            "brier": 0.021837523475431674,
+            "group_aware_spearman": 0.373869030800071,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.02368857217104185,
+      "val_ece_calibrated": 0.002810441825209879,
+      "platt_a": 1.0187609195709229,
+      "platt_b": -0.019051754847168922,
+      "latency": {
+        "median_ms": 1.592375499967602,
+        "p95_ms": 1.6949204998809364
+      }
+    },
+    {
+      "seed": 20260806,
+      "n_params": 41025,
+      "best_epoch": 26,
+      "train_seconds": 135.32398796081543,
+      "val": {
+        "bce": 0.341086453456617,
+        "brier": 0.023428803088631066,
+        "ece": 0.00710264418576355,
+        "pooled_spearman": 0.5267841061824091,
+        "ndcg@3": 0.7298379822707786,
+        "top1_hit_rate": 0.7189349112426036,
+        "mean_regret": 0.19090777262180975,
+        "group_aware_spearman": 0.4687056462464543,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.41223622196289106,
+            "brier": 0.027891584094183505,
+            "group_aware_spearman": 0.633678172692802,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3486065071471826,
+            "brier": 0.023218189916720193,
+            "group_aware_spearman": 0.42898876416164067,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.29246590426881636,
+            "brier": 0.01875626432400027,
+            "group_aware_spearman": 0.2039607366099404,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.26625570142337,
+            "brier": 0.021566316862488423,
+            "group_aware_spearman": 0.3981890098801707,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.2593894249707485,
+            "brier": 0.02114816921115186,
+            "group_aware_spearman": 0.3930201170907036,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.023396701314446596,
+      "val_ece_calibrated": 0.0034579659697696005,
+      "platt_a": 0.9458250999450684,
+      "platt_b": -0.04891287535429001,
+      "latency": {
+        "median_ms": 1.5915004996713833,
+        "p95_ms": 1.6432397000698984
+      }
+    }
+  ],
+  "env": {
+    "torch": "2.8.0",
+    "platform": "macOS-26.5-arm64-arm-64bit"
+  }
+}
