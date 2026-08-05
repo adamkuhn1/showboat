@@ -1,0 +1,400 @@
+{
+  "name": "deepsets",
+  "note": "Candidate-conditioned Deep Sets, identical [N,68] input contract.",
+  "seeds": [
+    20260804,
+    20260805,
+    20260806,
+    20260807,
+    20260808
+  ],
+  "n_params": 24257,
+  "input_dim": 68,
+  "train_seconds": {
+    "mean": 48.61992588043213,
+    "std": 4.276840188032872
+  },
+  "val_bce": {
+    "mean": 0.3422638683117413,
+    "std": 0.0003301283209767897
+  },
+  "val_group_aware_spearman": {
+    "mean": 0.4699957889993064,
+    "std": 0.007282410213753422
+  },
+  "val_pooled_spearman": {
+    "mean": 0.5247251718811419,
+    "std": 0.004176999380385457
+  },
+  "val_brier": {
+    "mean": 0.02370265220883406,
+    "std": 5.737234090616333e-05
+  },
+  "val_ece": {
+    "mean": 0.008687176377452744,
+    "std": 0.0012770785786526098
+  },
+  "val_ece_calibrated": {
+    "mean": 0.004149867189635018,
+    "std": 0.0009797832571361088
+  },
+  "val_ndcg@3": {
+    "mean": 0.7304305696377705,
+    "std": 0.00341371721035678
+  },
+  "val_top1_hit_rate": {
+    "mean": 0.7337278106508875,
+    "std": 0.006746600148515595
+  },
+  "val_mean_regret": {
+    "mean": 0.1849622969837587,
+    "std": 0.004083048775029712
+  },
+  "latency_median_ms": {
+    "mean": 0.9715083000017444,
+    "std": 0.04209276754583643
+  },
+  "per_kind_group_aware_spearman": {
+    "direct": {
+      "mean": 0.6168887088503184,
+      "std": 0.004703347406738547,
+      "n": 3659
+    },
+    "bank": {
+      "mean": 0.4271539679259967,
+      "std": 0.0063190023946791555,
+      "n": 8759
+    },
+    "double-bank": {
+      "mean": 0.19158598017060086,
+      "std": 0.013174290257167756,
+      "n": 1724
+    },
+    "combo": {
+      "mean": 0.4105568011650895,
+      "std": 0.010538627543510827,
+      "n": 1489
+    },
+    "rail-combo": {
+      "mean": 0.35456275476100807,
+      "std": 0.01663230748516083,
+      "n": 1603
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 20260804,
+      "n_params": 24257,
+      "best_epoch": 36,
+      "train_seconds": 49.58614778518677,
+      "val": {
+        "bce": 0.34169515886370166,
+        "brier": 0.023706888607392087,
+        "ece": 0.008179383621084948,
+        "pooled_spearman": 0.532761143151559,
+        "ndcg@3": 0.7369602029089135,
+        "top1_hit_rate": 0.7248520710059172,
+        "mean_regret": 0.17995939675174014,
+        "group_aware_spearman": 0.48308788235586086,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.4131433639922062,
+            "brier": 0.028138043958104878,
+            "group_aware_spearman": 0.6250217768760131,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3493282556613768,
+            "brier": 0.02344183457213883,
+            "group_aware_spearman": 0.4343089785041773,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2946477616151684,
+            "brier": 0.01904935849596404,
+            "group_aware_spearman": 0.20592918394923598,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.2655770729595239,
+            "brier": 0.021724427992106332,
+            "group_aware_spearman": 0.39595202940655594,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.25820312227714964,
+            "brier": 0.021891215890478582,
+            "group_aware_spearman": 0.3488934666219398,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.023642062008574202,
+      "val_ece_calibrated": 0.003893722400364943,
+      "platt_a": 0.9446093440055847,
+      "platt_b": -0.026600198820233345,
+      "latency": {
+        "median_ms": 0.9553960000019401,
+        "p95_ms": 1.0431246999985433
+      }
+    },
+    {
+      "seed": 20260805,
+      "n_params": 24257,
+      "best_epoch": 29,
+      "train_seconds": 47.49232602119446,
+      "val": {
+        "bce": 0.34224503562313485,
+        "brier": 0.02359387240915168,
+        "ece": 0.009645426463220322,
+        "pooled_spearman": 0.5209483687097167,
+        "ndcg@3": 0.7292929010957457,
+        "top1_hit_rate": 0.742603550295858,
+        "mean_regret": 0.18706496519721577,
+        "group_aware_spearman": 0.46852612042570635,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.4124752606821788,
+            "brier": 0.02784314207998915,
+            "group_aware_spearman": 0.6148537705599335,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.348373571129188,
+            "brier": 0.023019038150003345,
+            "group_aware_spearman": 0.42955835020001665,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2988335635314302,
+            "brier": 0.020397541917117196,
+            "group_aware_spearman": 0.17157788192904805,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.26703887747655264,
+            "brier": 0.02140066953550208,
+            "group_aware_spearman": 0.4015710059834521,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.26499682063735736,
+            "brier": 0.02251030933829557,
+            "group_aware_spearman": 0.3419512055130484,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.02349793270002677,
+      "val_ece_calibrated": 0.005100073208981619,
+      "platt_a": 0.9338304996490479,
+      "platt_b": -0.16492372751235962,
+      "latency": {
+        "median_ms": 0.9872499999943329,
+        "p95_ms": 1.286496199997344
+      }
+    },
+    {
+      "seed": 20260806,
+      "n_params": 24257,
+      "best_epoch": 21,
+      "train_seconds": 41.34318995475769,
+      "val": {
+        "bce": 0.3422330753207391,
+        "brier": 0.023713019878976557,
+        "ece": 0.0077622586789271725,
+        "pooled_spearman": 0.5241569423858311,
+        "ndcg@3": 0.72687676602468,
+        "top1_hit_rate": 0.7396449704142012,
+        "mean_regret": 0.18851508120649652,
+        "group_aware_spearman": 0.47116949469548053,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.4144766383407166,
+            "brier": 0.028508639205527504,
+            "group_aware_spearman": 0.6138431501894274,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3499709486429949,
+            "brier": 0.023523461911283208,
+            "group_aware_spearman": 0.43244319105468143,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2965430689344821,
+            "brier": 0.01939236528238062,
+            "group_aware_spearman": 0.1807350544810201,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.263783934365163,
+            "brier": 0.020851688457287035,
+            "group_aware_spearman": 0.4253517155042811,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.2570584729333555,
+            "brier": 0.0211069675611994,
+            "group_aware_spearman": 0.3863638294234363,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.0235722111698464,
+      "val_ece_calibrated": 0.003411678567284897,
+      "platt_a": 0.9040189981460571,
+      "platt_b": -0.15219005942344666,
+      "latency": {
+        "median_ms": 0.9035830000101441,
+        "p95_ms": 1.0421914500014395
+      }
+    },
+    {
+      "seed": 20260807,
+      "n_params": 24257,
+      "best_epoch": 27,
+      "train_seconds": 50.260751724243164,
+      "val": {
+        "bce": 0.34269349554053313,
+        "brier": 0.023744043019102497,
+        "ece": 0.010657975525165415,
+        "pooled_spearman": 0.5236737882222368,
+        "ndcg@3": 0.7296063240143699,
+        "top1_hit_rate": 0.727810650887574,
+        "mean_regret": 0.18010440835266822,
+        "group_aware_spearman": 0.4656418122795061,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.4153577734715653,
+            "brier": 0.028741446486623978,
+            "group_aware_spearman": 0.6117302688459227,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.3499294718388615,
+            "brier": 0.023486010940121795,
+            "group_aware_spearman": 0.41823681931321866,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.295414907731361,
+            "brier": 0.01930496877736313,
+            "group_aware_spearman": 0.20179701377671225,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.26512669985588566,
+            "brier": 0.021023271845801803,
+            "group_aware_spearman": 0.4163144503761914,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.2601898990406872,
+            "brier": 0.02104834492922995,
+            "group_aware_spearman": 0.34112171173777944,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.02365249532682454,
+      "val_ece_calibrated": 0.005453624778050094,
+      "platt_a": 0.9591656923294067,
+      "platt_b": 0.02899724617600441,
+      "latency": {
+        "median_ms": 0.9791459999917151,
+        "p95_ms": 1.0443106000138869
+      }
+    },
+    {
+      "seed": 20260808,
+      "n_params": 24257,
+      "best_epoch": 28,
+      "train_seconds": 54.417213916778564,
+      "val": {
+        "bce": 0.3424525762105979,
+        "brier": 0.023755437129547485,
+        "ece": 0.007190837598865874,
+        "pooled_spearman": 0.5220856169363657,
+        "ndcg@3": 0.7294166541451432,
+        "top1_hit_rate": 0.7337278106508875,
+        "mean_regret": 0.18916763341067286,
+        "group_aware_spearman": 0.4615536352399781,
+        "n_states_ranked": 430,
+        "per_kind": {
+          "direct": {
+            "n": 3659,
+            "bce": 0.41405017851508324,
+            "brier": 0.028517441138373453,
+            "group_aware_spearman": 0.618994577780295,
+            "n_states_ranked": 366
+          },
+          "bank": {
+            "n": 8759,
+            "bce": 0.34981312762474215,
+            "brier": 0.023556098592954988,
+            "group_aware_spearman": 0.42122250055788923,
+            "n_states_ranked": 427
+          },
+          "double-bank": {
+            "n": 1724,
+            "bce": 0.2954744700561975,
+            "brier": 0.01950086038494667,
+            "group_aware_spearman": 0.19789076671698802,
+            "n_states_ranked": 394
+          },
+          "combo": {
+            "n": 1489,
+            "bce": 0.2656327883785859,
+            "brier": 0.021035813564409648,
+            "group_aware_spearman": 0.41359480455496717,
+            "n_states_ranked": 290
+          },
+          "rail-combo": {
+            "n": 1603,
+            "bce": 0.26068602750407915,
+            "brier": 0.021076861564919586,
+            "group_aware_spearman": 0.35448356050883634,
+            "n_states_ranked": 302
+          }
+        }
+      },
+      "val_brier_calibrated": 0.023630121742941795,
+      "val_ece_calibrated": 0.002890236993493538,
+      "platt_a": 0.9216523170471191,
+      "platt_b": -0.14962643384933472,
+      "latency": {
+        "median_ms": 1.0321665000105895,
+        "p95_ms": 1.1089918500118756
+      }
+    }
+  ],
+  "env": {
+    "torch": "2.8.0",
+    "platform": "macOS-26.5-arm64-arm-64bit"
+  }
+}
