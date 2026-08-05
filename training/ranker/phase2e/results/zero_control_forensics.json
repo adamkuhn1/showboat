@@ -1,0 +1,173 @@
+{
+  "zero_input_mlp": [
+    {
+      "seed": 20260804,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260805,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260806,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260807,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260808,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    }
+  ],
+  "zero_input_deepsets": [
+    {
+      "seed": 20260804,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260805,
+      "n_distinct_predictions_chunked": 2,
+      "peak_to_peak_chunked": 1.1920928955078125e-07,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": -0.04272812729555009,
+      "n_states_ranked_chunked": 2,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260806,
+      "n_distinct_predictions_chunked": 1,
+      "peak_to_peak_chunked": 0.0,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": NaN,
+      "n_states_ranked_chunked": 0,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260807,
+      "n_distinct_predictions_chunked": 2,
+      "peak_to_peak_chunked": 1.1920928955078125e-07,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": -0.28187480492069666,
+      "n_states_ranked_chunked": 1,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260808,
+      "n_distinct_predictions_chunked": 2,
+      "peak_to_peak_chunked": 1.1920928955078125e-07,
+      "n_distinct_predictions_single_pass": 1,
+      "peak_to_peak_single_pass": 0.0,
+      "group_aware_spearman_chunked": 0.04272812729555009,
+      "n_states_ranked_chunked": 2,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    }
+  ],
+  "deepsets_state_only": [
+    {
+      "seed": 20260804,
+      "n_distinct_predictions_chunked": 436,
+      "peak_to_peak_chunked": 2.162562131881714,
+      "n_distinct_predictions_single_pass": 431,
+      "peak_to_peak_single_pass": 2.162562131881714,
+      "group_aware_spearman_chunked": -0.023401736634527315,
+      "n_states_ranked_chunked": 5,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260805,
+      "n_distinct_predictions_chunked": 434,
+      "peak_to_peak_chunked": 1.3385592699050903,
+      "n_distinct_predictions_single_pass": 431,
+      "peak_to_peak_single_pass": 1.3385592699050903,
+      "group_aware_spearman_chunked": -0.057595000312723854,
+      "n_states_ranked_chunked": 3,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260806,
+      "n_distinct_predictions_chunked": 436,
+      "peak_to_peak_chunked": 1.4938706159591675,
+      "n_distinct_predictions_single_pass": 431,
+      "peak_to_peak_single_pass": 1.4938706159591675,
+      "group_aware_spearman_chunked": -0.1503876611136263,
+      "n_states_ranked_chunked": 5,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260807,
+      "n_distinct_predictions_chunked": 432,
+      "peak_to_peak_chunked": 1.5476710796356201,
+      "n_distinct_predictions_single_pass": 431,
+      "peak_to_peak_single_pass": 1.5476710796356201,
+      "group_aware_spearman_chunked": -0.2527088116259382,
+      "n_states_ranked_chunked": 1,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    },
+    {
+      "seed": 20260808,
+      "n_distinct_predictions_chunked": 433,
+      "peak_to_peak_chunked": 1.7969510555267334,
+      "n_distinct_predictions_single_pass": 431,
+      "peak_to_peak_single_pass": 1.7969510555267334,
+      "group_aware_spearman_chunked": -0.075435257175241,
+      "n_states_ranked_chunked": 2,
+      "group_aware_spearman_single_pass": NaN,
+      "n_states_ranked_single_pass": 0
+    }
+  ]
+}

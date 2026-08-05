@@ -1,0 +1,24 @@
+{
+  "model": "results/artifact/showboat_ranker_phase2e_deepsets.onnx",
+  "n_rows": 150,
+  "kinds_covered": [
+    "bank",
+    "combo",
+    "direct",
+    "double-bank",
+    "rail-combo"
+  ],
+  "tolerance": 0.0001,
+  "onnxruntime_web_vs_pytorch": {
+    "max_abs_diff": 0.0000012516975402832031,
+    "mean_abs_diff": 3.220637639363607e-7,
+    "pass": true
+  },
+  "latency_batch24_ms": {
+    "median": 1.415625000000034,
+    "p95": 3.8751249999999686,
+    "min": 0.7719579999999837,
+    "max": 4.097207999999966
+  },
+  "ort_version": "1.27.0"
+}

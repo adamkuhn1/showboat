@@ -24,7 +24,8 @@
     "ranker:perturbation-benchmark": "tsx training/ranker/phase2c/perturbation_benchmark.ts",
     "ranker:throughput-profile": "tsx training/ranker/phase2c/throughput_profile.ts",
     "ranker:clean-tmp": "find training/ranker/phase2c/data -name '*.tmp' -delete",
-    "model:stage": "node scripts/stage-production-model.mjs",
+    "model:stage": "node scripts/stage-production-model-phase2e.mjs",
+    "model:stage:phase2d": "node scripts/stage-production-model.mjs",
     "model:verify": "node scripts/verify-build-model.mjs",
     "eval:hybrid": "tsx eval/hybridEval.ts"
   },

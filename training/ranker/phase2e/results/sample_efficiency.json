@@ -1,0 +1,111 @@
+{
+  "fractions": [
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0
+  ],
+  "seeds": [
+    20260804,
+    20260805,
+    20260806
+  ],
+  "split_used": "val",
+  "curves": {
+    "mlp_matched": [
+      {
+        "fraction": 0.05,
+        "n_train_states": 109,
+        "n_train_rows": 3926,
+        "val_bce_mean": 0.38844430446624756,
+        "val_bce_std": 0.0002812266682038266,
+        "val_group_aware_spearman_mean": 0.3208480659505813,
+        "val_group_aware_spearman_std": 0.0036081361279347466
+      },
+      {
+        "fraction": 0.1,
+        "n_train_states": 219,
+        "n_train_rows": 8337,
+        "val_bce_mean": 0.38616663217544556,
+        "val_bce_std": 0.00023611416877413472,
+        "val_group_aware_spearman_mean": 0.32545703622457756,
+        "val_group_aware_spearman_std": 0.002716396186991905
+      },
+      {
+        "fraction": 0.25,
+        "n_train_states": 546,
+        "n_train_rows": 20686,
+        "val_bce_mean": 0.38187189896901447,
+        "val_bce_std": 5.327562453125331e-05,
+        "val_group_aware_spearman_mean": 0.3318836387008914,
+        "val_group_aware_spearman_std": 0.0033521811411064504
+      },
+      {
+        "fraction": 0.5,
+        "n_train_states": 1093,
+        "n_train_rows": 42393,
+        "val_bce_mean": 0.37270961205164593,
+        "val_bce_std": 0.0005063344995458933,
+        "val_group_aware_spearman_mean": 0.37585361915266463,
+        "val_group_aware_spearman_std": 0.005580158928183821
+      },
+      {
+        "fraction": 1.0,
+        "n_train_states": 2186,
+        "n_train_rows": 84513,
+        "val_bce_mean": 0.36505526304244995,
+        "val_bce_std": 0.0011042931821576034,
+        "val_group_aware_spearman_mean": 0.40469633108550296,
+        "val_group_aware_spearman_std": 0.0034980055558713244
+      }
+    ],
+    "deepsets": [
+      {
+        "fraction": 0.05,
+        "n_train_states": 109,
+        "n_train_rows": 3926,
+        "val_bce_mean": 0.3714478810628255,
+        "val_bce_std": 0.00018941317709561607,
+        "val_group_aware_spearman_mean": 0.360883985322579,
+        "val_group_aware_spearman_std": 0.000804116801377057
+      },
+      {
+        "fraction": 0.1,
+        "n_train_states": 219,
+        "n_train_rows": 8337,
+        "val_bce_mean": 0.36283137400945026,
+        "val_bce_std": 0.0003490754730107049,
+        "val_group_aware_spearman_mean": 0.39090557593886793,
+        "val_group_aware_spearman_std": 0.00766460216305268
+      },
+      {
+        "fraction": 0.25,
+        "n_train_states": 546,
+        "n_train_rows": 20686,
+        "val_bce_mean": 0.35482991735140484,
+        "val_bce_std": 0.0006664046880179965,
+        "val_group_aware_spearman_mean": 0.41256808402083517,
+        "val_group_aware_spearman_std": 0.004263970235521221
+      },
+      {
+        "fraction": 0.5,
+        "n_train_states": 1093,
+        "n_train_rows": 42393,
+        "val_bce_mean": 0.3484333058198293,
+        "val_bce_std": 0.0010892482085287888,
+        "val_group_aware_spearman_mean": 0.4447561371204176,
+        "val_group_aware_spearman_std": 0.0037108958415868745
+      },
+      {
+        "fraction": 1.0,
+        "n_train_states": 2186,
+        "n_train_rows": 84513,
+        "val_bce_mean": 0.3420577545960744,
+        "val_bce_std": 0.00025646081340768986,
+        "val_group_aware_spearman_mean": 0.47426116582568256,
+        "val_group_aware_spearman_std": 0.006334037701741177
+      }
+    ]
+  }
+}

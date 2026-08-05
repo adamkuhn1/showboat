@@ -35,13 +35,22 @@ const N_FIXTURES = arg("fixtures", 120);
 const N_GAMES = arg("games", 24);
 const SEED = arg("seed", 20260805);
 const BUDGET = arg("budget", defaultConfig.simulations);
+const KEEP_TOP = arg("keepTop", 16);
+// Exploratory per-kind pruning floor (see applyPerKindFloor). 0 = the shipped
+// behaviour that the headline run measured.
+const FLOOR = arg("floor", 0);
+const OUT_NAME = (() => {
+  const i = process.argv.indexOf("--out");
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : "hybrid_eval.json";
+})();
 
 async function main() {
   const { table, evaluator } = await bootstrap();
   const manifest = evaluator.getManifest()!;
   console.log(
     `[eval] model ${manifest.artifact} (seed ${manifest.provenance.selected_seed}), ` +
-      `budget ${BUDGET} physics units/turn, ${N_FIXTURES} fixtures, ${N_GAMES} games\n`,
+      `budget ${BUDGET} physics units/turn, keepTop ${KEEP_TOP}, per-kind floor ${FLOOR}, ` +
+      `${N_FIXTURES} fixtures, ${N_GAMES} games\n`,
   );
 
   const config = { ...defaultConfig, simulations: BUDGET, seed: 20260101 };
@@ -54,7 +63,9 @@ async function main() {
     const cands = generateCandidates(f.balls, table, f.targets);
     oracles[f.id] = oracle(f.balls, cands);
     for (const mode of ["classical", "hybrid"] as const) {
-      decisions.push(await runDecision(f, table, mode, evaluator, config, oracles[f.id]));
+      decisions.push(
+        await runDecision(f, table, mode, evaluator, config, oracles[f.id], KEEP_TOP, FLOOR),
+      );
     }
   }
 
@@ -131,7 +142,7 @@ async function main() {
   const games: GameRecord[] = [];
   for (let g = 0; g < N_GAMES; g++) {
     const hybridPlayer: 0 | 1 = g % 2 === 0 ? 1 : 0; // alternate sides
-    games.push(await playGame(table, evaluator, SEED + g, hybridPlayer, config));
+    games.push(await playGame(table, evaluator, SEED + g, hybridPlayer, config, 90, FLOOR));
     process.stdout.write(`\r[eval] games ${g + 1}/${N_GAMES}`);
   }
   process.stdout.write("\n");
@@ -179,7 +190,14 @@ async function main() {
 
   const results = {
     generated_at: new Date().toISOString(),
-    config: { fixtures: fixtures.length, games: N_GAMES, seed: SEED, budget: BUDGET, keep_top: 16 },
+    config: {
+      fixtures: fixtures.length,
+      games: N_GAMES,
+      seed: SEED,
+      budget: BUDGET,
+      keep_top: KEEP_TOP,
+      per_kind_floor: FLOOR,
+    },
     model: {
       artifact: manifest.artifact,
       sha256: manifest.onnx_sha256,
@@ -225,7 +243,7 @@ async function main() {
 
   const outDir = join(APP_ROOT, "eval/results");
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, "hybrid_eval.json"), `${JSON.stringify(results, null, 2)}\n`);
+  writeFileSync(join(outDir, OUT_NAME), `${JSON.stringify(results, null, 2)}\n`);
 
   const pct = (x: number) => (Number.isFinite(x) ? `${(x * 100).toFixed(1)}%` : "n/a");
   const num = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "n/a");
@@ -286,7 +304,7 @@ async function main() {
 
   console.log("\n=== full games (alternating sides, equal budget) ===");
   console.log(JSON.stringify(gameSummary, null, 2));
-  console.log(`\n[eval] wrote ${join(outDir, "hybrid_eval.json")}`);
+  console.log(`\n[eval] wrote ${join(outDir, OUT_NAME)}`);
 }
 
 main().catch((e) => {

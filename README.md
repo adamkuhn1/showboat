@@ -10,21 +10,43 @@ browser, and a **live reasoning overlay** driven entirely by actual search data.
 > UCB bandit over the candidate-shot set, not a mislabeled "MCTS"). The UI says
 > "the physics-search opponent".
 >
-> A **trained neural ranker** (Phase 2D) also ships, is hash-verified at build
-> time and at load time, and can be switched on with the **neural ranking**
-> toggle. When it is on, the UI says "the neural + physics opponent" and the
-> overlay shows the model's per-candidate calibrated make-estimate, its ranking,
-> and how many candidates it pruned before physics ran.
+> A **trained neural ranker** also ships, is hash-verified at build time and
+> at load time, and can be switched on with the **neural ranking** toggle.
+> When it is on, the UI says "the neural + physics opponent" and the overlay
+> shows the model's per-candidate calibrated make-estimate, its ranking, and
+> how many candidates it pruned before physics ran. **Currently staged: the
+> Phase 2E Deep Sets (relational) ranker**, adopted in place of the original
+> Phase 2D MLP — see
+> `docs/repair/product-proof-sprint/showboat-model-research/REPORT.md`.
 >
 > It is **off by default because the evidence says so**, not because it isn't
-> wired up. At an identical physics budget over 120 fixed fixtures and 24 full
-> games, the hybrid gets meaningfully more *trick* candidates in front of the
-> physics engine (bank recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo
-> 21.0% vs 11.3%, rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp,
-> 95% CI [+3.9, +17.7]) — but it does not play better: legal-pot rate 90.0% vs
-> 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8–12. Full
-> numbers and method: `docs/repair/product-proof-sprint/showboat-live/REPORT.md`
-> and `eval/results/hybrid_eval.json`. Reproduce with `npm run eval:hybrid`.
+> wired up — though that evidence needs an important caveat after the model
+> swap below. Against the **original Phase 2D MLP**, two independent fixture
+> seeds, paired, at an identical 60-unit physics budget (120 fixtures + 24
+> games, and 90 fixtures + 16 games):
+>
+> - **Consistent:** the hybrid attempts more tricks (+10.8pp and +5.6pp) and
+>   gets meaningfully more makeable *trick* candidates in front of the physics
+>   engine (combo recall 21.0% vs 11.3% and 10.5% vs 2.6%; similar for bank,
+>   double-bank and rail-combo).
+> - **Not consistent:** shot quality. Legal-pot rate came out **-3.3pp** on one
+>   seed and **+1.1pp** on the other; every 95% CI includes zero and the sign
+>   flips. The full-game record is 11–19 to classical across both seeds
+>   (p ≈ 0.10, not significant), and game-level pot rate flips sign too.
+>
+> **After swapping in the Phase 2E model** (which measurably improves offline
+> ranking quality, especially on the previously-weak double-bank kind — see
+> the model-research report), a small **30-fixture / 8-game spot-check**
+> (`eval/results/hybrid_eval_phase2e_spotcheck_seed20260805.json`) shows
+> broadly similar behavior (legal-pot -3.3pp, trick-attempt rate now nearly
+> identical between modes at ~93-94% vs the MLP's +10.8pp gap) but **is far
+> too small to draw a conclusion from** — it exists so this README doesn't
+> cite stale evidence for the currently-staged model, not as a replacement
+> for the full 120-fixture/2-seed protocol. **Re-running that full protocol
+> against the Phase 2E model is the recommended next step before revisiting
+> the default.** Full numbers and method:
+> `docs/repair/product-proof-sprint/showboat-live/REPORT.md` and
+> `eval/results/*.json`. Reproduce with `npm run eval:hybrid`.
 
 ## ML status (2026-08-03, redirected — read before touching training/)
 
@@ -206,7 +228,11 @@ regret, physics calls per turn, decision and inference latency — each broken
 out per candidate kind, paired between the two modes at an identical budget,
 with 95% CIs — plus full-game win rate and shots-to-win over fixed seeds.
 
-Training-time metrics (5 seeds, held-out test, calibration, ablations, per-kind
-breakdown, sanity controls including the full-scale zeroed-feature control)
-live in `docs/repair/showboat-ml/phase-2d/` and
-`training/ranker/phase2d/results/*.json`.
+Training-time metrics for the original MLP (5 seeds, held-out test,
+calibration, ablations, per-kind breakdown, sanity controls including the
+full-scale zeroed-feature control) live in `docs/repair/showboat-ml/phase-2d/`
+and `training/ranker/phase2d/results/*.json` — kept as history, not deleted,
+since the Phase 2E report compares against it directly. The currently-staged
+model's own training-time metrics live in
+`docs/repair/product-proof-sprint/showboat-model-research/REPORT.md` and
+`training/ranker/phase2e/results/*.json`.

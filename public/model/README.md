@@ -1,8 +1,11 @@
 # Model directory
 
 **The model the game actually uses lives in [`ranker/`](./ranker/README.md).**
-That is the trained Phase 2D candidate ranker: committed, hash-verified, and
-wired into live shot selection through `src/ai/neural/evaluator.ts`.
+That is the trained Phase 2E Deep Sets candidate ranker (adopted in place of
+the original Phase 2D MLP — see
+`docs/repair/product-proof-sprint/showboat-model-research/REPORT.md`):
+committed, hash-verified, and wired into live shot selection through
+`src/ai/neural/evaluator.ts`.
 
 ## `showboat.onnx` — the parked whole-board policy/value slot
 
