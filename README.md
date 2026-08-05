@@ -20,33 +20,39 @@ browser, and a **live reasoning overlay** driven entirely by actual search data.
 > `docs/repair/product-proof-sprint/showboat-model-research/REPORT.md`.
 >
 > It is **off by default because the evidence says so**, not because it isn't
-> wired up — though that evidence needs an important caveat after the model
-> swap below. Against the **original Phase 2D MLP**, two independent fixture
-> seeds, paired, at an identical 60-unit physics budget (120 fixtures + 24
-> games, and 90 fixtures + 16 games):
+> wired up. The rule was written down and committed **before** the evaluation
+> ran (`docs/repair/release-candidate/showboat/DECISION_GATE.md`) and then
+> applied mechanically (`npm run eval:gate`) over **210 paired held-out
+> fixtures** (seeds `20260805` and `424242`) at an identical 60-unit physics
+> budget, against the **currently-shipped Phase 2E model** — not the
+> superseded MLP the earlier numbers came from. **5 of 7 measurable criteria
+> pass, 2 fail**, so the default does not move:
 >
-> - **Consistent:** the hybrid attempts more tricks (+10.8pp and +5.6pp) and
->   gets meaningfully more makeable *trick* candidates in front of the physics
->   engine (combo recall 21.0% vs 11.3% and 10.5% vs 2.6%; similar for bank,
->   double-bank and rail-combo).
-> - **Not consistent:** shot quality. Legal-pot rate came out **-3.3pp** on one
->   seed and **+1.1pp** on the other; every 95% CI includes zero and the sign
->   flips. The full-game record is 11–19 to classical across both seeds
->   (p ≈ 0.10, not significant), and game-level pot rate flips sign too.
+> - **Shot quality is non-inferior** — legal-pot 92.4% vs 91.0%
+>   (+1.4pp, 95% CI **[-1.0pp, +3.9pp]** — includes zero, so this is *not* a
+>   claim of superiority), regret 0.029 vs 0.043, scratch 0.0% in both.
+> - **Failed criterion D (trick benefit ≥ +5pp).** Trick-*attempt* rate is
+>   **-1.0pp [-3.6, +1.7]**. Classical already attempts a trick on 96.2% of
+>   turns, so the criterion had no headroom — it was mis-specified, and it is
+>   **not** being rewritten after seeing the result.
+> - **Failed criterion C on fouls, for lack of power, not for harm.** +0.5pp
+>   point estimate, CI upper bound +2.6pp against a +2.0pp requirement, from
+>   **5 discordant pairs out of 210** (exact McNemar p = 1.00).
 >
-> **After swapping in the Phase 2E model** (which measurably improves offline
-> ranking quality, especially on the previously-weak double-bank kind — see
-> the model-research report), a small **30-fixture / 8-game spot-check**
-> (`eval/results/hybrid_eval_phase2e_spotcheck_seed20260805.json`) shows
-> broadly similar behavior (legal-pot -3.3pp, trick-attempt rate now nearly
-> identical between modes at ~93-94% vs the MLP's +10.8pp gap) but **is far
-> too small to draw a conclusion from** — it exists so this README doesn't
-> cite stale evidence for the currently-staged model, not as a replacement
-> for the full 120-fixture/2-seed protocol. **Re-running that full protocol
-> against the Phase 2E model is the recommended next step before revisiting
-> the default.** Full numbers and method:
-> `docs/repair/product-proof-sprint/showboat-live/REPORT.md` and
-> `eval/results/*.json`. Reproduce with `npm run eval:hybrid`.
+> **Reported, but deliberately outside the frozen gate:** the hybrid plays a
+> visibly different game. Multi-cushion and combination shots chosen rise from
+> **14/210 to 50/210** (+17.1pp, CI [+11.4, +22.9]) and land 94% of them, and
+> recall of makeable double-bank / combo / rail-combo candidates goes
+> 17.6→53.9%, 6.1→40.4%, 2.9→38.8%. It pays for that with direct-pot recall
+> (100%→81.2%). Whether "more spectacular at equal measured quality" should
+> own the default is a product call, flagged rather than taken.
+>
+> Full games are **not** gate evidence and were declared so up front: 40 games,
+> 28 decided, 13–15, and the per-seed record flips hard (12–6 one seed, 1–9 the
+> other). Full numbers and method:
+> `docs/repair/release-candidate/showboat/REPORT.md` and
+> `eval/results/final_*.json`. Reproduce with `npm run eval:hybrid` then
+> `npm run eval:gate`.
 
 ## ML status (2026-08-03, redirected — read before touching training/)
 
@@ -88,7 +94,20 @@ npm run build -w @portfolio-suite/showboat       # vite build + the shipped-mode
 npm run test:wasm -w @portfolio-suite/showboat   # cargo test (Rust physics/rollout)
 npm run build:wasm -w @portfolio-suite/showboat  # regenerate src/wasm from Rust
 npm run eval:hybrid -w @portfolio-suite/showboat # classical vs neural at equal budget
+npm run eval:gate -w @portfolio-suite/showboat -- eval/results/final_20260805_r2.json eval/results/final_424242_r2.json
 ```
+
+`eval:hybrid` writes one result file per fixture seed; `eval:gate` pools the
+per-fixture pairs across seeds and applies the **frozen** decision gate
+(`docs/repair/release-candidate/showboat/DECISION_GATE.md`) mechanically, so the
+default-flip verdict is computed rather than read off a table by eye. It also
+cross-checks that the classical arm is byte-identical across runs of the same
+seed — the search's wall-clock seeding guard is disabled during evaluation
+(`SearchConfig.seedTimeoutMs`) precisely so results measure policy and not
+machine load.
+
+**Run evaluations sequentially on an idle machine.** They report real decision
+latency, and the runs are long (~20 min per 120-fixture seed).
 
 The committed `src/wasm/` pkg means a plain `npm run build` needs **no Rust
 toolchain**; `build:wasm` is only for regenerating it after changing the crate.
@@ -222,11 +241,14 @@ candidates physics-verified, legal pots and scratches seen in simulation,
 physics calls spent, and (neural mode) inference milliseconds.
 
 Offline, reproducible with `npm run eval:hybrid` and written to
-`eval/results/hybrid_eval.json`: legal-pot / foul / scratch rate, trick attempt
+`eval/results/*.json`: legal-pot / foul / scratch rate, trick attempt
 and success rate, candidate recall against an exhaustive physics oracle, final
-regret, physics calls per turn, decision and inference latency — each broken
-out per candidate kind, paired between the two modes at an identical budget,
-with 95% CIs — plus full-game win rate and shots-to-win over fixed seeds.
+regret, direct-fallback preservation, kind-reserve promotions, physics calls per
+turn, decision and inference latency — each broken out per candidate kind,
+paired between the two modes at an identical budget, with 95% CIs — plus
+full-game win rate and shots-to-win over fixed seeds. `npm run eval:gate` adds
+pooled cross-seed paired differences, exact McNemar tests on the discordant
+pairs, and the frozen accept/reject verdict.
 
 Training-time metrics for the original MLP (5 seeds, held-out test,
 calibration, ablations, per-kind breakdown, sanity controls including the

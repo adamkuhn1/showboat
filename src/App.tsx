@@ -83,23 +83,32 @@ export default function App() {
   const [showOverlay, setShowOverlay] = useState(true);
   // Neural ranking is OPT-IN, not the default.
   //
-  // `eval/hybridEval.ts` ran the two modes paired, at an identical 60-unit
-  // physics budget, on two independent fixture seeds (120 fixtures + 24 games,
-  // and 90 fixtures + 16 games).
+  // The default was decided against a gate that was written down and committed
+  // BEFORE the evaluation ran (docs/repair/release-candidate/showboat/
+  // DECISION_GATE.md), then applied mechanically by `eval/gateReport.ts` over
+  // 210 paired held-out fixtures (seeds 20260805 and 424242) at an identical
+  // 60-unit physics budget, against the currently-shipped Phase 2E Deep Sets
+  // model. Result: 5 of 7 measurable criteria pass, 2 fail, so by the
+  // pre-registered rule the default does not move.
   //
-  // Consistent across both seeds: the hybrid attempts more tricks (+10.8pp and
-  // +5.6pp) and retrieves more makeable trick candidates for physics
-  // verification (e.g. combo recall 21.0% vs 11.3%, and 10.5% vs 2.6%).
+  //   - PASS  shot quality is non-inferior: legal-pot +1.4pp
+  //           [-1.0pp, +3.9pp], regret -1.4pp [-3.9pp, +1.0pp]
+  //   - PASS  equal budget (0 over-budget), latency, direct-fallback
+  //           preservation (97.1% vs 100%)
+  //   - FAIL  criterion D, "trick benefit >= +5pp": trick-ATTEMPT rate is
+  //           -1.0pp [-3.6pp, +1.7pp]. Classical already attempts a trick on
+  //           96.2% of turns, so there was no room; the criterion was
+  //           mis-specified, and it is not being rewritten after the fact.
+  //   - FAIL  criterion C on fouls, on POWER not on harm: +0.5pp point
+  //           estimate but a CI upper bound of +2.6pp against a +2.0pp
+  //           requirement. 5 discordant pairs in 210 (McNemar p = 1.00).
   //
-  // NOT consistent: shot quality. Legal-pot rate came out -3.3pp on the first
-  // seed and +1.1pp on the second; every 95% CI includes zero, and the sign
-  // flips. Full-game record across both seeds is 11-19 to classical (p ~ 0.10,
-  // not significant), while game-level pot rate also flips sign between seeds.
-  //
-  // So there is no measurable quality advantage in either direction, which is
-  // not enough to move a default. Classical stays default; the model ships as
-  // an honest, labelled, user-enabled comparison mode. Full numbers:
-  // docs/repair/product-proof-sprint/showboat-live/REPORT.md section 5.
+  // What the run does show, reported but NOT part of the frozen gate: the
+  // hybrid plays a materially different game. Multi-cushion and combination
+  // shots chosen go from 14/210 to 50/210 (+17.1pp [+11.4, +22.9]) at a
+  // 94% pot rate, and recall of makeable double-bank / combo / rail-combo
+  // candidates roughly triples-to-thirteen-times. Whether that is worth the
+  // default is a product call, flagged in the report, not made here.
   const [useNeural, setUseNeural] = useState(false);
   const useNeuralRef = useRef(useNeural);
   const [modelBadge, setModelBadge] = useState<ModelBadge>({ mode: "classical" });
@@ -555,7 +564,7 @@ export default function App() {
             className="toggle"
             title={
               modelAvailable
-                ? "Trained candidate ranker (Phase 2E, relational) orders and prunes candidates before the same physics search. Off by default: the equal-budget evaluation against the original Phase 2D MLP found no measurable quality edge either way, and hasn't been re-run yet against this model."
+                ? "Experimental, opt-in. The trained Phase 2E relational ranker orders and prunes candidates before the same physics search, at the same physics budget — physics still verifies every shot. Off by default because it did not clear a decision gate frozen before the evaluation ran: over 210 held-out fixtures its shot quality is non-inferior (legal-pot +1.4pp, CI -1.0 to +3.9) but it showed no increase in trick-shot attempts. It does pick far more multi-cushion and combination shots (50 vs 14 of 210)."
                 : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
             }
           >
