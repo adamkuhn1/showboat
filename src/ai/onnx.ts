@@ -126,52 +126,157 @@ export const evaluate = async (obs: Float32Array): Promise<NetOutput | null> => 
 // `ranker/rankerIntegration.test.ts`, not in a live UI claim, until Phase 2F.
 // ---------------------------------------------------------------------------
 
-export type RankerStatus = "absent" | "loading" | "loaded" | "error";
+// "absent"  — no artifact at the URL at all (dev clone that hasn't staged one).
+// "invalid" — an artifact IS there but failed integrity/contract validation.
+//             Deliberately distinct from "absent": a corrupted or mismatched
+//             model is a loud failure, not a quiet "no model configured".
+export type RankerStatus = "absent" | "loading" | "loaded" | "invalid" | "error";
 
 let rankerStatus: RankerStatus = "absent";
 let rankerOrt: Ort | null = null;
 let rankerSession: InferenceSession | null = null;
 let rankerLoadPromise: Promise<void> | null = null;
 let rankerLoadedUrl: string | null = null;
+let rankerError: string | null = null;
 
-export const tryLoadRankerModel = async (url: string): Promise<void> => {
+export interface RankerLoadOptions {
+  /**
+   * sha256 the fetched bytes must hash to (from the model manifest). When
+   * given and the environment exposes WebCrypto (`crypto.subtle`, available in
+   * any secure context and in Node), a mismatch is a hard failure. When
+   * WebCrypto is unavailable the byte length is still checked against
+   * `expectedBytes` and `hashVerified()` reports false, rather than pretending
+   * the artifact was verified.
+   */
+  expectedSha256?: string;
+  expectedBytes?: number;
+  /**
+   * Feature-vector width the caller's encoder produces. Verified by running a
+   * real zero-filled probe inference through the loaded graph: a graph built
+   * for a different input width throws here instead of silently broadcasting
+   * or truncating at the first live decision.
+   */
+  expectedInputDim?: number;
+}
+
+let rankerHashVerified = false;
+
+const sha256Hex = async (buf: ArrayBuffer): Promise<string | null> => {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  const digest = await subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+/**
+ * Load and *validate* the candidate-ranker artifact. Every failure path sets a
+ * status the caller can distinguish and an error string it can surface — this
+ * function never resolves into a state where the app believes it has a model
+ * it does not have, and never leaves a validation failure looking like a
+ * benign "no model configured".
+ */
+export const tryLoadRankerModel = async (url: string, opts: RankerLoadOptions = {}): Promise<void> => {
   if (rankerLoadPromise && rankerLoadedUrl === url) return rankerLoadPromise;
   rankerLoadedUrl = url;
   rankerLoadPromise = (async () => {
     rankerStatus = "loading";
+    rankerError = null;
+    rankerHashVerified = false;
     try {
       const res = await fetch(url, { method: "GET" });
       if (!res.ok) {
         rankerStatus = "absent";
+        rankerError = `HTTP ${res.status} fetching ${url}`;
         return;
       }
       const ct = res.headers.get("content-type") ?? "";
       if (ct.includes("text/html")) {
+        // SPA index.html fallback for a missing file — genuinely absent.
         rankerStatus = "absent";
+        rankerError = `${url} returned text/html (SPA fallback) — no artifact at that path`;
         return;
       }
       const buf = await res.arrayBuffer();
       const first = new Uint8Array(buf.slice(0, 1))[0];
       if (first === 0x3c) {
         rankerStatus = "absent";
+        rankerError = `${url} starts with '<' — HTML, not an ONNX graph`;
         return;
       }
+
+      if (opts.expectedBytes !== undefined && buf.byteLength !== opts.expectedBytes) {
+        rankerStatus = "invalid";
+        rankerError = `artifact is ${buf.byteLength} bytes, manifest declares ${opts.expectedBytes}`;
+        return;
+      }
+      if (opts.expectedSha256) {
+        const actual = await sha256Hex(buf);
+        if (actual === null) {
+          rankerHashVerified = false;
+        } else if (actual !== opts.expectedSha256) {
+          rankerStatus = "invalid";
+          rankerError =
+            `artifact sha256 ${actual} != manifest ${opts.expectedSha256} — refusing to load ` +
+            `an artifact whose provenance cannot be established`;
+          return;
+        } else {
+          rankerHashVerified = true;
+        }
+      }
+
       rankerOrt = ort ?? (await import("onnxruntime-web"));
-      rankerSession = await rankerOrt.InferenceSession.create(buf, {
+      const candidateSession = await rankerOrt.InferenceSession.create(buf, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
       });
+
+      if (opts.expectedInputDim !== undefined) {
+        // Real probe inference, not metadata introspection: this is the only
+        // check that actually proves the graph accepts the encoder's rows.
+        const probe = new rankerOrt.Tensor(
+          "float32",
+          new Float32Array(opts.expectedInputDim),
+          [1, opts.expectedInputDim],
+        );
+        const out = await candidateSession.run({ [candidateSession.inputNames[0]]: probe });
+        const data = out[candidateSession.outputNames[0]].data as Float32Array;
+        if (data.length !== 1 || !Number.isFinite(data[0])) {
+          rankerStatus = "invalid";
+          rankerError = `probe inference returned ${data.length} value(s) [${data[0]}], expected 1 finite logit`;
+          return;
+        }
+      }
+
+      rankerSession = candidateSession;
       rankerStatus = "loaded";
-    } catch {
-      rankerStatus = rankerSession ? "loaded" : "absent";
-      if (rankerStatus !== "loaded") rankerStatus = "absent";
+    } catch (e) {
+      // A throw here means the bytes were present but unusable (unparseable
+      // graph, wrong input width caught by the probe, runtime failure).
+      // That's "invalid", not "absent" — the difference matters to the UI.
+      rankerSession = null;
+      rankerStatus = "invalid";
+      rankerError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     }
   })();
   return rankerLoadPromise;
 };
 
 export const rankerModelStatus = (): RankerStatus => rankerStatus;
+export const rankerLoadError = (): string | null => rankerError;
+export const rankerHashWasVerified = (): boolean => rankerHashVerified;
 export const hasRankerModel = (): boolean => rankerStatus === "loaded" && rankerSession !== null;
+
+/** Test-only: drop the loaded session so a different artifact can be loaded. */
+export const _resetRankerForTests = (): void => {
+  rankerStatus = "absent";
+  rankerSession = null;
+  rankerLoadPromise = null;
+  rankerLoadedUrl = null;
+  rankerError = null;
+  rankerHashVerified = false;
+};
 
 /**
  * Score a batch of candidate rows in one session.run() call (not N calls —

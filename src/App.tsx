@@ -10,19 +10,22 @@ import { buildAnimTrack, interpolateBalls, type AnimTrack } from "./render/anima
 import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
-import { planTurn, legalTargets } from "./ai/turn";
+import { legalTargets } from "./ai/turn";
 import { getBrain, brainLabel } from "./ai/brain";
-import { tryLoadModel } from "./ai/onnx";
+import { neuralEvaluator } from "./ai/neural/evaluator";
 import type { SearchResult } from "./ai/shotSearch";
-import { OverlayPanel } from "./ui/OverlayPanel";
+import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
 
-// Bounds for the post-search reasoning-overlay hold (see the AI-turn effect
-// below). Not a fixed dramatic pause — see that call site's comment.
-const REASONING_HOLD_MIN_MS = 350;
-const REASONING_HOLD_MAX_MS = 1100;
+// Bounds for the post-search overlay READ hold (see the AI-turn effect below).
+// This is a rendering concession, not simulated thinking: the search has fully
+// completed before this timer starts, and the panel shows no progress
+// animation. Without a hold the overlay would be painted and replaced by the
+// shot animation in the same few frames, so nothing would be legible.
+const OVERLAY_READ_HOLD_MIN_MS = 350;
+const OVERLAY_READ_HOLD_MAX_MS = 1100;
 
 // Convert a mouse event's CSS-pixel coordinates into the canvas's intrinsic
 // pixel space. `.table { max-width: 100% }` (index.css) lets the canvas
@@ -78,6 +81,12 @@ export default function App() {
   const searchRef = useRef<SearchResult | null>(null);
   const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  // Model-disabled comparison mode. Defaults on; flipping it off runs the
+  // identical physics search with no model in the loop, which is exactly the
+  // A/B `eval/hybridEval.ts` measures offline.
+  const [useNeural, setUseNeural] = useState(true);
+  const useNeuralRef = useRef(useNeural);
+  const [modelBadge, setModelBadge] = useState<ModelBadge>({ mode: "classical" });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const aimLockedRef = useRef(false);
   const shootRef = useRef<() => void>(() => {});
@@ -87,15 +96,36 @@ export default function App() {
 
   vsAIRef.current = vsAI;
   searchRef.current = search;
+  useNeuralRef.current = useNeural;
 
+  // Physics gates playability, so it is awaited. The ranker is loaded in the
+  // background and deliberately NOT awaited here: creating its session pulls
+  // onnxruntime-web's ~27MB WASM runtime, and blocking first paint on that
+  // would be a real regression for the portfolio embed. The AI turn awaits the
+  // same (idempotent) promise before it plans, so a slow model load delays one
+  // opponent turn rather than the whole app.
   useEffect(() => {
-    Promise.all([initPhysics(), tryLoadModel()])
+    initPhysics()
       .then(() => {
         setEngineReady(true);
         setMessage("break to start");
       })
       .catch(() => setMessage("couldn't load the physics engine"))
       .finally(postEmbedReady);
+
+    neuralEvaluator.load().then((modelState) => {
+      if (modelState.status === "ready") {
+        setModelBadge({ mode: "neural-hybrid", hashVerified: modelState.hashVerified });
+      } else {
+        // Loud, not silent: a production build that cannot load its model says
+        // so in the console AND in the overlay, and the AI is relabelled.
+        console.error(
+          `[showboat] neural ranker unavailable (${modelState.status}): ${modelState.reason} — ` +
+            `falling back to the classical physics search.`,
+        );
+        setModelBadge({ mode: "classical", fallbackReason: modelState.reason });
+      }
+    });
   }, []);
 
   const paint = useCallback(
@@ -239,19 +269,25 @@ export default function App() {
     const t = setTimeout(async () => {
       if (cancelled) return;
       setPhase("thinking");
-      setMessage("thinking…");
-      const brain = getBrain();
-      const result = await brain.plan(planState, table, planTurn);
+      setMessage("searching…");
+      // Idempotent: resolves immediately once the background load above
+      // finished. On the very first opponent turn of a cold load this is what
+      // waits for the model instead of the initial paint.
+      if (useNeuralRef.current) await neuralEvaluator.load();
+      if (cancelled) return;
+      const brain = getBrain(useNeuralRef.current);
+      const result = await brain.plan(planState, table, AI_PLAYER);
       if (cancelled) return; // check again after the (possibly async) net eval
       setSearch(result);
       paint(planState, result);
 
-      // Bounded, content-adaptive hold — NOT a fixed dramatic pause. Long
-      // enough that the overlay's candidate list has visibly rendered before
-      // the shot fires, short enough that it never reads as manufactured
-      // "thinking" theater unrelated to the actual (already-completed)
-      // search above. Scales gently with how much there is to look at.
-      const holdMs = Math.min(REASONING_HOLD_MAX_MS, REASONING_HOLD_MIN_MS + result.stats.length * 15);
+      // Bounded, content-adaptive hold so the (already-computed) decision is
+      // readable before the balls move. Scales with how much there is to read.
+      // Nothing is computed during it and nothing on screen pretends otherwise.
+      const holdMs = Math.min(
+        OVERLAY_READ_HOLD_MAX_MS,
+        OVERLAY_READ_HOLD_MIN_MS + result.stats.length * 15,
+      );
       setTimeout(() => {
         if (cancelled) return;
         if (!result.best) {
@@ -308,7 +344,7 @@ export default function App() {
     // Full `state` (not just state.turn) lets the effect re-trigger when the AI
     // pockets a ball and continues its turn with the same turn index.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, vsAI, engineReady]);
+  }, [state, vsAI, engineReady, useNeural]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (aimLockedRef.current) return;
@@ -398,7 +434,7 @@ export default function App() {
       <header className="topbar">
         <h1>Showboat</h1>
         <p className="tag">
-          eight-ball · {vsAI ? `you vs ${brainLabel()}` : "two player"}
+          eight-ball · {vsAI ? `you vs ${brainLabel(useNeural)}` : "two player"}
         </p>
       </header>
 
@@ -449,6 +485,7 @@ export default function App() {
             result={search ?? lastSearch}
             thinking={phase === "thinking"}
             stale={search === null && lastSearch !== null}
+            badge={useNeural ? modelBadge : { mode: "classical" }}
           />
         )}
       </div>
@@ -474,7 +511,7 @@ export default function App() {
             onClick={shoot}
             disabled={phase !== "aiming" || state.winner !== null || !engineReady || aiTurn}
           >
-            {phase === "animating" ? "Rolling…" : phase === "thinking" ? "Thinking…" : "Shoot"}
+            {phase === "animating" ? "Rolling…" : phase === "thinking" ? "Searching…" : "Shoot"}
           </button>
           <button onClick={reset} className="secondary">New rack</button>
           <label className="toggle">
@@ -484,6 +521,19 @@ export default function App() {
           <label className="toggle">
             <input type="checkbox" checked={showOverlay} onChange={(e) => setShowOverlay(e.target.checked)} />
             overlay
+          </label>
+          <label className="toggle" title={
+            modelBadge.mode === "neural-hybrid"
+              ? "learned candidate ranking on top of the same physics search"
+              : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
+          }>
+            <input
+              type="checkbox"
+              checked={useNeural && modelBadge.mode === "neural-hybrid"}
+              disabled={modelBadge.mode !== "neural-hybrid"}
+              onChange={(e) => setUseNeural(e.target.checked)}
+            />
+            neural ranking
           </label>
         </div>
       </div>
