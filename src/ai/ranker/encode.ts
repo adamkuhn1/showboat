@@ -44,6 +44,22 @@ const mag = (a: Vec2): number => Math.hypot(a.x, a.y);
  * (the target itself, the cue) are excluded. Returns a large sentinel
  * (not Infinity, to stay finite in a training tensor) when the path has
  * fewer than 2 points or nothing is close.
+ *
+ * KNOWN DEFECT (v2 schema, deliberately NOT fixed here — see
+ * `encodeDefects.test.ts` and docs/repair/product-proof-sprint/showboat-live/
+ * REPORT.md §6): `skip` omits `candidate.potId`. For a combo/rail-combo the
+ * intermediate ball IS `path[1]`, so its perpendicular distance to the path is
+ * exactly 0 and this function returns 0 for every combo and rail-combo
+ * candidate — measured at 100% of both kinds across the baseline dataset.
+ * Clearance is the single highest-weight feature in the transparent heuristic
+ * baseline (+1.47), so those two kinds are effectively blind to obstruction.
+ *
+ * It is not patched in place because the shipped artifact was trained on rows
+ * produced by this exact function: changing it would break train/inference
+ * parity silently. The fix belongs to a coordinated schema v3 + dataset
+ * regeneration + retrain (a v2 artifact then fails loudly on the version check
+ * instead of mis-encoding), which is the training track's call, not a
+ * runtime-side edit.
  */
 function minClearanceBallRadii(candidate: Candidate, balls: Ball[]): number {
   const path = candidate.path;

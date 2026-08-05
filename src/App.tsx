@@ -10,19 +10,22 @@ import { buildAnimTrack, interpolateBalls, type AnimTrack } from "./render/anima
 import { describeShot } from "./ai/trace";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
-import { planTurn, legalTargets } from "./ai/turn";
+import { legalTargets } from "./ai/turn";
 import { getBrain, brainLabel } from "./ai/brain";
-import { tryLoadModel } from "./ai/onnx";
+import { neuralEvaluator } from "./ai/neural/evaluator";
 import type { SearchResult } from "./ai/shotSearch";
-import { OverlayPanel } from "./ui/OverlayPanel";
+import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
 
-// Bounds for the post-search reasoning-overlay hold (see the AI-turn effect
-// below). Not a fixed dramatic pause — see that call site's comment.
-const REASONING_HOLD_MIN_MS = 350;
-const REASONING_HOLD_MAX_MS = 1100;
+// Bounds for the post-search overlay READ hold (see the AI-turn effect below).
+// This is a rendering concession, not simulated deliberation: the search has fully
+// completed before this timer starts, and the panel shows no progress
+// animation. Without a hold the overlay would be painted and replaced by the
+// shot animation in the same few frames, so nothing would be legible.
+const OVERLAY_READ_HOLD_MIN_MS = 350;
+const OVERLAY_READ_HOLD_MAX_MS = 1100;
 
 // Convert a mouse event's CSS-pixel coordinates into the canvas's intrinsic
 // pixel space. `.table { max-width: 100% }` (index.css) lets the canvas
@@ -60,7 +63,7 @@ function postEmbedReady() {
 // Player 1 (id 0) is human; Player 2 (id 1) is the AI opponent.
 const AI_PLAYER: PlayerId = 1;
 
-type Phase = "aiming" | "thinking" | "animating";
+type Phase = "aiming" | "searching" | "animating";
 
 export default function App() {
   const game = useRef(makeGame());
@@ -78,6 +81,25 @@ export default function App() {
   const searchRef = useRef<SearchResult | null>(null);
   const [lastSearch, setLastSearch] = useState<SearchResult | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  // Neural ranking is OPT-IN, not the default.
+  //
+  // `eval/hybridEval.ts` ran the two modes paired, at an identical 60-unit
+  // physics budget, over 120 fixed fixtures and 24 full games. The hybrid gets
+  // measurably more trick candidates in front of the physics engine (bank
+  // recall 63.1% vs 54.0%, double-bank 27.3% vs 18.2%, combo 21.0% vs 11.3%,
+  // rail-combo 20.9% vs 10.4%) and attempts more tricks (+10.8pp, CI
+  // [+3.9, +17.7]) — but it does NOT play better: legal-pot rate 90.0% vs
+  // 93.3%, mean regret 0.067 vs 0.033, and it lost the game series 8-12. So
+  // the default stays classical and the model ships as an honest, labelled,
+  // user-enabled comparison mode. See
+  // docs/repair/product-proof-sprint/showboat-live/REPORT.md section 5.
+  const [useNeural, setUseNeural] = useState(false);
+  const useNeuralRef = useRef(useNeural);
+  const [modelBadge, setModelBadge] = useState<ModelBadge>({ mode: "classical" });
+  // Preflight succeeded: the artifact is present, hash-verified and
+  // schema-compatible, so the toggle can be offered. Distinct from "loaded" —
+  // the onnxruntime session is only created on first use.
+  const [modelAvailable, setModelAvailable] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const aimLockedRef = useRef(false);
   const shootRef = useRef<() => void>(() => {});
@@ -87,15 +109,38 @@ export default function App() {
 
   vsAIRef.current = vsAI;
   searchRef.current = search;
+  useNeuralRef.current = useNeural;
 
+  // Physics gates playability, so it is awaited. The ranker is loaded in the
+  // background and deliberately NOT awaited here: creating its session pulls
+  // onnxruntime-web's ~27MB WASM runtime, and blocking first paint on that
+  // would be a real regression for the portfolio embed. The AI turn awaits the
+  // same (idempotent) promise before it plans, so a slow model load delays one
+  // opponent turn rather than the whole app.
   useEffect(() => {
-    Promise.all([initPhysics(), tryLoadModel()])
+    initPhysics()
       .then(() => {
         setEngineReady(true);
         setMessage("break to start");
       })
       .catch(() => setMessage("couldn't load the physics engine"))
       .finally(postEmbedReady);
+
+    // Preflight only: validates the manifest and hashes the 14 KB artifact
+    // without importing onnxruntime-web, so a missing/corrupted/schema-
+    // mismatched model is caught loudly at startup while the ~27 MB WASM
+    // runtime is deferred until someone actually turns the model on.
+    neuralEvaluator.preflight().then((pre) => {
+      if (pre.ok) {
+        setModelAvailable(true);
+      } else {
+        console.error(
+          `[showboat] ranker artifact failed preflight: ${pre.reason} — the neural mode will be ` +
+            `unavailable and the opponent stays on the classical physics search.`,
+        );
+        setModelBadge({ mode: "classical", fallbackReason: pre.reason });
+      }
+    });
   }, []);
 
   const paint = useCallback(
@@ -113,7 +158,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    paint(state, phase === "thinking" ? search : null);
+    paint(state, phase === "searching" ? search : null);
   }, [state, aim, power, phase, search, paint]);
 
   // Animate a shot by replaying the WASM engine's own trajectory.
@@ -212,7 +257,7 @@ export default function App() {
     [],
   );
 
-  // AI turn: plan (real search), show the overlay + a short "thinking" pause,
+  // AI turn: plan (real search), show the overlay for a bounded read hold,
   // then play the chosen shot. Runs whenever it becomes the AI's move.
   useEffect(() => {
     if (!vsAI || !engineReady) return;
@@ -232,26 +277,39 @@ export default function App() {
       setState(planState);
     }
 
-    // Defer to next frame.  setPhase("thinking") is intentionally inside the
+    // Defer to next frame.  setPhase("searching") is intentionally inside the
     // callback: calling it in the effect body would change `phase`, which used
     // to be in the deps list, causing the cleanup to fire and cancel this
     // timeout before it ran.  Moving it here avoids that self-cancellation.
     const t = setTimeout(async () => {
       if (cancelled) return;
-      setPhase("thinking");
-      setMessage("thinking…");
-      const brain = getBrain();
-      const result = await brain.plan(planState, table, planTurn);
+      setPhase("searching");
+      setMessage("searching…");
+      // First neural turn pays for the onnxruntime-web session (idempotent
+      // afterwards). A failure here is reported, never silently downgraded.
+      if (useNeuralRef.current) {
+        const loaded = await neuralEvaluator.load();
+        if (loaded.status === "ready") {
+          setModelBadge({ mode: "neural-hybrid", hashVerified: loaded.hashVerified });
+        } else {
+          console.error(`[showboat] neural ranker failed to load: ${loaded.reason}`);
+          setModelBadge({ mode: "classical", fallbackReason: loaded.reason });
+        }
+      }
+      if (cancelled) return;
+      const brain = getBrain(useNeuralRef.current);
+      const result = await brain.plan(planState, table, AI_PLAYER);
       if (cancelled) return; // check again after the (possibly async) net eval
       setSearch(result);
       paint(planState, result);
 
-      // Bounded, content-adaptive hold — NOT a fixed dramatic pause. Long
-      // enough that the overlay's candidate list has visibly rendered before
-      // the shot fires, short enough that it never reads as manufactured
-      // "thinking" theater unrelated to the actual (already-completed)
-      // search above. Scales gently with how much there is to look at.
-      const holdMs = Math.min(REASONING_HOLD_MAX_MS, REASONING_HOLD_MIN_MS + result.stats.length * 15);
+      // Bounded, content-adaptive hold so the (already-computed) decision is
+      // readable before the balls move. Scales with how much there is to read.
+      // Nothing is computed during it and nothing on screen pretends otherwise.
+      const holdMs = Math.min(
+        OVERLAY_READ_HOLD_MAX_MS,
+        OVERLAY_READ_HOLD_MIN_MS + result.stats.length * 15,
+      );
       setTimeout(() => {
         if (cancelled) return;
         if (!result.best) {
@@ -304,11 +362,11 @@ export default function App() {
       clearTimeout(t);
     };
     // `phase` is intentionally excluded: including it caused the effect cleanup
-    // to cancel the search timeout the moment setPhase("thinking") was called.
+    // to cancel the search timeout the moment setPhase("searching") was called.
     // Full `state` (not just state.turn) lets the effect re-trigger when the AI
     // pockets a ball and continues its turn with the same turn index.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, vsAI, engineReady]);
+  }, [state, vsAI, engineReady, useNeural]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (aimLockedRef.current) return;
@@ -398,7 +456,7 @@ export default function App() {
       <header className="topbar">
         <h1>Showboat</h1>
         <p className="tag">
-          eight-ball · {vsAI ? `you vs ${brainLabel()}` : "two player"}
+          eight-ball · {vsAI ? `you vs ${brainLabel(useNeural)}` : "two player"}
         </p>
       </header>
 
@@ -447,8 +505,9 @@ export default function App() {
         {vsAI && (
           <OverlayPanel
             result={search ?? lastSearch}
-            thinking={phase === "thinking"}
+            searching={phase === "searching"}
             stale={search === null && lastSearch !== null}
+            badge={useNeural ? modelBadge : { mode: "classical" }}
           />
         )}
       </div>
@@ -474,7 +533,7 @@ export default function App() {
             onClick={shoot}
             disabled={phase !== "aiming" || state.winner !== null || !engineReady || aiTurn}
           >
-            {phase === "animating" ? "Rolling…" : phase === "thinking" ? "Thinking…" : "Shoot"}
+            {phase === "animating" ? "Rolling…" : phase === "searching" ? "Searching…" : "Shoot"}
           </button>
           <button onClick={reset} className="secondary">New rack</button>
           <label className="toggle">
@@ -484,6 +543,22 @@ export default function App() {
           <label className="toggle">
             <input type="checkbox" checked={showOverlay} onChange={(e) => setShowOverlay(e.target.checked)} />
             overlay
+          </label>
+          <label
+            className="toggle"
+            title={
+              modelAvailable
+                ? "Trained candidate ranker (Phase 2D) orders and prunes candidates before the same physics search. Off by default: at equal physics budget it attempts more tricks but does not pot more."
+                : `model unavailable: ${modelBadge.fallbackReason ?? "not loaded"}`
+            }
+          >
+            <input
+              type="checkbox"
+              checked={useNeural && modelAvailable}
+              disabled={!modelAvailable}
+              onChange={(e) => setUseNeural(e.target.checked)}
+            />
+            neural ranking
           </label>
         </div>
       </div>
