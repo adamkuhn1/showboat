@@ -19,3 +19,15 @@
 # determinism (byte-identical dataset_hash across runs) is exactly what
 # makes that safe to rely on instead of committing the output.
 phase2c/data/
+
+# Phase 2D: same root policy as above (checkpoints/*.pt, artifact/*.onnx
+# already covered by the root .gitignore's blanket rules). The parity
+# fixture is additionally excluded here even though it's JSON, not a model
+# file: it embeds 150 raw feature vectors derived from a checkpoint and is
+# meaningless without the (uncommitted) .onnx file it was generated
+# alongside -- regenerate both together via parity_fixture.py. The small
+# metric-summary JSONs (phase2d_results.json, phase2d_test_results.json,
+# phase2d_sanity_controls.json, MANIFEST.json) are NOT excluded -- they're
+# the actual evidence backing TRAINING_REPORT.md/ABLATIONS.md and are cheap
+# to track, same precedent as Phase 2C's perturbation_benchmark_results.json.
+phase2d/results/artifact/parity_fixture.json
