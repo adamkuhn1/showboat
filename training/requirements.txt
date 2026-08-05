@@ -11,8 +11,10 @@
 
 pooltool-billiards>=0.6,<0.7   # Apache-2.0 SOTA event-based Han-2005 sim
 numpy>=1.24
+scipy>=1.10                      # tie-corrected Spearman rank correlation (diagnostic.py)
 torch>=2.1                      # policy/value net + ONNX export
 onnx>=1.15                      # ONNX graph checker
+onnxruntime>=1.17                # ONNX inference (parity_fixture.py, Phase 2D)
 easydict>=1.10                  # LightZero config format
 # LightZero + DI-engine are installed from the ekiefl fork (see above); pinned
 # there rather than here because they pull a large dependency tree.
