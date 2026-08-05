@@ -72,7 +72,9 @@ h1 {
 
 /* ── Board ───────────────────────────────────────────────────────── */
 
-.board { line-height: 0; }
+/* This used to read `line-height: 0`, inherited by `.msg` below — see the
+   comment on `.msg` for what that broke. `.table` is already
+   `display: block`, so nothing here actually needed the line-height hack. */
 
 .table {
   border-radius: 10px;
@@ -94,6 +96,7 @@ h1 {
   flex-wrap: wrap;
   justify-content: center;
   font-size: 0.82rem;
+  line-height: 1.4;
   margin-top: 0.5rem;
 }
 
@@ -111,6 +114,16 @@ h1 {
 
 .msg {
   color: #b8b8b8;
+  /* Explicit and non-zero regardless of what an ancestor ever sets. This used
+     to be the missing piece: `.board { line-height: 0 }` (below) was
+     inherited here, so this box measured 0px tall and `overflow: hidden`
+     clipped every status message — "break to start", all shot narration,
+     foul reasons, "click the table to place the cue ball", even "couldn't
+     load the physics engine" — to nothing. Fixed on both ends: `.board` no
+     longer zeroes it, and `.msg` no longer depends on inheriting the right
+     value from an ancestor to begin with. See
+     src/ui/statusMessageVisibility.test.ts for the regression test. */
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
