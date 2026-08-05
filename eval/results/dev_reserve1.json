@@ -1,0 +1,5296 @@
+{
+  "generated_at": "2026-08-05T05:33:51.275Z",
+  "config": {
+    "fixtures": 50,
+    "games": 0,
+    "seed": 777001,
+    "budget": 60,
+    "keep_top": 16,
+    "per_kind_floor": 0,
+    "direct_reserve": 1
+  },
+  "model": {
+    "artifact": "showboat-ranker-phase2e-deepsets.onnx",
+    "sha256": "10da1d65d4be19587bb014343f127000c39e5e7cd1a3912769c825629aa7bb33",
+    "selected_seed": 20260805
+  },
+  "budget_equality": {
+    "max_physics_calls_seen": 60,
+    "over_budget_decisions": 0,
+    "identical_per_fixture": false
+  },
+  "decisions": {
+    "classical": {
+      "n": 50,
+      "legal_pot_rate": 0.92,
+      "foul_rate": 0.02,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.96,
+      "trick_success_rate": 0.9583333333333334,
+      "mean_regret": 0,
+      "candidate_recall": 0.7185792349726776,
+      "direct_fallback_preserved_rate": 1,
+      "n_states_with_potting_direct": 41,
+      "mean_verified_directs": 8.46,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 0.08,
+      "mean_physics_calls": 59.94,
+      "mean_candidates_generated": 40.14,
+      "mean_verified": 22.9,
+      "decision_ms_median": 2026.3218335000001,
+      "decision_ms_p95": 3012.0269589999953,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid": {
+      "n": 50,
+      "legal_pot_rate": 0.9,
+      "foul_rate": 0.02,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.98,
+      "trick_success_rate": 0.9183673469387755,
+      "mean_regret": 0.02,
+      "candidate_recall": 0.6147540983606558,
+      "direct_fallback_preserved_rate": 0.9024390243902439,
+      "n_states_with_potting_direct": 41,
+      "mean_verified_directs": 4.36,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 0.1,
+      "mean_physics_calls": 59.98,
+      "mean_candidates_generated": 40.14,
+      "mean_verified": 15.66,
+      "decision_ms_median": 2018.6328124999927,
+      "decision_ms_p95": 3106.716875000013,
+      "neural_ms_median": 2.036791999998968,
+      "neural_ms_p95": 4.064166000000114,
+      "neural_encode_ms_median": 0.11108400000375696,
+      "neural_run_ms_median": 1.871708500002569,
+      "neural_run_ms_p95": 3.468291000001045
+    },
+    "classical_with_viable_trick": {
+      "n": 46,
+      "legal_pot_rate": 1,
+      "foul_rate": 0.021739130434782608,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 1,
+      "trick_success_rate": 1,
+      "mean_regret": 0,
+      "candidate_recall": 0.7185792349726776,
+      "direct_fallback_preserved_rate": 1,
+      "n_states_with_potting_direct": 41,
+      "mean_verified_directs": 9.021739130434783,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 0,
+      "mean_physics_calls": 59.95652173913044,
+      "mean_candidates_generated": 42.19565217391305,
+      "mean_verified": 23.652173913043477,
+      "decision_ms_median": 2054.7877500000013,
+      "decision_ms_p95": 3012.0269589999953,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid_with_viable_trick": {
+      "n": 46,
+      "legal_pot_rate": 0.9782608695652174,
+      "foul_rate": 0.021739130434782608,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 1,
+      "trick_success_rate": 0.9782608695652174,
+      "mean_regret": 0.021739130434782608,
+      "candidate_recall": 0.6147540983606558,
+      "direct_fallback_preserved_rate": 0.9024390243902439,
+      "n_states_with_potting_direct": 41,
+      "mean_verified_directs": 4.630434782608695,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 0.021739130434782608,
+      "mean_physics_calls": 60,
+      "mean_candidates_generated": 42.19565217391305,
+      "mean_verified": 16,
+      "decision_ms_median": 2018.6328124999927,
+      "decision_ms_p95": 3106.716875000013,
+      "neural_ms_median": 2.0609999999978754,
+      "neural_ms_p95": 4.064166000000114,
+      "neural_encode_ms_median": 0.11816700000417768,
+      "neural_run_ms_median": 1.950770499995997,
+      "neural_run_ms_p95": 3.468291000001045
+    },
+    "classical_without_viable_trick": {
+      "n": 4,
+      "legal_pot_rate": 0,
+      "foul_rate": 0,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.5,
+      "trick_success_rate": 0,
+      "mean_regret": 0,
+      "candidate_recall": null,
+      "direct_fallback_preserved_rate": null,
+      "n_states_with_potting_direct": 0,
+      "mean_verified_directs": 2,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 1,
+      "mean_physics_calls": 59.75,
+      "mean_candidates_generated": 16.5,
+      "mean_verified": 14.25,
+      "decision_ms_median": 1616.9590414999984,
+      "decision_ms_p95": 2482.8897920000018,
+      "neural_ms_median": 0,
+      "neural_ms_p95": 0,
+      "neural_encode_ms_median": 0,
+      "neural_run_ms_median": 0,
+      "neural_run_ms_p95": 0
+    },
+    "hybrid_without_viable_trick": {
+      "n": 4,
+      "legal_pot_rate": 0,
+      "foul_rate": 0,
+      "scratch_rate": 0,
+      "trick_attempt_rate": 0.75,
+      "trick_success_rate": 0,
+      "mean_regret": 0,
+      "candidate_recall": null,
+      "direct_fallback_preserved_rate": null,
+      "n_states_with_potting_direct": 0,
+      "mean_verified_directs": 1.25,
+      "mean_reserve_promotions": 0,
+      "no_trick_qualified_rate": 0,
+      "no_verified_pot_rate": 1,
+      "mean_physics_calls": 59.75,
+      "mean_candidates_generated": 16.5,
+      "mean_verified": 11.75,
+      "decision_ms_median": 1756.4675834999944,
+      "decision_ms_p95": 2415.1769579999964,
+      "neural_ms_median": 1.315103499990073,
+      "neural_ms_p95": 1.4362499999988358,
+      "neural_encode_ms_median": 0.03333299999940209,
+      "neural_run_ms_median": 1.2818954999966081,
+      "neural_run_ms_p95": 1.3652500000025611
+    }
+  },
+  "paired_differences_hybrid_minus_classical": {
+    "legal_pot": {
+      "diff": -0.02,
+      "ci": [
+        -0.05919999999999996,
+        0.019199999999999964
+      ],
+      "n": 50
+    },
+    "foul": {
+      "diff": 0,
+      "ci": [
+        0,
+        0
+      ],
+      "n": 50
+    },
+    "scratch": {
+      "diff": 0,
+      "ci": [
+        0,
+        0
+      ],
+      "n": 50
+    },
+    "regret": {
+      "diff": 0.02,
+      "ci": [
+        -0.019199999999999964,
+        0.05919999999999996
+      ],
+      "n": 50
+    },
+    "trick_attempt": {
+      "diff": 0.02,
+      "ci": [
+        -0.019199999999999984,
+        0.05919999999999999
+      ],
+      "n": 50
+    },
+    "candidate_recall_per_fixture": {
+      "diff": -0.09979070929070931,
+      "ci": [
+        -0.1605857462997539,
+        -0.03899567228166473
+      ],
+      "n": 50
+    },
+    "direct_recall_per_fixture": {
+      "diff": -0.2640534262485482,
+      "ci": [
+        -0.3654574250339064,
+        -0.16264942746319005
+      ],
+      "n": 41
+    },
+    "physics_calls": {
+      "diff": 0.04,
+      "ci": [
+        -0.014868570238343183,
+        0.09486857023834319
+      ],
+      "n": 50
+    },
+    "decision_ms": {
+      "diff": -59.643134180003074,
+      "ci": [
+        -135.85064647232315,
+        16.564378112317016
+      ],
+      "n": 50
+    }
+  },
+  "candidate_recall_by_kind": {
+    "classical": {
+      "direct": {
+        "hits": 110,
+        "total": 110,
+        "recall": 1
+      },
+      "bank": {
+        "hits": 145,
+        "total": 189,
+        "recall": 0.7671957671957672
+      },
+      "double-bank": {
+        "hits": 4,
+        "total": 23,
+        "recall": 0.17391304347826086
+      },
+      "combo": {
+        "hits": 1,
+        "total": 20,
+        "recall": 0.05
+      },
+      "rail-combo": {
+        "hits": 3,
+        "total": 24,
+        "recall": 0.125
+      }
+    },
+    "hybrid": {
+      "direct": {
+        "hits": 78,
+        "total": 110,
+        "recall": 0.7090909090909091
+      },
+      "bank": {
+        "hits": 117,
+        "total": 189,
+        "recall": 0.6190476190476191
+      },
+      "double-bank": {
+        "hits": 10,
+        "total": 23,
+        "recall": 0.43478260869565216
+      },
+      "combo": {
+        "hits": 9,
+        "total": 20,
+        "recall": 0.45
+      },
+      "rail-combo": {
+        "hits": 11,
+        "total": 24,
+        "recall": 0.4583333333333333
+      }
+    }
+  },
+  "outcome_by_chosen_kind": {
+    "classical": {
+      "direct": {
+        "n": 2,
+        "legal_pot_rate": 0,
+        "scratch_rate": 0
+      },
+      "bank": {
+        "n": 42,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "double-bank": {
+        "n": 4,
+        "legal_pot_rate": 0.5,
+        "scratch_rate": 0
+      },
+      "combo": {
+        "n": 1,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "rail-combo": {
+        "n": 1,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "none": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      }
+    },
+    "hybrid": {
+      "direct": {
+        "n": 1,
+        "legal_pot_rate": 0,
+        "scratch_rate": 0
+      },
+      "bank": {
+        "n": 35,
+        "legal_pot_rate": 0.9142857142857143,
+        "scratch_rate": 0
+      },
+      "double-bank": {
+        "n": 9,
+        "legal_pot_rate": 0.8888888888888888,
+        "scratch_rate": 0
+      },
+      "combo": {
+        "n": 4,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "rail-combo": {
+        "n": 1,
+        "legal_pot_rate": 1,
+        "scratch_rate": 0
+      },
+      "none": {
+        "n": 0,
+        "legal_pot_rate": null,
+        "scratch_rate": null
+      }
+    }
+  },
+  "decisions_that_differed": 31,
+  "games": {
+    "n_games": 0,
+    "n_decided": 0,
+    "hybrid_wins": 0,
+    "classical_wins": 0,
+    "hybrid_win_rate": null,
+    "mean_shots_per_game": null,
+    "mean_shots_to_win_hybrid": null,
+    "mean_shots_to_win_classical": null,
+    "hybrid_pot_rate": null,
+    "classical_pot_rate": null,
+    "hybrid_trick_attempt_rate": null,
+    "classical_trick_attempt_rate": null,
+    "hybrid_trick_success_rate": null,
+    "classical_trick_success_rate": null
+  },
+  "raw_games": [],
+  "raw_decisions": [
+    {
+      "fixtureId": "controlled-0",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1514.2474160000002,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 6,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-0",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1634.863625,
+      "neuralMs": 4.064166000000114,
+      "neuralEncodeMs": 0.5958749999990687,
+      "neuralRunMs": 3.468291000001045,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-1",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2368.4232920000013,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 11,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 6,
+          "total": 6
+        },
+        "bank": {
+          "hits": 5,
+          "total": 6
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 6,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-1",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2448.3901250000017,
+      "neuralMs": 2.8282499999986612,
+      "neuralEncodeMs": 0.46199999999953434,
+      "neuralRunMs": 2.366249999999127,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 6
+        },
+        "bank": {
+          "hits": 3,
+          "total": 6
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-2",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 11,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2044.6394590000018,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 47,
+      "verifiedCount": 22,
+      "recallHits": 2,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 11,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-2",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 11,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2224.7187919999997,
+      "neuralMs": 2.434166000002733,
+      "neuralEncodeMs": 0.15912500000194996,
+      "neuralRunMs": 2.2750410000007832,
+      "candidatesGenerated": 47,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-3",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2064.936041000001,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 24,
+      "recallHits": 8,
+      "recallTotal": 12,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 4
+        },
+        "bank": {
+          "hits": 4,
+          "total": 6
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-3",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1960.2876660000002,
+      "neuralMs": 4.355583000000479,
+      "neuralEncodeMs": 0.2022499999984575,
+      "neuralRunMs": 4.153333000002021,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 8,
+      "recallTotal": 12,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 4
+        },
+        "bank": {
+          "hits": 4,
+          "total": 6
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-4",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 22,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1919.3142079999961,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 24,
+      "recallHits": 6,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-4",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1867.3468749999956,
+      "neuralMs": 2.6170839999977034,
+      "neuralEncodeMs": 0.1476249999977881,
+      "neuralRunMs": 2.4694589999999152,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 3
+        },
+        "bank": {
+          "hits": 4,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-5",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1934.499042000003,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 11,
+      "recallTotal": 13,
+      "recallByKind": {
+        "direct": {
+          "hits": 6,
+          "total": 6
+        },
+        "bank": {
+          "hits": 5,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 6,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-5",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 23,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1672.203042000001,
+      "neuralMs": 2.535041999995883,
+      "neuralEncodeMs": 0.2053749999977299,
+      "neuralRunMs": 2.329666999998153,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 10,
+      "recallTotal": 13,
+      "recallByKind": {
+        "direct": {
+          "hits": 5,
+          "total": 6
+        },
+        "bank": {
+          "hits": 5,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 5,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-6",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 22,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1605.8344160000051,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 44,
+      "verifiedCount": 26,
+      "recallHits": 5,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 4,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 8,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-6",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 35,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1402.136249999996,
+      "neuralMs": 2.05408300000272,
+      "neuralEncodeMs": 0.10087500000372529,
+      "neuralRunMs": 1.9532079999989946,
+      "candidatesGenerated": 44,
+      "verifiedCount": 16,
+      "recallHits": 5,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 3,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-7",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2008.0042079999985,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 20,
+      "recallHits": 4,
+      "recallTotal": 11,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 3
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 3
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-7",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2112.014167000001,
+      "neuralMs": 2.009834000004048,
+      "neuralEncodeMs": 0.1135839999988093,
+      "neuralRunMs": 1.8962500000052387,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 11,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 3
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 3
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-8",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2186.1787079999995,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-8",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1836.0219579999975,
+      "neuralMs": 2.224999999998545,
+      "neuralEncodeMs": 0.1086250000007567,
+      "neuralRunMs": 2.116374999997788,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-9",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1254.2628750000003,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 32,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-9",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1538.4011249999967,
+      "neuralMs": 2.194000000003143,
+      "neuralEncodeMs": 0.1507080000010319,
+      "neuralRunMs": 2.0432920000021113,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-10",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 22,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1788.9355830000059,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 46,
+      "verifiedCount": 26,
+      "recallHits": 5,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 10,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-10",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 28,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1827.630416,
+      "neuralMs": 1.8044999999983702,
+      "neuralEncodeMs": 0.13137499999720603,
+      "neuralRunMs": 1.6731250000011642,
+      "candidatesGenerated": 46,
+      "verifiedCount": 16,
+      "recallHits": 3,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-11",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1665.6121669999993,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 45,
+      "verifiedCount": 24,
+      "recallHits": 3,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 9,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-11",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 26,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1675.0717500000028,
+      "neuralMs": 2.067916999993031,
+      "neuralEncodeMs": 0.09233299999323208,
+      "neuralRunMs": 1.9755839999997988,
+      "candidatesGenerated": 45,
+      "verifiedCount": 16,
+      "recallHits": 3,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-12",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2610.525125,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 45,
+      "verifiedCount": 22,
+      "recallHits": 2,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 9,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-12",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 28,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 1,
+      "physicsCalls": 60,
+      "decisionMs": 2652.2822079999896,
+      "neuralMs": 1.8022499999933643,
+      "neuralEncodeMs": 0.10300000000279397,
+      "neuralRunMs": 1.6992499999905704,
+      "candidatesGenerated": 45,
+      "verifiedCount": 16,
+      "recallHits": 0,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 1
+        },
+        "bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "controlled-13",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 18,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1607.0482080000074,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 28,
+      "recallHits": 9,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 4
+        },
+        "bank": {
+          "hits": 5,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-13",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 38,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2002.4961249999906,
+      "neuralMs": 1.7926250000018626,
+      "neuralEncodeMs": 0.09750000000349246,
+      "neuralRunMs": 1.6951249999983702,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 4
+        },
+        "bank": {
+          "hits": 3,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-14",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 18,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2357.1585840000043,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 32,
+      "recallHits": 3,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-14",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 30,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2884.1656670000084,
+      "neuralMs": 3.2145000000018626,
+      "neuralEncodeMs": 0.3209999999962747,
+      "neuralRunMs": 2.893500000005588,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 3,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-15",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 18,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2164.272499999992,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 20,
+      "recallHits": 15,
+      "recallTotal": 21,
+      "recallByKind": {
+        "direct": {
+          "hits": 8,
+          "total": 8
+        },
+        "bank": {
+          "hits": 7,
+          "total": 9
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 2
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 2
+        }
+      },
+      "pottingDirects": 8,
+      "verifiedPottingDirects": 8,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-15",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1983.7558329999883,
+      "neuralMs": 1.8699580000102287,
+      "neuralEncodeMs": 0.12275000000954606,
+      "neuralRunMs": 1.7472080000006827,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 12,
+      "recallTotal": 21,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 8
+        },
+        "bank": {
+          "hits": 4,
+          "total": 9
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 2,
+          "total": 2
+        },
+        "rail-combo": {
+          "hits": 2,
+          "total": 2
+        }
+      },
+      "pottingDirects": 8,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-16",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 6,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2712.0344590000022,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 35,
+      "verifiedCount": 22,
+      "recallHits": 10,
+      "recallTotal": 11,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 7,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-16",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 24,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3389.5157089999993,
+      "neuralMs": 2.1814589999994496,
+      "neuralEncodeMs": 0.1133339999942109,
+      "neuralRunMs": 2.0681250000052387,
+      "candidatesGenerated": 35,
+      "verifiedCount": 16,
+      "recallHits": 7,
+      "recallTotal": 11,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 3
+        },
+        "bank": {
+          "hits": 5,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-17",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3012.0269589999953,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 13,
+      "recallTotal": 17,
+      "recallByKind": {
+        "direct": {
+          "hits": 7,
+          "total": 7
+        },
+        "bank": {
+          "hits": 6,
+          "total": 10
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 7,
+      "verifiedPottingDirects": 7,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-17",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2663.784667,
+      "neuralMs": 3.4525419999990845,
+      "neuralEncodeMs": 0.15658400001120754,
+      "neuralRunMs": 3.295957999987877,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 13,
+      "recallTotal": 17,
+      "recallByKind": {
+        "direct": {
+          "hits": 6,
+          "total": 7
+        },
+        "bank": {
+          "hits": 7,
+          "total": 10
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 7,
+      "verifiedPottingDirects": 6,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-18",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 17,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2568.9218330000003,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 24,
+      "recallHits": 6,
+      "recallTotal": 9,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-18",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 25,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2347.113333000001,
+      "neuralMs": 2.2550829999963753,
+      "neuralEncodeMs": 0.1497079999971902,
+      "neuralRunMs": 2.105374999999185,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 5,
+      "recallTotal": 9,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-19",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1566.6015000000043,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 43,
+      "verifiedCount": 22,
+      "recallHits": 9,
+      "recallTotal": 13,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 6,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 2
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 8,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-19",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1601.827375000008,
+      "neuralMs": 1.931125000002794,
+      "neuralEncodeMs": 0.1432500000082655,
+      "neuralRunMs": 1.7878749999945285,
+      "candidatesGenerated": 43,
+      "verifiedCount": 16,
+      "recallHits": 7,
+      "recallTotal": 13,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 4,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 2
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-20",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1950.1717919999937,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-20",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1716.5829169999924,
+      "neuralMs": 2.493291999999201,
+      "neuralEncodeMs": 0.195584000000963,
+      "neuralRunMs": 2.297707999998238,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-21",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 18,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1997.7481660000049,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 28,
+      "recallHits": 7,
+      "recallTotal": 16,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 3
+        },
+        "bank": {
+          "hits": 4,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 2
+        },
+        "combo": {
+          "hits": 0,
+          "total": 3
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 3
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-21",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 18,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1815.3194999999978,
+      "neuralMs": 2.5714589999988675,
+      "neuralEncodeMs": 0.13145900001109112,
+      "neuralRunMs": 2.4399999999877764,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 7,
+      "recallTotal": 16,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 3
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 2
+        },
+        "combo": {
+          "hits": 1,
+          "total": 3
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 3
+        }
+      },
+      "pottingDirects": 3,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-22",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1884.6628749999945,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 46,
+      "verifiedCount": 22,
+      "recallHits": 8,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 4
+        },
+        "bank": {
+          "hits": 4,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 10,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-22",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1850.1177090000128,
+      "neuralMs": 2.0507499999948777,
+      "neuralEncodeMs": 0.10241700000187848,
+      "neuralRunMs": 1.9483329999929992,
+      "candidatesGenerated": 46,
+      "verifiedCount": 16,
+      "recallHits": 5,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 4
+        },
+        "bank": {
+          "hits": 3,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-23",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 17,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2312.28575000001,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 11,
+      "recallTotal": 15,
+      "recallByKind": {
+        "direct": {
+          "hits": 6,
+          "total": 6
+        },
+        "bank": {
+          "hits": 5,
+          "total": 8
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 6,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-23",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 36,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2196.0641659999965,
+      "neuralMs": 1.9938750000146683,
+      "neuralEncodeMs": 0.1467080000147689,
+      "neuralRunMs": 1.8471669999998994,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 9,
+      "recallTotal": 15,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 6
+        },
+        "bank": {
+          "hits": 5,
+          "total": 8
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 6,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-24",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2255.016499999998,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 26,
+      "recallHits": 4,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-24",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 31,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1855.2304169999843,
+      "neuralMs": 6.8116250000020955,
+      "neuralEncodeMs": 0.13899999999557622,
+      "neuralRunMs": 6.672625000006519,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 3,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-25",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2983.622000000003,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 20,
+      "recallHits": 4,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-25",
+      "mode": "hybrid",
+      "chosenKind": "combo",
+      "chosenIndex": 42,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2924.143708000018,
+      "neuralMs": 1.8975000000209548,
+      "neuralEncodeMs": 0.1074580000131391,
+      "neuralRunMs": 1.7900420000078157,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-26",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 19,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2293.087124999991,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 24,
+      "recallHits": 9,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 5,
+          "total": 5
+        },
+        "bank": {
+          "hits": 4,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 2
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 2
+        }
+      },
+      "pottingDirects": 5,
+      "verifiedPottingDirects": 5,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-26",
+      "mode": "hybrid",
+      "chosenKind": "combo",
+      "chosenIndex": 43,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2211.145166000002,
+      "neuralMs": 1.8846250000060536,
+      "neuralEncodeMs": 0.1044580000161659,
+      "neuralRunMs": 1.7801669999898877,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 7,
+      "recallTotal": 14,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 5
+        },
+        "bank": {
+          "hits": 2,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 2
+        },
+        "rail-combo": {
+          "hits": 2,
+          "total": 2
+        }
+      },
+      "pottingDirects": 5,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-27",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 13,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2203.316416000016,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 22,
+      "recallHits": 4,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-27",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2222.711249999993,
+      "neuralMs": 1.8826249999983702,
+      "neuralEncodeMs": 0.10045800000079907,
+      "neuralRunMs": 1.782166999997571,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-28",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2195.3080840000184,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 28,
+      "recallHits": 2,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-28",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2211.248500000016,
+      "neuralMs": 2.2904170000110753,
+      "neuralEncodeMs": 0.10883400001330301,
+      "neuralRunMs": 2.1815829999977723,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 8,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-29",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2838.0861250000016,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 48,
+      "verifiedCount": 32,
+      "recallHits": 4,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 12,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "controlled-29",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2465.425917000015,
+      "neuralMs": 2.4413340000028256,
+      "neuralEncodeMs": 0.1450839999888558,
+      "neuralRunMs": 2.29625000001397,
+      "candidatesGenerated": 48,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-30",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2758.1208329999936,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 47,
+      "verifiedCount": 24,
+      "recallHits": 6,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 4,
+          "total": 4
+        },
+        "bank": {
+          "hits": 2,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 4,
+      "verifiedDirects": 11,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-30",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 30,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2220.6997089999786,
+      "neuralMs": 2.0790839999972377,
+      "neuralEncodeMs": 0.24520899998606183,
+      "neuralRunMs": 1.8338750000111759,
+      "candidatesGenerated": 47,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 3,
+          "total": 4
+        },
+        "bank": {
+          "hits": 3,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 4,
+      "verifiedPottingDirects": 3,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-31",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2931.746959000011,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 41,
+      "verifiedCount": 22,
+      "recallHits": 4,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-31",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2598.9572499999776,
+      "neuralMs": 2.971916999988025,
+      "neuralEncodeMs": 0.19770900000003166,
+      "neuralRunMs": 2.7742079999879934,
+      "candidatesGenerated": 41,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-32",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3130.9863750000077,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 35,
+      "verifiedCount": 24,
+      "recallHits": 5,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 4,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-32",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 24,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3193.8097919999855,
+      "neuralMs": 1.5709590000042226,
+      "neuralEncodeMs": 0.0948340000177268,
+      "neuralRunMs": 1.4761249999864958,
+      "candidatesGenerated": 35,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 2,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-33",
+      "mode": "classical",
+      "chosenKind": "double-bank",
+      "chosenIndex": 4,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 59,
+      "decisionMs": 2482.8897920000018,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 7,
+      "verifiedCount": 7,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 0,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-1-33",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 1,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 59,
+      "decisionMs": 2415.1769579999964,
+      "neuralMs": 1.2719159999978729,
+      "neuralEncodeMs": 0.029458000004524365,
+      "neuralRunMs": 1.2424579999933485,
+      "candidatesGenerated": 7,
+      "verifiedCount": 7,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 0,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-1-34",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 16,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2617.363000000012,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 42,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 4,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-34",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 19,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2118.2470829999947,
+      "neuralMs": 2.099832999985665,
+      "neuralEncodeMs": 0.10104199999477714,
+      "neuralRunMs": 1.998790999990888,
+      "candidatesGenerated": 42,
+      "verifiedCount": 16,
+      "recallHits": 5,
+      "recallTotal": 6,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 4,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-35",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 21,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1809.6478750000242,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 37,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 4,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-35",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 23,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1933.2496669999964,
+      "neuralMs": 2.0228340000030585,
+      "neuralEncodeMs": 0.19295900000724941,
+      "neuralRunMs": 1.829874999995809,
+      "candidatesGenerated": 37,
+      "verifiedCount": 16,
+      "recallHits": 1,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 1,
+          "total": 4
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-36",
+      "mode": "classical",
+      "chosenKind": "rail-combo",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": true,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2597.603208000015,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 16,
+      "verifiedCount": 16,
+      "recallHits": 1,
+      "recallTotal": 1,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 1,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-36",
+      "mode": "hybrid",
+      "chosenKind": "rail-combo",
+      "chosenIndex": 15,
+      "legalPot": true,
+      "foul": true,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2493.369166999997,
+      "neuralMs": 3.062207999988459,
+      "neuralEncodeMs": 0.07745799998519942,
+      "neuralRunMs": 2.9847500000032596,
+      "candidatesGenerated": 16,
+      "verifiedCount": 16,
+      "recallHits": 1,
+      "recallTotal": 1,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 1,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-37",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 5,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 59,
+      "decisionMs": 1398.7969169999997,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 19,
+      "verifiedCount": 19,
+      "recallHits": 5,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-37",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 5,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1395.7859999999928,
+      "neuralMs": 1.1154589999932796,
+      "neuralEncodeMs": 0.04970899998443201,
+      "neuralRunMs": 1.0657500000088476,
+      "candidatesGenerated": 19,
+      "verifiedCount": 16,
+      "recallHits": 5,
+      "recallTotal": 5,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-38",
+      "mode": "classical",
+      "chosenKind": "direct",
+      "chosenIndex": 0,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": false,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1340.0587499999965,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 14,
+      "verifiedCount": 14,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-1-38",
+      "mode": "hybrid",
+      "chosenKind": "direct",
+      "chosenIndex": 0,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": false,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1431.3785419999913,
+      "neuralMs": 1.3582909999822732,
+      "neuralEncodeMs": 0.036957999982405454,
+      "neuralRunMs": 1.3213329999998678,
+      "candidatesGenerated": 14,
+      "verifiedCount": 14,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-1-39",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1251.8645839999954,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 36,
+      "verifiedCount": 28,
+      "recallHits": 7,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 5,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-1-39",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 8,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1407.4359579999873,
+      "neuralMs": 1.6021250000048894,
+      "neuralEncodeMs": 0.07874999998603016,
+      "neuralRunMs": 1.5233750000188593,
+      "candidatesGenerated": 36,
+      "verifiedCount": 16,
+      "recallHits": 4,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 2
+        },
+        "bank": {
+          "hits": 3,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-40",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3874.875374999974,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 46,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 10,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-40",
+      "mode": "hybrid",
+      "chosenKind": "combo",
+      "chosenIndex": 38,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 3106.716875000013,
+      "neuralMs": 3.355916000000434,
+      "neuralEncodeMs": 0.14695799999753945,
+      "neuralRunMs": 3.2089580000028946,
+      "candidatesGenerated": 46,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 1
+        },
+        "bank": {
+          "hits": 0,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 1,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-41",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 7,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2513.717042000004,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 34,
+      "verifiedCount": 24,
+      "recallHits": 6,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 5,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 2
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-41",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 26,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2147.7096660000097,
+      "neuralMs": 1.5486669999954756,
+      "neuralEncodeMs": 0.1464999999734573,
+      "neuralRunMs": 1.4021670000220183,
+      "candidatesGenerated": 34,
+      "verifiedCount": 16,
+      "recallHits": 7,
+      "recallTotal": 8,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 5,
+          "total": 5
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 2
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-42",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1915.6772089999868,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 42,
+      "verifiedCount": 22,
+      "recallHits": 5,
+      "recallTotal": 9,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 3,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 6,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-42",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1375.7159589999937,
+      "neuralMs": 1.582124999986263,
+      "neuralEncodeMs": 0.10212499997578561,
+      "neuralRunMs": 1.4800000000104774,
+      "candidatesGenerated": 42,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 9,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 4,
+          "total": 7
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 4,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-43",
+      "mode": "classical",
+      "chosenKind": "direct",
+      "chosenIndex": 3,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": false,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1893.8593330000003,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 35,
+      "verifiedCount": 26,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-2-43",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 8,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2081.5566249999974,
+      "neuralMs": 1.4362499999988358,
+      "neuralEncodeMs": 0.07099999999627471,
+      "neuralRunMs": 1.3652500000025611,
+      "candidatesGenerated": 35,
+      "verifiedCount": 16,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-2-44",
+      "mode": "classical",
+      "chosenKind": "double-bank",
+      "chosenIndex": 11,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 59,
+      "decisionMs": 1955.0598750000063,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 21,
+      "verifiedCount": 21,
+      "recallHits": 2,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-44",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 11,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2317.0163749999774,
+      "neuralMs": 1.553542000008747,
+      "neuralEncodeMs": 0.06733399999211542,
+      "neuralRunMs": 1.4862080000166316,
+      "candidatesGenerated": 21,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 1,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-45",
+      "mode": "classical",
+      "chosenKind": "combo",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1303.4750000000058,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 18,
+      "verifiedCount": 18,
+      "recallHits": 2,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-45",
+      "mode": "hybrid",
+      "chosenKind": "combo",
+      "chosenIndex": 14,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1279.9407499999797,
+      "neuralMs": 1.0783330000122078,
+      "neuralEncodeMs": 0.0519170000043232,
+      "neuralRunMs": 1.0264160000078846,
+      "candidatesGenerated": 18,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 2,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 1,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 3,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-46",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 12,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1828.735791999963,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 43,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 7,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-46",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 20,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 2034.7694999999949,
+      "neuralMs": 1.5677499999874271,
+      "neuralEncodeMs": 0.0721250000060536,
+      "neuralRunMs": 1.4956249999813735,
+      "candidatesGenerated": 43,
+      "verifiedCount": 16,
+      "recallHits": 1,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 1
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-47",
+      "mode": "classical",
+      "chosenKind": "bank",
+      "chosenIndex": 10,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1355.7534999999916,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 32,
+      "verifiedCount": 24,
+      "recallHits": 4,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 2,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-47",
+      "mode": "hybrid",
+      "chosenKind": "bank",
+      "chosenIndex": 5,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1208.265625,
+      "neuralMs": 1.71345800004201,
+      "neuralEncodeMs": 0.07758300000568852,
+      "neuralRunMs": 1.6358750000363216,
+      "candidatesGenerated": 32,
+      "verifiedCount": 16,
+      "recallHits": 2,
+      "recallTotal": 4,
+      "recallByKind": {
+        "direct": {
+          "hits": 1,
+          "total": 1
+        },
+        "bank": {
+          "hits": 1,
+          "total": 2
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 1,
+      "verifiedPottingDirects": 1,
+      "verifiedDirects": 5,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-48",
+      "mode": "classical",
+      "chosenKind": "double-bank",
+      "chosenIndex": 17,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1139.3623749999679,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 25,
+      "verifiedCount": 24,
+      "recallHits": 7,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 1,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-48",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 17,
+      "legalPot": true,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": true,
+      "hadPottingTrick": true,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 1018.3233330000076,
+      "neuralMs": 1.2199170000385493,
+      "neuralEncodeMs": 0.06166700000176206,
+      "neuralRunMs": 1.1582500000367872,
+      "candidatesGenerated": 25,
+      "verifiedCount": 16,
+      "recallHits": 6,
+      "recallTotal": 7,
+      "recallByKind": {
+        "direct": {
+          "hits": 2,
+          "total": 2
+        },
+        "bank": {
+          "hits": 3,
+          "total": 3
+        },
+        "double-bank": {
+          "hits": 1,
+          "total": 1
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 1
+        }
+      },
+      "pottingDirects": 2,
+      "verifiedPottingDirects": 2,
+      "verifiedDirects": 2,
+      "reservePromotions": 0,
+      "selectionReason": "trick-qualified"
+    },
+    {
+      "fixtureId": "selfplay-2-49",
+      "mode": "classical",
+      "chosenKind": "double-bank",
+      "chosenIndex": 7,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 965.9272910000291,
+      "neuralMs": 0,
+      "neuralEncodeMs": 0,
+      "neuralRunMs": 0,
+      "candidatesGenerated": 10,
+      "verifiedCount": 10,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 1,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    },
+    {
+      "fixtureId": "selfplay-2-49",
+      "mode": "hybrid",
+      "chosenKind": "double-bank",
+      "chosenIndex": 7,
+      "legalPot": false,
+      "foul": false,
+      "scratch": false,
+      "isTrickAttempt": true,
+      "hadPottingCandidate": false,
+      "hadPottingTrick": false,
+      "regret": 0,
+      "physicsCalls": 60,
+      "decisionMs": 980.0050000000047,
+      "neuralMs": 0.8158330000005662,
+      "neuralEncodeMs": 0.029708000016398728,
+      "neuralRunMs": 0.7861249999841675,
+      "candidatesGenerated": 10,
+      "verifiedCount": 10,
+      "recallHits": 0,
+      "recallTotal": 0,
+      "recallByKind": {
+        "direct": {
+          "hits": 0,
+          "total": 0
+        },
+        "bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "double-bank": {
+          "hits": 0,
+          "total": 0
+        },
+        "combo": {
+          "hits": 0,
+          "total": 0
+        },
+        "rail-combo": {
+          "hits": 0,
+          "total": 0
+        }
+      },
+      "pottingDirects": 0,
+      "verifiedPottingDirects": 0,
+      "verifiedDirects": 1,
+      "reservePromotions": 0,
+      "selectionReason": "no-verified-pot"
+    }
+  ]
+}

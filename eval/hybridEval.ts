@@ -24,7 +24,8 @@ import {
   type DecisionRecord,
   type GameRecord,
 } from "./harness";
-import { generateCandidates } from "../src/ai/candidates";
+import { generateCandidates, type CandidateKind } from "../src/ai/candidates";
+import { DEFAULT_PRIOR_RESERVE } from "../src/ai/shotSearch";
 
 const arg = (name: string, fallback: number): number => {
   const i = process.argv.indexOf(`--${name}`);
@@ -39,6 +40,12 @@ const KEEP_TOP = arg("keepTop", 16);
 // Exploratory per-kind pruning floor (see applyPerKindFloor). 0 = the shipped
 // behaviour that the headline run measured.
 const FLOOR = arg("floor", 0);
+// Direct-kind reserve slots inside keepTop (see DEFAULT_PRIOR_RESERVE).
+// `--directReserve 0` reproduces the pre-fix pure-global-top-K policy, which is
+// how the ablation in the report was run.
+const DIRECT_RESERVE = arg("directReserve", DEFAULT_PRIOR_RESERVE.direct ?? 0);
+const RESERVE: Partial<Record<CandidateKind, number>> =
+  DIRECT_RESERVE > 0 ? { direct: DIRECT_RESERVE } : {};
 const OUT_NAME = (() => {
   const i = process.argv.indexOf("--out");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : "hybrid_eval.json";
@@ -50,10 +57,17 @@ async function main() {
   console.log(
     `[eval] model ${manifest.artifact} (seed ${manifest.provenance.selected_seed}), ` +
       `budget ${BUDGET} physics units/turn, keepTop ${KEEP_TOP}, per-kind floor ${FLOOR}, ` +
-      `${N_FIXTURES} fixtures, ${N_GAMES} games\n`,
+      `direct reserve ${DIRECT_RESERVE}, ${N_FIXTURES} fixtures, ${N_GAMES} games\n`,
   );
 
-  const config = { ...defaultConfig, simulations: BUDGET, seed: 20260101 };
+  // `seedTimeoutMs: Infinity` — the production wall-clock guard is disabled for
+  // BOTH arms here, on purpose. It truncates the seeding loop by elapsed time,
+  // which makes results depend on machine load rather than search policy: a
+  // four-way-concurrent dev sweep produced different classical-arm numbers
+  // across runs that were supposed to be identical. The physics budget
+  // (`simulations`) remains the binding constraint and is unchanged, so equal
+  // budget is preserved exactly.
+  const config = { ...defaultConfig, simulations: BUDGET, seed: 20260101, seedTimeoutMs: Infinity };
   const fixtures = makeFixtures(table, N_FIXTURES, SEED);
   console.log(`[eval] built ${fixtures.length} fixtures`);
 
@@ -64,7 +78,7 @@ async function main() {
     oracles[f.id] = oracle(f.balls, cands);
     for (const mode of ["classical", "hybrid"] as const) {
       decisions.push(
-        await runDecision(f, table, mode, evaluator, config, oracles[f.id], KEEP_TOP, FLOOR),
+        await runDecision(f, table, mode, evaluator, config, oracles[f.id], KEEP_TOP, FLOOR, RESERVE),
       );
     }
   }
@@ -96,6 +110,23 @@ async function main() {
       const tot = rs.reduce((a, d) => a + d.recallTotal, 0);
       return tot ? hits / tot : NaN;
     })(),
+    // --- direct-fallback preservation ---------------------------------------
+    // "Of the states where a makeable direct pot existed, in how many did the
+    // agent actually put at least one of them in front of the physics engine?"
+    // This is the quantity the search-policy repair targets: the selection rule
+    // falls back to a reliable direct pot when no trick qualifies, and it can
+    // only do that if a direct survived pruning.
+    direct_fallback_preserved_rate: (() => {
+      const withDirect = rs.filter((d) => d.pottingDirects > 0);
+      return withDirect.length
+        ? withDirect.filter((d) => d.verifiedPottingDirects > 0).length / withDirect.length
+        : NaN;
+    })(),
+    n_states_with_potting_direct: rs.filter((d) => d.pottingDirects > 0).length,
+    mean_verified_directs: mean(rs.map((d) => d.verifiedDirects)),
+    mean_reserve_promotions: mean(rs.map((d) => d.reservePromotions)),
+    no_trick_qualified_rate: rate(rs, (d) => d.selectionReason === "no-trick-qualified"),
+    no_verified_pot_rate: rate(rs, (d) => d.selectionReason === "no-verified-pot"),
     mean_physics_calls: mean(rs.map((d) => d.physicsCalls)),
     mean_candidates_generated: mean(rs.map((d) => d.candidatesGenerated)),
     mean_verified: mean(rs.map((d) => d.verifiedCount)),
@@ -142,7 +173,7 @@ async function main() {
   const games: GameRecord[] = [];
   for (let g = 0; g < N_GAMES; g++) {
     const hybridPlayer: 0 | 1 = g % 2 === 0 ? 1 : 0; // alternate sides
-    games.push(await playGame(table, evaluator, SEED + g, hybridPlayer, config, 90, FLOOR));
+    games.push(await playGame(table, evaluator, SEED + g, hybridPlayer, config, 90, FLOOR, RESERVE));
     process.stdout.write(`\r[eval] games ${g + 1}/${N_GAMES}`);
   }
   process.stdout.write("\n");
@@ -197,6 +228,7 @@ async function main() {
       budget: BUDGET,
       keep_top: KEEP_TOP,
       per_kind_floor: FLOOR,
+      direct_reserve: DIRECT_RESERVE,
     },
     model: {
       artifact: manifest.artifact,
@@ -225,6 +257,10 @@ async function main() {
       candidate_recall_per_fixture: paired((d) =>
         d.recallTotal ? d.recallHits / d.recallTotal : 0,
       ),
+      direct_recall_per_fixture: pairedDiff(
+        hy.filter((_, i) => cl[i].pottingDirects > 0).map((d) => d.verifiedPottingDirects / d.pottingDirects),
+        cl.filter((d) => d.pottingDirects > 0).map((d) => d.verifiedPottingDirects / d.pottingDirects),
+      ),
       physics_calls: paired((d) => d.physicsCalls),
       decision_ms: paired((d) => d.decisionMs),
     },
@@ -239,6 +275,10 @@ async function main() {
     decisions_that_differed: cl.filter((d, i) => d.chosenIndex !== hy[i].chosenIndex).length,
     games: gameSummary,
     raw_games: games,
+    // Per-decision records, so the pooled cross-seed gate check
+    // (`eval/gateReport.ts`) can recompute paired statistics from the same
+    // pairs this run measured, rather than averaging two sets of aggregates.
+    raw_decisions: decisions,
   };
 
   const outDir = join(APP_ROOT, "eval/results");
@@ -258,6 +298,12 @@ async function main() {
     ["trick success rate", (s) => pct(s.trick_success_rate)],
     ["mean regret", (s) => num(s.mean_regret, 3)],
     ["candidate recall", (s) => pct(s.candidate_recall)],
+    ["direct fallback kept", (s) => pct(s.direct_fallback_preserved_rate)],
+    ["  (n such states)", (s) => String(s.n_states_with_potting_direct)],
+    ["mean verified directs", (s) => num(s.mean_verified_directs, 2)],
+    ["mean reserve promos", (s) => num(s.mean_reserve_promotions, 2)],
+    ["no-trick-qualified", (s) => pct(s.no_trick_qualified_rate)],
+    ["no-verified-pot", (s) => pct(s.no_verified_pot_rate)],
     ["physics calls/turn", (s) => num(s.mean_physics_calls, 1)],
     ["candidates generated", (s) => num(s.mean_candidates_generated, 1)],
     ["candidates verified", (s) => num(s.mean_verified, 1)],

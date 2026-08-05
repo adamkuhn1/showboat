@@ -27,7 +27,8 @@
     "model:stage": "node scripts/stage-production-model-phase2e.mjs",
     "model:stage:phase2d": "node scripts/stage-production-model.mjs",
     "model:verify": "node scripts/verify-build-model.mjs",
-    "eval:hybrid": "tsx eval/hybridEval.ts"
+    "eval:hybrid": "tsx eval/hybridEval.ts",
+    "eval:gate": "tsx eval/gateReport.ts"
   },
   "dependencies": {
     "onnxruntime-web": "^1.27.0",

@@ -2,7 +2,7 @@ import { type Ball, cloneBall } from "../physics/ball";
 import { type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
 import { type SimResult } from "../physics/engine";
-import { type Candidate, generateCandidates } from "./candidates";
+import { type Candidate, type CandidateKind, generateCandidates } from "./candidates";
 import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics/wasm-bridge";
 import { railsBeforePot } from "./trace";
 
@@ -106,6 +106,12 @@ export interface DecisionTrace {
   scratched: number;
   /** Physics-engine call units actually spent, against `config.simulations`. */
   physicsCalls: number;
+  /**
+   * How many candidates the kind reserve rescued — i.e. survived pruning that
+   * the model's global ranking alone would have dropped. 0 whenever the model's
+   * own top-K already satisfied the reserve, which is the common case.
+   */
+  reservePromotions: number;
   /** Encode + batched ONNX inference, ms. Only set in neural-hybrid mode. */
   neuralInferenceMs?: number;
   /** Model identity, so the overlay never claims a model it isn't running. */
@@ -148,6 +154,22 @@ export interface SearchConfig {
   // missing before (see docs/repair/showboat-ml/ARCHITECTURE_DECISION.md).
   // Takes priority over `netSeedValue` when both are present.
   netSeedScores?: number[];
+  /**
+   * Wall-clock guard on the seeding loop, ms. Defaults to
+   * `DEFAULT_SEED_TIMEOUT_MS` and exists purely so a pathological board cannot
+   * freeze the UI; the binding constraint on work done is `simulations`, not
+   * this.
+   *
+   * Configurable because it makes the search **non-deterministic under CPU
+   * load**: the same fixture truncates at a different candidate depending on
+   * what else the machine is doing. That was found empirically — a dev
+   * evaluation sweep run as four concurrent processes produced *different
+   * classical-arm results across runs that should have been identical*, which
+   * is a benchmark measuring machine load rather than search policy. Evaluation
+   * therefore sets this to `Infinity` (both arms, equally), so results depend
+   * only on the physics budget. Production keeps the guard.
+   */
+  seedTimeoutMs?: number;
   // Phase 2F hybrid agent: a learned prior over the candidate list. Unlike
   // `netSeedScores` above, this NEVER supplies a candidate's value — it only
   // decides the order candidates are physics-verified in, and which ones get
@@ -178,7 +200,71 @@ export interface CandidatePrior {
   source: string;
   /** Encode + inference cost, ms, for the trace. */
   inferenceMs?: number;
+  /**
+   * Minimum number of candidates of a given kind that must survive pruning,
+   * regardless of where the model ranked them. See `DEFAULT_PRIOR_RESERVE`.
+   * Omitted / empty = pure global top-K, the pre-fix behaviour.
+   */
+  reserve?: Partial<Record<CandidateKind, number>>;
 }
+
+/**
+ * The search-policy half of the hybrid: how a FIXED physics budget is split
+ * across candidate kinds after the model has ranked them.
+ *
+ * Why this exists. The prior sprint's equal-budget evaluation found one clear,
+ * repeatable regression: pruning to the model's *global* top-K crowds `direct`
+ * candidates out. Measured on 120 fixtures, direct recall fell 99.1% (classical
+ * order) to 83.0% (global top-16) while every trick kind gained 9-10 points.
+ * The cause is structural, not a model defect: the generator emits roughly two
+ * banks for every direct, so a global top-16 is mostly banks even when the
+ * model scores directs perfectly sensibly.
+ *
+ * That matters because of Showboat's actual selection rule
+ * (`selectBestWithReason`): a trick is played whenever one clears the
+ * physics-derived reliability threshold, and *otherwise a reliable direct pot
+ * is the fallback*. If no direct ever reaches physics, that fallback branch has
+ * nothing to choose from.
+ *
+ * The fix reserves a small number of the K slots for the model's own
+ * highest-scoring `direct` candidates, and only when the global ranking has not
+ * already kept that many — so it costs nothing in the common case and cannot
+ * silently override the model where the model was already doing the right
+ * thing. Everything else stays allocated by learned rank.
+ *
+ * Deliberately NOT the per-kind floor the prior sprint prototyped in the eval
+ * harness (`applyPerKindFloor`, floor=3 for all five kinds): that consumed 15
+ * of 16 slots on reserves, and measured worse — overall recall 61.9% -> 54.9%
+ * and direct recall 85.6% -> 64.6%, because it displaced the learned ranking
+ * almost entirely. A reserve is a floor of 2 on ONE kind, applied only on
+ * shortfall.
+ *
+ * **How large the effect actually is, stated plainly: small.** Swept over
+ * R ∈ {0,1,2,3} on dev fixture seed 777001 (50 fixtures, disjoint from both
+ * final evaluation seeds), the reserve fires on 0.00 / 0.00 / 0.02 / 0.14
+ * decisions per turn respectively. It is close to a no-op on the currently
+ * shipped model, because the Deep Sets ranker — unlike the Phase 2D MLP this
+ * problem was originally diagnosed against — already keeps a mean of 4.4
+ * `direct` candidates inside its own top-16. This is insurance, not a
+ * performance win, and it is not presented as one.
+ *
+ * Value: 2, not 0, 1 or 3.
+ *   - 0 provides no guarantee at all, and the failure mode is real rather than
+ *     hypothetical: `searchPolicy.test.ts` drives a prior that ranks every
+ *     non-direct above every direct and shows zero directs reach physics.
+ *   - 1 gives a single fallback with no redundancy — if that one candidate
+ *     scratches in its seeding simulation it is dropped outright (scratches are
+ *     removed from `stats`), leaving the fallback branch empty again.
+ *   - 3 measurably starts costing the trick budget that is the point of the
+ *     hybrid: dev trick-attempt rate fell 98% -> 96% at R=3, with no
+ *     corresponding gain in direct-fallback preservation (90.2% at every R).
+ *   - 2 costs 0.02 promotions/turn on dev — indistinguishable from free — and
+ *     guarantees a spare.
+ *
+ * Chosen on dev only, and frozen before the final evaluation ran; the freeze
+ * and the full dev table are in docs/repair/release-candidate/showboat/.
+ */
+export const DEFAULT_PRIOR_RESERVE: Partial<Record<CandidateKind, number>> = { direct: 2 };
 
 // How many candidates the learned prior forwards to physics by default.
 //
@@ -192,6 +278,9 @@ export interface CandidatePrior {
 // allocation of it. `eval/hybridEval.ts` measures whether that trade is worth
 // it rather than assuming.
 export const DEFAULT_PRIOR_KEEP_TOP = 16;
+
+/** UI-responsiveness guard on the seeding loop. See `SearchConfig.seedTimeoutMs`. */
+export const DEFAULT_SEED_TIMEOUT_MS = 2000;
 
 export const defaultConfig: SearchConfig = {
   simulations: 60,
@@ -234,6 +323,7 @@ export const searchCandidates = (
     legalPots: 0,
     scratched: 0,
     physicsCalls: 0,
+    reservePromotions: 0,
     neuralInferenceMs: usePrior ? prior!.inferenceMs : undefined,
     modelId: usePrior ? prior!.source : undefined,
   });
@@ -265,16 +355,67 @@ export const searchCandidates = (
   // candidates the trained model rates highest instead of on a fixed prefix.
   let order: number[] = candidates.map((_, i) => i);
   let prunedByPrior = 0;
+  let reservePromotions = 0;
   if (usePrior) {
     const scores = prior!.scores;
-    order = order.slice().sort((a, b) => scores[b] - scores[a] || a - b);
-    order.forEach((ci, rank) => {
+    // Global learned ranking. `priorRank` is always this rank — the reserve
+    // changes which candidates are kept, never what rank the overlay reports
+    // the model gave them.
+    const ranked = order.slice().sort((a, b) => scores[b] - scores[a] || a - b);
+    ranked.forEach((ci, rank) => {
       stats[ci].priorScore = scores[ci];
       stats[ci].priorRank = rank + 1;
     });
-    const keep = Math.max(1, Math.min(prior!.keepTop, order.length));
-    prunedByPrior = order.length - keep;
-    order = order.slice(0, keep);
+
+    const keep = Math.max(1, Math.min(prior!.keepTop, ranked.length));
+    const globalTop = ranked.slice(0, keep);
+
+    // Kind reserve (see DEFAULT_PRIOR_RESERVE): top up any kind that the global
+    // top-K under-represents, using that kind's OWN highest-scoring candidates,
+    // and evicting the lowest-ranked non-reserved survivor to pay for it. Total
+    // kept — and therefore total physics budget — is unchanged.
+    const kept = new Set(globalTop);
+    const reserve = prior!.reserve;
+    if (reserve) {
+      const reservedIds = new Set<number>();
+      for (const [kind, want] of Object.entries(reserve) as [CandidateKind, number][]) {
+        if (!want || want <= 0) continue;
+        const ofKind = ranked.filter((ci) => candidates[ci].kind === kind);
+        const target = Math.min(want, ofKind.length);
+        // Already-surviving members of this kind count toward the reserve, so
+        // no slot is spent when the model kept enough of them on its own.
+        const already = ofKind.filter((ci) => kept.has(ci));
+        for (const ci of already.slice(0, target)) reservedIds.add(ci);
+        let shortfall = target - already.length;
+        if (shortfall <= 0) continue;
+        for (const ci of ofKind) {
+          if (shortfall <= 0) break;
+          if (kept.has(ci)) continue;
+          // Evict the worst-ranked survivor that is not itself reserved.
+          let evict: number | null = null;
+          for (let r = ranked.length - 1; r >= 0; r--) {
+            const cj = ranked[r];
+            if (kept.has(cj) && !reservedIds.has(cj)) {
+              evict = cj;
+              break;
+            }
+          }
+          if (evict === null) break; // every survivor is reserved; nothing to trade
+          kept.delete(evict);
+          kept.add(ci);
+          reservedIds.add(ci);
+          reservePromotions++;
+          shortfall--;
+        }
+      }
+    }
+
+    prunedByPrior = ranked.length - kept.size;
+    // Visit the survivors in the model's own order. The reserve decides WHICH
+    // candidates get physics; the model still decides in what order, so if the
+    // budget runs short mid-seeding it runs short on the candidates the model
+    // rated lowest.
+    order = ranked.filter((ci) => kept.has(ci));
   }
 
   let seed = config.seed >>> 0;
@@ -302,7 +443,7 @@ export const searchCandidates = (
   const netScores = config.netSeedScores;
   const useNetScores = netScores !== undefined && netScores.length === candidates.length;
   const useNetSeed = useNetScores || config.netSeedValue !== undefined;
-  const SEED_TIMEOUT_MS = 2000;
+  const SEED_TIMEOUT_MS = config.seedTimeoutMs ?? DEFAULT_SEED_TIMEOUT_MS;
   const seedStart = performance.now();
 
   const verifiedIndices: number[] = [];
@@ -397,6 +538,7 @@ export const searchCandidates = (
     legalPots,
     scratched,
     physicsCalls: sims,
+    reservePromotions,
     selectionReason: selection.reason,
     qualifyingTricks: selection.qualifyingTricks,
   };

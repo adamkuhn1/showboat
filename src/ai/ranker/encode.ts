@@ -92,7 +92,60 @@ function pathLength(path: Vec2[]): number {
   return len;
 }
 
-/** Encode one candidate's own features (not the board). Length = CANDIDATE_DIM. */
+/**
+ * Encode one candidate's own features (not the board). Length = CANDIDATE_DIM.
+ *
+ * ---------------------------------------------------------------------------
+ * KNOWN REPRESENTATION CEILING — two-cushion (`double-bank`) geometry.
+ *
+ * Recorded here, at the encoder, because this is where the information is lost.
+ * Diagnosed in the prior sprint (docs/repair/product-proof-sprint/
+ * showboat-live/REPORT.md §6, `eval/double_bank_analysis.py`) and extended in
+ * docs/repair/release-candidate/showboat/REPORT.md §6. **Not fixed** — fixing
+ * it requires schema v3 + dataset regeneration + a retrain, all out of scope.
+ *
+ * `candidates.ts` builds a double-bank as `path = [obj, B2, B1, pocket]`, where
+ * B2 and B1 are the two rail contact points produced by the mirror
+ * construction, chosen from an ordered pair of distinct cushions
+ * (`side1`, `side2`). This block then collapses that entire route into:
+ *
+ *   - `banks_norm` = min(banks/4, 1) — a CONSTANT 0.5 for every double-bank, so
+ *     it carries exactly zero within-kind information;
+ *   - `path_length_norm` — one scalar for the whole three-segment polyline;
+ *   - `obstruction_margin_norm` — one global minimum clearance over all
+ *     segments.
+ *
+ * So the following are **not expressible**, and no model reading these 20 dims
+ * can rank on them, however large:
+ *
+ *   1. WHICH two cushions were used. `(side1, side2)` is discarded entirely.
+ *      Long-then-short and short-then-long routes to the same pocket with the
+ *      same total length are literally the same input vector.
+ *   2. The rail contact points B1, B2 themselves.
+ *   3. The angle of incidence at each cushion — the quantity that actually
+ *      governs cushion speed loss and throw, i.e. whether a two-railer is
+ *      makeable at all.
+ *   4. The per-segment split of the route. `|obj-B2| + |B2-B1| + |B1-pocket|`
+ *      is one number; a short final approach and a long one are
+ *      indistinguishable at equal total.
+ *   5. Per-segment clearance. A ball blocking the first segment and a ball
+ *      blocking the last collapse to the same global minimum.
+ *
+ * Consistent with that, the measured within-state Spearman of the best single
+ * candidate feature against the label, restricted to double-bank, is 0.094 —
+ * against 0.27-0.40 for every other kind. The Phase 2E relational model reaches
+ * 0.237 on test (vs the MLP's 0.103) by re-deriving mirror geometry from the
+ * BOARD block inside its own graph, but it has to do so for all four cushions
+ * generically, because which pair this candidate uses is not in the input. That
+ * is the residual ceiling.
+ *
+ * A future schema v3 would need, at minimum: `side1`/`side2` one-hots, the two
+ * contact points, incidence cos/sin at each cushion, per-segment lengths, and
+ * per-segment clearances — roughly candidate_dim 20 -> ~40. The version bump is
+ * what makes it safe: a v2 artifact then fails loudly on the schema check
+ * rather than silently mis-encoding.
+ * ---------------------------------------------------------------------------
+ */
 export function encodeCandidateFeatures(
   candidate: Candidate,
   table: Table,
