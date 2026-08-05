@@ -526,7 +526,15 @@ export default function App() {
           </div>
         </div>
 
-        {vsAI && (
+        {/* Nothing renders here at all until the opponent has actually
+            searched once. An empty "candidates appear here" box beside the
+            table — before there is anything to show — was dead weight that
+            also broke the embedded layout: at the portfolio's ~1178px embed
+            width it pushed `.layout` (index.css) over its wrap breakpoint,
+            which reflowed this panel below the table and buried the Shoot
+            button below the visible frame. See index.css's `.board` comment
+            for the layout half of that fix. */}
+        {vsAI && (search !== null || lastSearch !== null) && (
           <OverlayPanel
             result={search ?? lastSearch}
             searching={phase === "searching"}

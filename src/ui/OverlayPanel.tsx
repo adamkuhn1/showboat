@@ -77,13 +77,17 @@ export function OverlayPanel({
   const title = usedNeural ? "Neural evaluator + physics search" : "Physics search";
 
   if (!result || result.stats.length === 0) {
+    // Reachable in real play only when a search actually ran and found
+    // nothing to evaluate (e.g. no legal target) — the app doesn't mount this
+    // panel at all before the opponent's first turn (see App.tsx), so there
+    // is no "nothing has happened yet" placeholder to write here.
     return (
       <aside className="overlay">
         <div className="overlay-header">
           <span className="overlay-title">{title}</span>
         </div>
         <p className="overlay-empty">
-          {searching ? "searching…" : "candidates appear here on the opponent's turn"}
+          {searching ? "searching…" : trace?.fallbackReason ?? "no shot to evaluate this turn"}
         </p>
         {badge.fallbackReason && (
           <p className="overlay-warn">classical fallback — {badge.fallbackReason}</p>
