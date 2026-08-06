@@ -23,8 +23,8 @@ body {
      the face is actually shipped — see src/main.tsx. The old stack led with
      bare `Garamond`, loaded no webfont, and so resolved to Georgia, which is
      why the embedded game rendered in a different family from the page
-     hosting it on every glyph. Mono survives only on the two roles the
-     constitution allows: a section label, and something you click. */
+     hosting it on every glyph. Mono survives only on two roles: a section
+     label, and something you click. */
   font-family: "EB Garamond", "Cormorant Garamond", Garamond, "Times New Roman", serif;
   background: var(--bg);
   color: var(--text);
@@ -276,8 +276,8 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
 }
 
 /* The panel's own name, not a system title bar: prose, sentence case, at
-   reading size. It used to be monospace uppercase tracked at 0.10em, which is
-   the label recipe the constitution reserves for section headings. */
+   reading size, not monospace uppercase tracked at 0.10em — that recipe is
+   reserved for section labels. */
 .overlay-title {
   margin: 0 0 0.6rem;
   padding-bottom: 0.5rem;
