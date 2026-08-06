@@ -9,6 +9,7 @@ import {
   defaultConfig,
   searchCandidates,
   DEFAULT_PRIOR_KEEP_TOP,
+  DEFAULT_SEARCH_TIMEOUT_MS,
 } from "./shotSearch";
 import { generateCandidates, type CandidateKind } from "./candidates";
 import { legalTargets } from "./turn";
@@ -29,6 +30,7 @@ import {
   type SelectionRung,
 } from "./trace/contract";
 import { rankerHashWasVerified } from "./onnx";
+import { Deadline } from "./deadline";
 
 /**
  * Two brains, ONE policy.
@@ -75,36 +77,32 @@ export interface Brain {
     table: Table,
     player: PlayerId,
     config?: SearchConfig,
+    /**
+     * The turn's wall clock. Omitted by the evaluation harness and by unit
+     * tests, which get `Deadline.none()` so their results depend on the physics
+     * budget rather than on how loaded the machine is.
+     */
+    deadline?: Deadline,
   ) => Promise<AiDecision>;
 }
 
 /**
- * Deadline on neural inference.
+ * Cap on ONE `session.run()`, on top of whatever the turn's own `Deadline` has
+ * left.
  *
  * Not a guess: the corrected gate measured this artifact's inference at a
  * median of 1.63 ms and a p95 of 4.60 ms over 400 fixtures
  * (docs/repair/visual-authorship/showboat/CORRECTED_GATE_RESULT.md section 5).
- * 250 ms is ~54x that p95 — it cannot fire on a slow-but-working machine, and
- * it guarantees a stalled onnxruntime call can never wedge an AI turn. The race
- * loser is treated exactly like "the model returned nothing": classical
+ * 250 ms is ~54x that p95 — it cannot fire on a slow-but-working machine. The
+ * race loser is treated exactly like "the model returned nothing": classical
  * trick-only, labelled `inference-timeout`.
+ *
+ * What this does NOT cover, and never did, is `evaluator.load()` — where
+ * `InferenceSession.create()` runs. That is the turn `Deadline`'s job
+ * (`ai/deadline.ts`), applied at `planTurnTraced`, and it is the guard whose
+ * absence let a stalled load wedge a turn at "searching…" forever.
  */
 export const NEURAL_SCORE_DEADLINE_MS = 250;
-
-const withDeadline = async <T,>(
-  work: Promise<T>,
-  ms: number,
-): Promise<{ ok: true; value: T } | { ok: false }> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<{ ok: false }>((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false }), ms);
-  });
-  try {
-    return await Promise.race([work.then((value) => ({ ok: true as const, value })), deadline]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-};
 
 const emptySearch = (): SearchOutcome => ({
   stats: [],
@@ -137,7 +135,24 @@ const emptyDecision = (): TrickOnlyDecision => ({
   excludedIndices: [],
   safetySimsSpent: 0,
   safety: null,
+  safetyQuality: null,
 });
+
+/**
+ * Fold the turn's remaining wall clock into the search config.
+ *
+ * `Deadline.none()` leaves `searchTimeoutMs` exactly as the caller set it, so
+ * the evaluation harness's `Infinity` survives. A live turn takes the tighter
+ * of the search's own default and whatever the turn has left.
+ */
+const withinDeadline = (cfg: SearchConfig, deadline: Deadline): SearchConfig => {
+  const remaining = deadline.remainingMs();
+  if (remaining === Number.POSITIVE_INFINITY) return cfg;
+  return {
+    ...cfg,
+    searchTimeoutMs: Math.min(cfg.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS, remaining),
+  };
+};
 
 const legacyReasonFor = (rung: SelectionRung | null): SelectionReason => {
   switch (rung) {
@@ -285,15 +300,26 @@ const noLegalTarget = (
     selectionMs: 0,
   });
 
-export const classicalTrickOnlyBrain = (): Brain => ({
+/**
+ * The classical trick-only brain.
+ *
+ * `fallback` is non-null when this brain is standing in for the neural one —
+ * i.e. when a neural decision was asked for and could not be made. It used to
+ * be unconditionally null, which is why a genuine `model-absent` or
+ * `model-invalid` condition produced a trace that recorded no fallback at all:
+ * the visitor was told the truth by the badge, and the published trace was not.
+ */
+export const classicalTrickOnlyBrain = (fallback: FallbackTrace | null = null): Brain => ({
   kind: "classical-trick-only",
   label: "Physics search",
-  plan: async (state, table, player, config) => {
-    const cfg = config ?? defaultConfig;
+  plan: async (state, table, player, config, deadline) => {
+    const cfg = withinDeadline(config ?? defaultConfig, deadline ?? Deadline.none());
     const targets = legalTargets(state, player);
     const cue = state.balls.find((b) => b.id === CUE_ID);
-    if (!cue || targets.length === 0) return noLegalTarget(state, player, cfg, null, null);
-    return decide(state, table, player, targets, cfg, null, null, undefined, null, null);
+    if (!cue || targets.length === 0) return noLegalTarget(state, player, cfg, null, fallback);
+    const res = decide(state, table, player, targets, cfg, null, fallback, undefined, null, null);
+    if (!fallback) return res;
+    return { ...res, trace: res.trace && { ...res.trace, fallbackReason: fallback.detail } };
   },
 });
 
@@ -308,48 +334,51 @@ export const neuralTrickOnlyBrain = (
 ): Brain => ({
   kind: "neural-hybrid",
   label: "Neural evaluator + physics search",
-  plan: async (state, table, player, config) => {
-    const cfg = config ?? defaultConfig;
+  plan: async (state, table, player, config, deadline) => {
+    const dl = deadline ?? Deadline.none();
+    const cfg = withinDeadline(config ?? defaultConfig, dl);
     const targets = legalTargets(state, player);
     const cue = state.balls.find((b) => b.id === CUE_ID);
     if (!cue || targets.length === 0) return noLegalTarget(state, player, cfg, null, null);
 
     const candidates = generateCandidates(state.balls, table, targets);
+    const before = evaluator.getState();
 
     // Every way inference can fail resolves to the SAME classical trick-only
     // search, with an accurate `fallback.cause`. None of them can hang: the
     // evaluator never throws (it catches ORT errors internally) and the call is
-    // additionally deadline-raced.
-    const raced = await withDeadline(
+    // raced against both the per-call cap and the turn's remaining budget.
+    const raced = await dl.race(
       evaluator.score(state.balls, table, candidates),
       NEURAL_SCORE_DEADLINE_MS,
     );
     const scored = raced.ok ? raced.value : null;
 
     if (!scored) {
-      const evalState = evaluator.getState();
+      const after = evaluator.getState();
       // An empty candidate set is not a model failure. The evaluator returns
       // null for it just as it does for a real inference problem, and reading
       // that as "the model gave nothing back" blames the ranker for a board
       // that offered it nothing to rank. Checked first so the more specific
       // cause wins.
       const noCandidates = candidates.length === 0;
-      const cause: FallbackTrace["cause"] = noCandidates
-        ? "no-candidates"
+      // `score()` downgrades the evaluator to `invalid` when onnxruntime throws
+      // *during* a run. Comparing before with after is what separates that —
+      // `inference-error`, a session that broke on this call — from an
+      // evaluator that was already invalid when it was handed over, which is
+      // `model-invalid` and is not this call's fault.
+      const brokeDuringRun = before.status === "ready" && after.status === "invalid";
+      const [cause, detail]: [FallbackTrace["cause"], string] = noCandidates
+        ? ["no-candidates", "no shots to rank from this position"]
         : !raced.ok
-          ? "inference-timeout"
-          : evalState.status === "ready"
-            ? "no-scores"
-            : evalState.status === "invalid"
-              ? "inference-error"
-              : "model-absent";
-      const detail = noCandidates
-        ? "no shots to rank from this position"
-        : !raced.ok
-          ? `inference exceeded ${NEURAL_SCORE_DEADLINE_MS} ms`
-          : evalState.status === "ready"
-            ? "the model scored nothing for this set of shots"
-            : `model unavailable: ${evalState.reason}`;
+          ? ["inference-timeout", `inference exceeded ${Math.round(raced.waitedMs)} ms`]
+          : brokeDuringRun
+            ? ["inference-error", `model unavailable: ${(after as { reason?: string }).reason ?? "onnx runtime error"}`]
+            : after.status === "ready"
+              ? ["no-scores", "the model scored nothing for this set of shots"]
+              : after.status === "invalid"
+                ? ["model-invalid", `model unusable: ${after.reason}`]
+                : ["model-absent", `model unavailable: ${after.reason}`];
       const res = decide(state, table, player, targets, cfg, null, { from: "neural-hybrid", to: "classical-trick-only", cause, detail }, undefined, null, null);
       return {
         ...res,
@@ -387,17 +416,60 @@ export const neuralTrickOnlyBrain = (
 });
 
 /**
+ * Why the neural path is unusable right now, as a `FallbackTrace`. Null when it
+ * is usable, or when nobody asked for it.
+ *
+ * Split out from `getBrain` so `plan.ts` can pass a *more specific* reason it
+ * already knows — a load that blew its deadline is `model-load-timeout`, not
+ * the `model-absent` the evaluator's own state would report a moment later.
+ */
+export const neuralUnavailability = (
+  evaluator: NeuralCandidateEvaluator,
+): FallbackTrace | null => {
+  if (evaluator.isReady()) return null;
+  const state = evaluator.getState();
+  const base = { from: "neural-hybrid", to: "classical-trick-only" } as const;
+  if (state.status === "invalid") {
+    return { ...base, cause: "model-invalid", detail: `model unusable: ${state.reason}` };
+  }
+  if (state.status === "absent") {
+    return { ...base, cause: "model-absent", detail: `model unavailable: ${state.reason}` };
+  }
+  // Validated manifest, but no ranker session in this realm — the page's own
+  // evaluator after `preflight()`, for instance. Absent, not invalid.
+  return {
+    ...base,
+    cause: "model-absent",
+    detail: "the ranker session is not available on this thread",
+  };
+};
+
+/**
  * Pick the brain for this turn. `preferNeural` is the user-facing toggle (the
  * model-disabled comparison mode); the evaluator's own validated readiness is
  * the hard gate. Asking for neural when no valid artifact loaded gets the
  * classical trick-only brain, honestly labelled — never a neural label over a
  * classical decision, and never a policy change either way.
+ *
+ * That classical stand-in now carries the reason with it. It did not before,
+ * and the consequence was a published trace with `fallback: null` on exactly
+ * the two conditions — `model-absent`, `model-invalid` — the contract has
+ * causes for; both were unreachable in practice because this function routed
+ * around them.
  */
 export const getBrain = (
   preferNeural: boolean,
   evaluator: NeuralCandidateEvaluator = neuralEvaluator,
-): Brain =>
-  preferNeural && evaluator.isReady() ? neuralTrickOnlyBrain(evaluator) : classicalTrickOnlyBrain();
+  /** A reason the caller already knows, overriding the evaluator's own. */
+  unavailable: FallbackTrace | null = null,
+): Brain => {
+  // `unavailable` still applies with the toggle off: it can describe a failure
+  // that has nothing to do with the model — the planning worker going silent,
+  // for one — and that failure happened whether or not neural was asked for.
+  if (!preferNeural) return classicalTrickOnlyBrain(unavailable);
+  const reason = unavailable ?? neuralUnavailability(evaluator);
+  return reason === null ? neuralTrickOnlyBrain(evaluator) : classicalTrickOnlyBrain(reason);
+};
 
 /**
  * The opponent description. Derived from validated model state.

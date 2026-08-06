@@ -181,6 +181,23 @@ export interface SelectedShotTrace {
   reliabilityThreshold: number;
   /** Verified tricks that pot AND clear that threshold. */
   qualifyingTricks: number;
+  /**
+   * How far the safety rung's own verification got, straight from
+   * `SafetyResult.quality`. Null for every non-safety shot.
+   *
+   *   `foul-free`          a real simulation showed `applyShotRules().foul === false`
+   *   `legal-contact-only` fouled, but the cue did strike a legal target
+   *   `unverified`         nothing survived simulation; the shortest kick is
+   *                        being played at minimum power and may well foul
+   *
+   * This field exists because it was being thrown away. `unverified` and
+   * `legal-contact-only` both mapped onto the rung `forced-legal-contact`, and
+   * the panel described that rung as "the shortest legal contact" — an
+   * assertion nothing had established, on a shot that scratched 94 % of the
+   * time in an adversarial sample. The rung says which branch fired; this says
+   * what the physics actually knew when it fired.
+   */
+  safetyQuality: "foul-free" | "legal-contact-only" | "unverified" | null;
 }
 
 export interface SearchBudget {
@@ -217,19 +234,33 @@ export interface ModelIdentity {
 }
 
 export interface FallbackTrace {
-  from: "neural-hybrid";
-  to: "classical-trick-only";
   /**
-   * Why the neural path was not used. `no-candidates` is deliberately separate
-   * from `no-scores`: both end in the same classical trick-only search, but one
-   * is "there was nothing to rank" and the other is "the model was asked and
-   * gave nothing back". Collapsing them blames the model for an empty board.
+   * What was expected to produce the decision. `planning-worker` covers the one
+   * failure the worker cannot report on its own behalf: it stopped answering.
+   */
+  from: "neural-hybrid" | "planning-worker";
+  /** What produced it instead. */
+  to: "classical-trick-only" | "main-thread-classical";
+  /**
+   * Why. `no-candidates` is deliberately separate from `no-scores`: both end in
+   * the same classical trick-only search, but one is "there was nothing to
+   * rank" and the other is "the model was asked and gave nothing back".
+   * Collapsing them blames the model for an empty board.
+   *
+   * The three timeouts are separate for the same reason. `inference-timeout` is
+   * a `session.run()` that did not come back; `model-load-timeout` is a session
+   * that was never built (a stalled fetch, a stalled `InferenceSession.create`);
+   * `planner-timeout` is the worker going silent, which is not a model failure
+   * at all. Every member of this union is emitted from exactly one branch, and
+   * `brain.fallback.test.ts` drives each of those branches.
    */
   cause:
     | "model-absent"
     | "model-invalid"
+    | "model-load-timeout"
     | "inference-error"
     | "inference-timeout"
+    | "planner-timeout"
     | "no-candidates"
     | "no-scores";
   /** Human-readable, non-empty. The UI is required to be able to show it. */
