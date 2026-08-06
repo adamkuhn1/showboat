@@ -388,6 +388,26 @@ export const defaultConfig: SearchConfig = {
   rolloutDepth: 1,
   rolloutsPerEval: 2,
   seed: 12345,
+  /**
+   * DELIBERATELY UNBOUNDED. This config is shared by the unit suite and the
+   * evaluation harness, and a wall-clock guard here makes both depend on how
+   * loaded the machine is rather than on the physics budget.
+   *
+   * That is not hypothetical: when `DEFAULT_SEARCH_TIMEOUT_MS` (3,500 ms)
+   * applied here, the Showboat suite failed roughly three runs in four, a
+   * DIFFERENT test each time — `searchPolicy`, `overlayTruthfulness` and
+   * `rankerIntegration` all run a real search, and a truncated search is a
+   * different decision. A suite that fails at random trains people to ignore
+   * it. An earlier sprint hit the same class of bug in the evaluation harness
+   * and fixed it the same way.
+   *
+   * Live play is still bounded, and by a tighter clock: `withinDeadline`
+   * (ai/brain.ts) folds the turn's remaining time in with `Math.min`, so a real
+   * turn gets whatever is left of `DECISION_DEADLINE_MS` and `Infinity` never
+   * reaches the search. `Deadline.none()` leaves this value alone, which is
+   * what keeps tests and the harness deterministic.
+   */
+  searchTimeoutMs: Number.POSITIVE_INFINITY,
 };
 
 /**
