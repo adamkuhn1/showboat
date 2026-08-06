@@ -60,14 +60,20 @@ async function main() {
       `direct reserve ${DIRECT_RESERVE}, ${N_FIXTURES} fixtures, ${N_GAMES} games\n`,
   );
 
-  // `seedTimeoutMs: Infinity` — the production wall-clock guard is disabled for
-  // BOTH arms here, on purpose. It truncates the seeding loop by elapsed time,
-  // which makes results depend on machine load rather than search policy: a
-  // four-way-concurrent dev sweep produced different classical-arm numbers
-  // across runs that were supposed to be identical. The physics budget
-  // (`simulations`) remains the binding constraint and is unchanged, so equal
-  // budget is preserved exactly.
-  const config = { ...defaultConfig, simulations: BUDGET, seed: 20260101, seedTimeoutMs: Infinity };
+  // `seedTimeoutMs`/`searchTimeoutMs: Infinity` — the production wall-clock
+  // guards are disabled for BOTH arms here, on purpose. They truncate the search
+  // by elapsed time, which makes results depend on machine load rather than
+  // search policy: a four-way-concurrent dev sweep produced different
+  // classical-arm numbers across runs that were supposed to be identical. The
+  // physics budget (`simulations`) remains the binding constraint and is
+  // unchanged, so equal budget is preserved exactly.
+  const config = {
+    ...defaultConfig,
+    simulations: BUDGET,
+    seed: 20260101,
+    seedTimeoutMs: Infinity,
+    searchTimeoutMs: Infinity,
+  };
   const fixtures = makeFixtures(table, N_FIXTURES, SEED);
   console.log(`[eval] built ${fixtures.length} fixtures`);
 

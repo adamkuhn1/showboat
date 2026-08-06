@@ -89,6 +89,7 @@ describe("the live planning path refuses a direct that is available and better",
       ...defaultConfig,
       seed: 20260101,
       seedTimeoutMs: Infinity,
+      searchTimeoutMs: Infinity,
     });
     expect(legacy.best!.candidate.kind, "the premise requires a direct here").toBe("direct");
     expect(legacy.best!.potsTarget, "and it must be a real, verified pot").toBe(true);

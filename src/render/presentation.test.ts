@@ -112,6 +112,7 @@ function trace(over: Partial<DecisionTraceV1> = {}): DecisionTraceV1 {
       utility: 0.6,
       reliabilityThreshold: 0.5,
       qualifyingTricks: 1,
+      safetyQuality: null,
     },
     fallback: null,
     ...over,
@@ -268,6 +269,7 @@ describe("what gets drawn", () => {
       utility: 0.7,
       reliabilityThreshold: 0.5,
       qualifyingTricks: 2,
+      safetyQuality: null,
     },
   });
   const schedule = buildSchedule({ trace: t, sentenceWords: 10 });
@@ -353,6 +355,7 @@ describe("what gets drawn", () => {
         utility: null,
         reliabilityThreshold: 0.5,
         qualifyingTricks: 0,
+        safetyQuality: "foul-free",
       },
     });
     const s = buildSchedule({ trace: safety, sentenceWords: 6 });

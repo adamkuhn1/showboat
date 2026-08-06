@@ -139,6 +139,8 @@ export interface DecisionTrace {
   consideredIndices?: number[];
   /** Did `seedTimeoutMs` truncate the seeding loop? */
   seedTimedOut?: boolean;
+  /** Did `searchTimeoutMs` truncate the seeding or the refinement loop? */
+  searchTimedOut?: boolean;
   /** Wall-clock ms spent inside the seeding + refinement loops. */
   physicsMs?: number;
 }
@@ -227,6 +229,19 @@ export interface SearchConfig {
    * only on the physics budget. Production keeps the guard.
    */
   seedTimeoutMs?: number;
+  /**
+   * Wall-clock guard on the WHOLE search — seeding *and* UCB refinement — ms,
+   * measured from the same instant as `seedTimeoutMs`.
+   *
+   * `seedTimeoutMs` bounds only the seeding loop. When it fired, the physics
+   * budget it left unspent was handed to the refinement loop below, which had
+   * no clock at all: a turn that recorded `seedTimedOut: true` was measured at
+   * 5,309 ms end to end on an idle machine, over the 5,000 ms the evaluation's
+   * T3 criterion allows. This is the guard that was missing. Callers that
+   * disable `seedTimeoutMs` for determinism must disable this too — the
+   * evaluation harness sets both to `Infinity`, in every arm.
+   */
+  searchTimeoutMs?: number;
   // Phase 2F hybrid agent: a learned prior over the candidate list. Unlike
   // `netSeedScores` above, this NEVER supplies a candidate's value — it only
   // decides the order candidates are physics-verified in, and which ones get
@@ -354,6 +369,20 @@ export const DEFAULT_PRIOR_KEEP_TOP = 16;
 /** UI-responsiveness guard on the seeding loop. See `SearchConfig.seedTimeoutMs`. */
 export const DEFAULT_SEED_TIMEOUT_MS = 2000;
 
+/**
+ * Wall-clock guard on the whole search. See `SearchConfig.searchTimeoutMs`.
+ *
+ * 3500 ms, not 2000 and not 5000. The binding constraint on *work* is still
+ * `simulations` (60 units); this only stops the clock running past the point
+ * where the turn stops feeling like a turn. Measured on an idle machine, seven
+ * unhurried production turns spent 2,222-5,309 ms in physics with the budget
+ * fully spent in all but the truncated ones, so 3,500 ms leaves the median turn
+ * untouched, truncates the slowest ~quarter by a fraction of the refinement
+ * loop, and keeps the decision total under the 5,000 ms cap with room for the
+ * safety rung's simulations and the neural deadline on top.
+ */
+export const DEFAULT_SEARCH_TIMEOUT_MS = 3500;
+
 export const defaultConfig: SearchConfig = {
   simulations: 60,
   rolloutDepth: 1,
@@ -434,6 +463,7 @@ export const searchCandidates = (
     reservePromotions: 0,
     ineligible: 0,
     seedTimedOut: false,
+    searchTimedOut: false,
     consideredIndices: [],
     physicsMs: 0,
     neuralInferenceMs: usePrior ? prior!.inferenceMs : undefined,
@@ -567,7 +597,14 @@ export const searchCandidates = (
   const useNetScores = netScores !== undefined && netScores.length === candidates.length;
   const useNetSeed = useNetScores || config.netSeedValue !== undefined;
   const SEED_TIMEOUT_MS = config.seedTimeoutMs ?? DEFAULT_SEED_TIMEOUT_MS;
+  const SEARCH_TIMEOUT_MS = config.searchTimeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS;
   const seedStart = performance.now();
+  let searchTimedOut = false;
+  const outOfTime = (): boolean => {
+    if (performance.now() - seedStart <= SEARCH_TIMEOUT_MS) return false;
+    searchTimedOut = true;
+    return true;
+  };
 
   const verifiedIndices: number[] = [];
   const verifications: (CandidateVerification | null)[] = candidates.map(() => null);
@@ -576,6 +613,7 @@ export const searchCandidates = (
   let seedTimedOut = false;
 
   for (const ci of order) {
+    if (outOfTime()) break;
     if (performance.now() - seedStart > SEED_TIMEOUT_MS) {
       seedTimedOut = true;
       break;
@@ -648,7 +686,11 @@ export const searchCandidates = (
 
   const seeded = stats.filter(s => s.visits > 0);
 
-  while (seeded.length > 0 && sims + config.rolloutsPerEval <= BUDGET) {
+  // The refinement loop is where the seeding loop's freed budget was being
+  // spent with nothing timing it. `outOfTime()` is the same clock, from the
+  // same start instant, as the seeding guard above — one wall-clock budget for
+  // the whole search rather than one for its first half.
+  while (seeded.length > 0 && sims + config.rolloutsPerEval <= BUDGET && !outOfTime()) {
     const totalVisits = seeded.reduce((a, s) => a + s.visits, 0);
     let pick = seeded[0];
     let bestUcb = -Infinity;
@@ -682,6 +724,7 @@ export const searchCandidates = (
     reservePromotions,
     ineligible,
     seedTimedOut,
+    searchTimedOut,
     consideredIndices: order,
     physicsMs: performance.now() - seedStart,
   };

@@ -193,6 +193,13 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
             utility: decision.utility,
             reliabilityThreshold: TRICK_RELIABILITY_THRESHOLD,
             qualifyingTricks: decision.qualifyingTricks,
+            // `pickSafety`'s own verdict, carried rather than dropped. `none`
+            // never reaches here: it means no kick was constructed, which is
+            // the `shot === null` branch above.
+            safetyQuality:
+              decision.safetyQuality === null || decision.safetyQuality === "none"
+                ? null
+                : decision.safetyQuality,
           },
     fallback: input.fallback,
   };

@@ -76,6 +76,7 @@ beforeAll(async () => {
       ...defaultConfig,
       seed: 20260805,
       seedTimeoutMs: Infinity,
+      searchTimeoutMs: Infinity,
     });
   }
 }, 120_000);
@@ -333,6 +334,7 @@ describe("the shape is pinned by an exhaustive literal", () => {
         utility: 0.86,
         reliabilityThreshold: 0.5,
         qualifyingTricks: 2,
+        safetyQuality: null,
       },
       fallback: null,
     };
