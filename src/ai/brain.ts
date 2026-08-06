@@ -328,18 +328,28 @@ export const neuralTrickOnlyBrain = (
 
     if (!scored) {
       const evalState = evaluator.getState();
-      const cause: FallbackTrace["cause"] = !raced.ok
-        ? "inference-timeout"
-        : evalState.status === "ready"
-          ? "no-scores"
-          : evalState.status === "invalid"
-            ? "inference-error"
-            : "model-absent";
-      const detail = !raced.ok
-        ? `inference exceeded ${NEURAL_SCORE_DEADLINE_MS} ms`
-        : evalState.status === "ready"
-          ? "model loaded but returned no scores for this candidate set"
-          : `model unavailable: ${evalState.reason}`;
+      // An empty candidate set is not a model failure. The evaluator returns
+      // null for it just as it does for a real inference problem, and reading
+      // that as "the model gave nothing back" blames the ranker for a board
+      // that offered it nothing to rank. Checked first so the more specific
+      // cause wins.
+      const noCandidates = candidates.length === 0;
+      const cause: FallbackTrace["cause"] = noCandidates
+        ? "no-candidates"
+        : !raced.ok
+          ? "inference-timeout"
+          : evalState.status === "ready"
+            ? "no-scores"
+            : evalState.status === "invalid"
+              ? "inference-error"
+              : "model-absent";
+      const detail = noCandidates
+        ? "no shots to rank from this position"
+        : !raced.ok
+          ? `inference exceeded ${NEURAL_SCORE_DEADLINE_MS} ms`
+          : evalState.status === "ready"
+            ? "the model scored nothing for this set of shots"
+            : `model unavailable: ${evalState.reason}`;
       const res = decide(state, table, player, targets, cfg, null, { from: "neural-hybrid", to: "classical-trick-only", cause, detail }, undefined, null, null);
       return {
         ...res,

@@ -219,7 +219,19 @@ export interface ModelIdentity {
 export interface FallbackTrace {
   from: "neural-hybrid";
   to: "classical-trick-only";
-  cause: "model-absent" | "model-invalid" | "inference-error" | "inference-timeout" | "no-scores";
+  /**
+   * Why the neural path was not used. `no-candidates` is deliberately separate
+   * from `no-scores`: both end in the same classical trick-only search, but one
+   * is "there was nothing to rank" and the other is "the model was asked and
+   * gave nothing back". Collapsing them blames the model for an empty board.
+   */
+  cause:
+    | "model-absent"
+    | "model-invalid"
+    | "inference-error"
+    | "inference-timeout"
+    | "no-candidates"
+    | "no-scores";
   /** Human-readable, non-empty. The UI is required to be able to show it. */
   detail: string;
 }
