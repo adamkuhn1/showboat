@@ -170,7 +170,7 @@ describe("production artifact: the real loader, end to end", () => {
     expect(state.status).toBe("invalid");
     expect(state.status === "invalid" && state.reason).toMatch(/showboat-ranker-v99/);
     // Nothing was loaded, so nothing can claim to be neural.
-    expect(getBrain(true, evaluator).kind).toBe("classical");
+    expect(getBrain(true, evaluator).kind).toBe("classical-trick-only");
     expect(brainLabel(true, evaluator)).toBe("the physics-search opponent");
   });
 
@@ -181,7 +181,7 @@ describe("production artifact: the real loader, end to end", () => {
     );
     expect(state.status).toBe("absent");
     expect(evaluator.isReady()).toBe(false);
-    expect(getBrain(true, evaluator).kind).toBe("classical");
+    expect(getBrain(true, evaluator).kind).toBe("classical-trick-only");
     expect(brainLabel(true, evaluator)).not.toContain("neural");
   });
 

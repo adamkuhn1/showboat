@@ -66,6 +66,85 @@ browser, and a **live reasoning overlay** driven entirely by actual search data.
 > 40 --seed 55508219 --out corrected_55508219.json` then `npx tsx
 > eval/correctedGateReport.ts eval/results/corrected_55508219.json`.
 
+## The trick-only policy — Showboat never plays a direct shot
+
+This is a product decision, not an optimisation: **Showboat wins with trick
+shots, and never chooses a direct pot in live gameplay, even when a direct pot
+would be strategically better.** Directs are still generated, still simulated
+where the budget allows, and still shown in the reasoning overlay as
+truthfully-labelled rejected comparisons. They are simply not playable.
+
+### Where it is enforced
+
+`src/ai/policy/trickOnly.ts` is the only module that can produce a shot the AI
+plays, and it cannot produce a direct. Four layers, strongest first:
+
+1. **Type.** `selectTrickOnly`'s first statement partitions the search's stats
+   into `TrickStat[]` — a type that statically narrows `candidate.kind` to
+   `bank | double-bank | combo | rail-combo` — and a write-only `excluded` that
+   only ever flows into the trace. The selection ladder is typed over the trick
+   partition, so returning a direct is a **compile error**, not a bug someone
+   has to notice. `PlayableShot` additionally carries an unexported
+   `unique symbol` brand, so no other module in the repo can construct one.
+2. **Structural.** No rung holds a reference to a direct, so there is nothing
+   for a direct to win.
+3. **Assertion.** `assertNotDirect` runs before every return and throws
+   `TrickOnlyInvariantError`. Unreachable unless 1 or 2 is broken; the brain
+   catches it and degrades to the safety rung, so a future editing mistake
+   yields a *worse* shot, never a direct one and never a hang.
+4. **Call site.** `src/ai/policy/trickOnlySourceGuard.test.ts` asserts against
+   the source that only `policy/execute.ts` reaches `takeShot` from AI code,
+   that `App.tsx` plays `result.shot`, and that the live path imports no legacy
+   selector.
+
+Layer 4 exists because there were **two** direct-shot escape hatches, not one.
+The first was `selectBestWithReason`'s `no-trick-qualified` branch. The second
+was in `App.tsx`: when the search returned no candidate it aimed the cue
+straight at the nearest legal ball at power 0.3, bypassing the policy entirely.
+Fixing only the first left the guarantee unmet.
+
+### The selection ladder
+
+Five rungs, strictly ordered, none of which can return a direct:
+
+| # | rung | condition | choice |
+|---|---|---|---|
+| 1 | `trick-qualified` | pots AND clears `TRICK_RELIABILITY_THRESHOLD` | argmax `strength + 0.12 × styleScore` |
+| 2 | `trick-below-threshold` | pots, below the bar | argmax `strength` |
+| 3 | `trick-attempt-no-verified-pot` | verified, legal first contact, no scratch | argmax `strength` |
+| 4 | `non-direct-safety` | no trick playable | a rail-first kick the real `applyShotRules` confirmed is foul-free |
+| 5 | `forced-legal-contact` | no kick is foul-free either | the shortest kick at minimum power, labelled honestly |
+
+Rung 2 is what keeps the cost survivable: a sub-threshold *potting* trick is
+still a pot, so most decisions that used to fall through to a direct still put a
+ball down. Rungs 4–5 (`src/ai/policy/safety.ts`) are bounded by construction —
+at most 12 kicks generated, at most 6 simulated, entirely synchronous — so the
+fallback cannot hang a turn.
+
+### Fallback on model failure
+
+Every way inference can fail — artifact absent, artifact invalid, `session.run()`
+throwing, a 250 ms deadline elapsing, or a wrong-length score vector — degrades
+to **classical trick-only**, with an accurate `fallback.cause` in the trace.
+There is no code path in which a fallback runs a policy that can select a
+direct: both brains call the same `selectTrickOnly`, and there is only one.
+
+### What it costs
+
+Reported honestly in
+`docs/repair/personal-authorship-sprint/evidence/showboat-trickonly.md`, against
+a pre-registration frozen before the run
+(`docs/repair/personal-authorship-sprint/showboat/TRICK_ONLY_GATE.md`, seed
+`61903477`). **No gate criterion is win rate** — a gate able to veto a product
+identity decision on a win-rate regression would create an incentive to shade
+that number.
+
+```bash
+# from apps/showboat/
+npx tsx eval/trickOnlyEval.ts --fixtures 400 --games 60 --seed 61903477 --out trickonly_61903477.json
+npx tsx eval/trickOnlyGateReport.ts eval/results/trickonly_61903477.json
+```
+
 ## ML status (2026-08-03, redirected — read before touching training/)
 
 Two separate ML tracks exist; do not conflate them:
@@ -144,6 +223,8 @@ physics-core/  (Rust → WASM)   event-based Han-2005 physics + UCB search rollo
   src/wasm/                    committed wasm-pack output (JS build needs no cargo)
 src/game/                      8-ball ruleset + game controller (engine-agnostic)
 src/ai/                        candidate generator, UCB shot search, ONNX loader, brain seam
+src/ai/policy/                 THE choke point: trick-only selection, safety kicks, the one takeShot wrapper
+src/ai/trace/                  the published DecisionTraceV1 contract (types only) + its builder
 src/ai/neural/                 NeuralCandidateEvaluator: manifest validation + batched inference
 public/model/ranker/           the shipped, hash-verified trained artifact + its manifest
 eval/                          equal-budget classical-vs-hybrid evaluation harness
@@ -243,9 +324,21 @@ algorithm hasn't earned (MCTS, win probability, confidence, "thinking").
   ranker's rank for each candidate is shown as `#n`.
 - **Ghost candidate paths** are the geometric aiming routes the search
   enumerated. Line weight/opacity tracks each candidate's real UCB visit share.
-- The chosen shot is whatever `selectBestWithReason` returned, and the one line
-  of prose under it is that function's own `selectionReason` — the display
-  cannot describe a different decision than the one played.
+- The chosen shot is whatever `selectTrickOnly` returned, addressed in the trace
+  by its index in **generation order** — so the shot being played is always
+  findable in the candidate list, whatever order a renderer chooses to display
+  it in. The rung that produced it is the policy's own, not a re-derivation.
+- **The published contract is `src/ai/trace/contract.ts`** (`DecisionTraceV1`):
+  types only, zero runtime imports, JSON-serializable, `null` never
+  `undefined`. It carries every generated candidate in generation order, directs
+  included, each with `kind`, `eligible`, the model's prior, the real physics
+  verification, and a real `rejection` reason. A non-null `physics` block can
+  only be built from a `CandidateVerification`, which the search creates only
+  immediately after a real `simulateShotWasm` call — and
+  `src/ai/trace/contract.test.ts` re-checks every such index against the
+  search's own `verifiedIndices`, in both directions. That is what makes "the
+  overlay never shows a number the physics didn't produce" mechanical rather
+  than aspirational.
 - The shot caption ("cue → rail → 3-ball → corner") is generated from the real
   physics event trace (`src/ai/trace.ts`).
 
