@@ -13,16 +13,12 @@
 import type { GameState, PlayerId } from "../../game/state";
 import type { Table } from "../../physics/table";
 import type { CueAction } from "../../physics/cue";
-import { BALL_RADIUS } from "../../physics/constants";
 import { initPhysics, simulateShotWasm } from "../../physics/wasm-bridge";
-import { takeShot, type ShotReport } from "../../game/game";
-import { CUE_ID } from "../../game/rack";
-import { legalTargets } from "../../ai/turn";
-import { generateCandidates } from "../../ai/candidates";
+import { type ShotReport } from "../../game/game";
 import { getBrain } from "../../ai/brain";
+import { executeAiShot } from "../../ai/policy/execute";
 import { NeuralCandidateEvaluator, neuralEvaluator } from "../../ai/neural/evaluator";
 import type { DecisionTraceV1 } from "../../ai/trace/contract";
-import { adaptSearchResult } from "./adaptTrace";
 
 export interface PlanInput {
   state: GameState;
@@ -81,11 +77,39 @@ export interface PlanHooks {
   onModelStatus?: (s: ModelStatus) => void;
 }
 
-export interface PlannedTurn {
+/**
+ * A turn in which the opponent shot. `action` is the action carried by the
+ * branded `PlayableShot` the policy chose — it is here for the cue-stroke
+ * animation only; nothing may re-execute it, and nothing can, because
+ * `executeAiShot` has already produced the authoritative `report` and is the
+ * only AI-side path to `takeShot`.
+ */
+export interface PlayedTurn {
+  kind: "shot";
   trace: DecisionTraceV1;
   action: CueAction;
   report: ShotReport;
 }
+
+/**
+ * A turn in which the policy returned no shot.
+ *
+ * The trick-only ladder's rungs 4 and 5 produce a shot whenever a legal target
+ * exists, so this now means exactly one thing: **there was no legal target.**
+ * It is not a search failure and it is not a fallback — there is nothing to
+ * fall back to. The host rests the turn rather than sitting on "searching…".
+ */
+export interface RestedTurn {
+  kind: "no-legal-shot";
+  trace: DecisionTraceV1;
+}
+
+/**
+ * A discriminated union rather than a nullable `report`, so a host that
+ * forgets the resting case does not compile. That case is the one that used to
+ * wedge the panel at "searching…" forever.
+ */
+export type PlannedTurn = PlayedTurn | RestedTurn;
 
 export async function planTurnTraced(
   input: PlanInput,
@@ -109,79 +133,25 @@ export async function planTurnTraced(
     }
   }
 
-  const targets = legalTargets(input.state, input.player);
-  // Regenerated here purely to recover GENERATION ORDER, which the search's
-  // `stats` destroys (it drops `visits === 0` rows and re-sorts). Generation is
-  // a pure function of the same inputs and costs ~2 ms, so this list is
-  // identical to the one the search built internally — a recomputation, not a
-  // second opinion. When T2's `ai/trace/build.ts` lands, the search hands the
-  // ordered list over directly and this call goes away with the adapter.
-  const generated = generateCandidates(input.state.balls, input.table, targets);
-
+  // ONE decision, ONE trace, ONE way to play it.
+  //
+  // `brain.plan` runs the trick-only policy and publishes `decision`, a
+  // `DecisionTraceV1` whose `candidates` are already in generation order. This
+  // used to regenerate the candidate list to recover that order and then
+  // synthesise a trace from `SearchResult` through `planner/adaptTrace.ts`;
+  // both are gone. The renderer now reads the trace the decision was actually
+  // made with, not a reconstruction of it.
   const brain = getBrain(input.useNeural, evaluator);
-  const startedAt = performance.now();
   const result = await brain.plan(input.state, input.table, input.player);
-  const totalMs = performance.now() - startedAt;
+  const trace = result.decision;
 
-  const trace = adaptSearchResult(result, {
-    generated,
-    player: input.player,
-    shotIndex: input.state.shotCount,
-    legalTargets: targets,
-    totalMs,
-    hashVerified,
-  });
+  // `result.shot` is a branded `PlayableShot` — the only thing in the codebase
+  // that can be played, and something only `policy/trickOnly.ts` can mint. It
+  // is null only when there was no legal target (the ladder's rungs 4-5 cover
+  // every other case), and there is no local aim to fall back on: the
+  // nearest-legal-ball escape hatch that used to live here is deleted.
+  if (result.shot === null) return { kind: "no-legal-shot", trace };
 
-  const action = trace.selected
-    ? trace.selected.action
-    : lastResortAim(input.state, targets);
-
-  const report = takeShot(input.state, input.table, action, simulateShotWasm);
-  return { trace, action, report };
-}
-
-/**
- * INTERIM — remove when T2's selection ladder lands.
- *
- * This is the second of the two direct-shot escape hatches the sprint's audit
- * found (it lived at `App.tsx:379-416`). It is reproduced here rather than
- * dropped because the search can still return no selection, and an opponent
- * that declines to shoot wedges the game. T2's rungs 4–5 (a non-direct safety
- * kick, then a shortest legal contact) replace it, at which point
- * `trace.selected` is non-null whenever a legal target exists and this function
- * is deleted outright — not made unreachable, deleted.
- */
-function lastResortAim(state: GameState, targets: number[]): CueAction {
-  const cueBall = state.balls.find((b) => b.id === CUE_ID)!;
-  const live = state.balls.filter((b) => !b.pocketed);
-  const byDist = live
-    .filter((b) => targets.includes(b.id))
-    .sort(
-      (a, b) =>
-        Math.hypot(a.pos.x - cueBall.pos.x, a.pos.y - cueBall.pos.y) -
-        Math.hypot(b.pos.x - cueBall.pos.x, b.pos.y - cueBall.pos.y),
-    );
-  const pathClearTo = (t: (typeof byDist)[0]) => {
-    const dx = t.pos.x - cueBall.pos.x;
-    const dy = t.pos.y - cueBall.pos.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-9) return true;
-    const nx = dx / len;
-    const ny = dy / len;
-    for (const b of live) {
-      if (b.id === CUE_ID || b.id === t.id) continue;
-      const vx = b.pos.x - cueBall.pos.x;
-      const vy = b.pos.y - cueBall.pos.y;
-      const proj = vx * nx + vy * ny;
-      if (proj <= 0 || proj >= len) continue;
-      const perp2 = (vx - proj * nx) ** 2 + (vy - proj * ny) ** 2;
-      if (perp2 < (2 * BALL_RADIUS) ** 2) return false;
-    }
-    return true;
-  };
-  const nearest = byDist.find(pathClearTo) ?? byDist[0];
-  const phi = nearest
-    ? Math.atan2(nearest.pos.y - cueBall.pos.y, nearest.pos.x - cueBall.pos.x)
-    : 0;
-  return { phi, power: 0.3, sideSpin: 0, topSpin: 0 };
+  const report = executeAiShot(input.state, input.table, result.shot, simulateShotWasm);
+  return { kind: "shot", trace, action: result.shot.action, report };
 }

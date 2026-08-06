@@ -43,6 +43,9 @@ function candidate(
     potId: 1 + (index % 7),
     pocket: "tl",
     aimPoint: { x: 0.1 * index, y: 0.02 * index },
+    // The contract's cue-ball route: from the cue ball's real position to the
+    // ghost-ball contact point, exactly as `ai/trace/build.ts` writes it.
+    cuePath: [geom.cuePos, { x: 0.1 * index, y: 0.02 * index }],
     path: [
       { x: 0.1 * index, y: 0.02 * index },
       { x: 0.4, y: 0.3 },
@@ -81,7 +84,7 @@ function trace(over: Partial<DecisionTraceV1> = {}): DecisionTraceV1 {
     version: DECISION_TRACE_VERSION,
     policy: "trick-only",
     mode: "classical-trick-only",
-    turn: { player: 1, shotIndex: 4, legalTargets: [1, 2] },
+    turn: { player: 1, shotIndex: 4, legalTargets: [1, 2], cueBall: geom.cuePos },
     model: null,
     budget: {
       physicsUnitsAllowed: 60,
@@ -102,7 +105,10 @@ function trace(over: Partial<DecisionTraceV1> = {}): DecisionTraceV1 {
       kind: "bank",
       rung: "trick-qualified",
       action: { phi: 0.2, power: 0.6, sideSpin: 0, topSpin: 0 },
-      path: candidates[0].path,
+      // Guarded: a fixture may pass `candidates: []` and its own `selected`,
+      // and this default is still evaluated before `...over` replaces it.
+      cuePath: candidates[0]?.cuePath ?? [],
+      path: candidates[0]?.path ?? [],
       utility: 0.6,
       reliabilityThreshold: 0.5,
       qualifyingTricks: 1,
@@ -257,6 +263,7 @@ describe("what gets drawn", () => {
       kind: "double-bank",
       rung: "trick-qualified",
       action: { phi: 0.1, power: 0.7, sideSpin: 0, topSpin: 0 },
+      cuePath: many[19].cuePath,
       path: many[19].path,
       utility: 0.7,
       reliabilityThreshold: 0.5,
@@ -325,6 +332,39 @@ describe("what gets drawn", () => {
       expect(just.length).toBeLessThanOrEqual(1);
       for (const r of just) expect(t.candidates[r.index].physics).not.toBeNull();
     }
+  });
+
+  it("a generated safety draws the cue leg the trace gave it, and no object route", () => {
+    // A safety kick is not a member of the candidate list, so it has no row to
+    // be addressed by index. Its route has to come from `selected.cuePath` —
+    // [cue position, rail point, target] — and `selected.path` is empty,
+    // because a kick plans no object-ball route at all. Before the real
+    // contract landed there was no `cuePath` and this drew nothing.
+    const rail = { x: 0.8, y: -0.5 };
+    const safety = trace({
+      candidates: [],
+      selected: {
+        candidateIndex: null,
+        kind: "safety-kick",
+        rung: "non-direct-safety",
+        action: { phi: -0.4, power: 0.35, sideSpin: 0, topSpin: 0 },
+        cuePath: [geom.cuePos, rail, { x: 0.2, y: 0.3 }],
+        path: [],
+        utility: null,
+        reliabilityThreshold: 0.5,
+        qualifyingTricks: 0,
+      },
+    });
+    const s = buildSchedule({ trace: safety, sentenceWords: 6 });
+    const seg = s.segments.find((x) => x.state === "READY")!;
+    const frame = frameAt(safety, s, seg.startMs + 1, geom);
+    expect(frame.routes).toHaveLength(1);
+    expect(frame.routes[0].role).toBe("selected");
+    expect(frame.routes[0].kind).toBe("safety-kick");
+    // The first real segment of the cue's route, not a line invented between
+    // the white and wherever the shot ends up.
+    expect(frame.routes[0].cueLeg).toEqual([geom.cuePos, rail]);
+    expect(frame.routes[0].objectLeg).toEqual([]);
   });
 
   it("the label slot is empty outside the reasoning sequence", () => {

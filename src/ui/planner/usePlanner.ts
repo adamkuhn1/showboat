@@ -101,9 +101,8 @@ export function usePlanner(): Planner {
           }
           worker.removeEventListener("message", onMessage);
           worker.removeEventListener("error", onError);
-          if (msg.type === "done") {
-            resolve({ trace: msg.trace, action: msg.action, report: msg.report });
-          } else reject(new Error(msg.message));
+          if (msg.type === "done") resolve(msg.planned);
+          else reject(new Error(msg.message));
         };
         const onError = (e: ErrorEvent) => {
           worker.removeEventListener("message", onMessage);

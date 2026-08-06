@@ -4,9 +4,7 @@
 
 import type { GameState, PlayerId } from "../../game/state";
 import type { Table } from "../../physics/table";
-import type { CueAction } from "../../physics/cue";
-import type { ShotReport } from "../../game/game";
-import type { DecisionTraceV1 } from "../../ai/trace/contract";
+import type { PlannedTurn } from "./plan";
 
 export interface PlanRequest {
   type: "plan";
@@ -32,11 +30,14 @@ export type PlanResponse =
   | { type: "model-loading"; id: number }
   | { type: "model-status"; id: number; ok: boolean; reason: string | null; hashVerified: boolean }
   /**
-   * The finished turn. `report` carries the authoritative simulation — its
-   * waypoints are what the page replays, and its event trace is where the
-   * cushion/contact marks come from. All plain data: `Ball`, `SimResult`,
-   * `ShotOutcome` and `GameState` are structured-cloneable by construction
-   * (`Motion` is a string enum), so nothing needs a transfer list.
+   * The finished turn, exactly as `planTurnTraced` returned it — including the
+   * `no-legal-shot` case, which crosses the boundary as data rather than as a
+   * missing field. In the `shot` case `report` carries the authoritative
+   * simulation: its waypoints are what the page replays, and its event trace is
+   * where the cushion/contact marks come from. All plain data: `Ball`,
+   * `SimResult`, `ShotOutcome`, `GameState` and `DecisionTraceV1` are
+   * structured-cloneable by construction (`Motion` is a string enum), so
+   * nothing needs a transfer list.
    */
-  | { type: "done"; id: number; trace: DecisionTraceV1; action: CueAction; report: ShotReport }
+  | { type: "done"; id: number; planned: PlannedTurn }
   | { type: "error"; id: number; message: string };
