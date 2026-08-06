@@ -32,7 +32,7 @@ import {
 } from "../render/presentation";
 import { shotSentence } from "./shotSentence";
 import { usePlanner } from "./planner/usePlanner";
-import type { ModelStatus, PlannedTurn } from "./planner/plan";
+import type { ModelStatus, PlannedTurn, PlayedTurn } from "./planner/plan";
 
 export type Phase = "aiming" | "searching" | "animating";
 
@@ -60,6 +60,11 @@ export interface UseAiTurnArgs {
   setPhase: (p: Phase) => void;
   commit: (report: ShotReport) => void;
   onModelStatus: (s: ModelStatus) => void;
+  /**
+   * The policy returned no shot, which now means only "no legal target". The
+   * host says so; this hook has already put the phase back to a resting state.
+   */
+  onNoLegalShot: () => void;
 }
 
 export interface AiTurnView {
@@ -126,6 +131,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     setPhase,
     commit,
     onModelStatus,
+    onNoLegalShot,
   } = args;
 
   const planner = usePlanner();
@@ -151,7 +157,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   const cancelRef = useRef(false);
   const runIdRef = useRef(0);
   /** Retained so both replays are free: no search re-runs, ever. */
-  const lastTurnRef = useRef<{ pre: GameState; planned: PlannedTurn; marks: ContactMark[] } | null>(
+  const lastTurnRef = useRef<{ pre: GameState; planned: PlayedTurn; marks: ContactMark[] } | null>(
     null,
   );
 
@@ -162,7 +168,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   // ---- the reasoning sequence ------------------------------------------
   const runSequence = useCallback(
-    (pre: GameState, planned: PlannedTurn, marks: ContactMark[], thenShoot: boolean) =>
+    (pre: GameState, planned: PlayedTurn, marks: ContactMark[], thenShoot: boolean) =>
       new Promise<void>((resolve) => {
         const sentence = shotSentence(planned.trace);
         let schedule: PresentationSchedule = buildSchedule({
@@ -228,7 +234,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   // ---- shot playback ----------------------------------------------------
   const runShot = useCallback(
-    (pre: GameState, planned: PlannedTurn, marks: ContactMark[], speed: number) =>
+    (pre: GameState, planned: PlayedTurn, marks: ContactMark[], speed: number) =>
       new Promise<void>((resolve) => {
         const sim = planned.report.sim;
         const track: AnimTrack = {
@@ -331,6 +337,23 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           setModelLoading(false);
           setBusy(false);
         }
+        return;
+      }
+
+      // No legal target — the only thing `shot === null` can mean now that the
+      // trick-only ladder's rungs 4 and 5 cover every board where one exists.
+      // There is no aim to invent here and nothing to fall back to, so the turn
+      // rests: the phase goes back to "aiming", `planning`/`busy` are cleared,
+      // and the host says why. Leaving any of those set is what wedged the
+      // panel at "searching…". The effect does not re-run on a phase change, so
+      // this cannot spin.
+      if (planned.kind === "no-legal-shot") {
+        setTrace(planned.trace);
+        setPlanning(false);
+        setModelLoading(false);
+        setBusy(false);
+        setPhase("aiming");
+        onNoLegalShot();
         return;
       }
 

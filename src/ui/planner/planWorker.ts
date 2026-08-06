@@ -54,13 +54,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
           }),
       },
     );
-    post({
-      type: "done",
-      id: req.id,
-      trace: planned.trace,
-      action: planned.action,
-      report: planned.report,
-    });
+    post({ type: "done", id: req.id, planned });
   } catch (err) {
     post({ type: "error", id: req.id, message: err instanceof Error ? err.message : String(err) });
   }

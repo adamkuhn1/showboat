@@ -305,6 +305,47 @@ earned (MCTS, win probability, confidence, "thinking").
   the trace itself labelled `lower-utility-than-selected`. The line under it is
   the selection ladder's own rung, mapped one-to-one to a phrase.
 
+### One decision, one trace, one way to play it
+
+`src/ui/planner/plan.ts` is the seam between the policy and the felt, and it is
+deliberately about ten lines long:
+
+```
+const result = await brain.plan(state, table, player);   // ai/brain.ts
+const trace  = result.decision;                          // published DecisionTraceV1
+if (result.shot === null) return { kind: "no-legal-shot", trace };
+const report = executeAiShot(state, table, result.shot, simulateShotWasm);
+```
+
+Three things are load-bearing there:
+
+- **The trace the renderer reads is the trace the decision was made with.** It
+  is not derived, adapted or reconstructed. An interim adapter
+  (`planner/adaptTrace.ts`) existed while the ML and presentation work ran in
+  parallel; it synthesised a `DecisionTraceV1` from the old `SearchResult`, and
+  it is deleted. `ai/trace/build.ts` is now the only module that can produce a
+  trace, and `trickOnlySourceGuard.test.ts` asserts that by checking which files
+  are allowed to name `DECISION_TRACE_VERSION`.
+- **`result.shot` is the only thing that can be played.** It is a branded
+  `PlayableShot` that only `ai/policy/trickOnly.ts` can mint, and `executeAiShot`
+  is the only AI-side wrapper around `takeShot`. There is no aim anywhere in the
+  UI layer: the nearest-legal-ball fallback that lived in `App.tsx`, and the
+  verbatim copy of it that briefly lived in `plan.ts` as `lastResortAim`, are
+  both gone. A no-op source test would not have caught the second one, so the
+  guard now scans every production file in `src/`.
+- **`shot === null` means "no legal target", nothing else.** The trick-only
+  ladder's rungs 4 and 5 return a shot on every board where a target exists, so
+  the resting case is real and rare. It crosses the worker boundary as a
+  discriminated union (`PlannedTurn = PlayedTurn | RestedTurn`), so a host that
+  forgets it does not compile; `useAiTurn` clears `planning`/`busy` and puts the
+  phase back to `aiming` rather than leaving the panel on `searching…`.
+
+`src/ui/planner/planSeam.test.ts` runs that path end to end on T2's hardest
+fixture — the board where the previous mixed policy plays a physics-verified
+direct pot at strength 0.63 — and asserts the shot that comes back is not a
+direct, that the executed action is the selected shot's action, and that the
+directs are still present in the trace as truthfully-labelled rejections.
+
 ### The opponent thinks in a worker
 
 `src/ui/planner/` moves the whole turn — search, selection, and the

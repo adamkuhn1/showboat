@@ -2,10 +2,11 @@
 // is backed by the decision data it was handed, and that it never uses
 // vocabulary the algorithm hasn't earned.
 //
-// It renders the real component with `react-dom/server` against a real
-// `DecisionTraceV1` built from a real physics search on a fixed board — not a
-// hand-written stub — so a number appearing in the markup that isn't in the
-// trace is a test failure.
+// It renders the real component with `react-dom/server` against the real
+// `DecisionTraceV1` the opponent decides with — the one `brain.plan()`
+// publishes after a real physics search on a fixed board, not a hand-written
+// stub and no longer an adapted reconstruction — so a number appearing in the
+// markup that isn't in the trace is a test failure.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -17,10 +18,13 @@ import { OverlayPanel } from "./OverlayPanel";
 import { makeTable } from "../physics/table";
 import { makeBall } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
-import { initPhysics } from "../physics/wasm-bridge";
+import type { GameState } from "../game/state";
+import { initPhysics, simulateShotWasm } from "../physics/wasm-bridge";
 import { generateCandidates } from "../ai/candidates";
-import { searchCandidates, defaultConfig } from "../ai/shotSearch";
-import { adaptSearchResult } from "./planner/adaptTrace";
+import { searchCandidates, defaultConfig, type SearchConfig } from "../ai/shotSearch";
+import { classicalTrickOnlyBrain } from "../ai/brain";
+import { isTrickCandidate, selectTrickOnly } from "../ai/policy/trickOnly";
+import { buildDecisionTrace } from "../ai/trace/build";
 import { REASONING_STATES, STATE_LABEL } from "../render/presentation";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
 
@@ -36,6 +40,15 @@ const board = [
   makeBall(5, -0.2, 0.3),
 ];
 const targets = [1, 2, 4, 5];
+const state: GameState = {
+  balls: board,
+  turn: 1,
+  groups: { 0: null, 1: null },
+  ballInHand: false,
+  winner: null,
+  broken: true,
+  shotCount: 3,
+};
 
 // Words the algorithm does not earn. Checked against the rendered TEXT, and
 // separately against the component source so a future edit can't sneak one in
@@ -79,34 +92,80 @@ const panel = (trace: DecisionTraceV1 | null, over: Partial<Parameters<typeof Ov
     ),
   );
 
+const config: SearchConfig = { ...defaultConfig, simulations: 40, seed: 99 };
+
+/**
+ * Search, select and publish — the same three calls `ai/brain.ts`'s `decide`
+ * makes, in the same order, with the same `eligible` filter. It exists only
+ * because the neural fixture needs a prior injected without an ONNX session;
+ * the classical trace below comes straight off `brain.plan()` so the two are
+ * checked against each other in "the fixture is the live decision".
+ */
+function traceFor(prior?: SearchConfig["prior"]): DecisionTraceV1 {
+  const candidates = generateCandidates(board, table, targets);
+  const outcome = searchCandidates(candidates, board, targets, {
+    ...config,
+    prior,
+    eligible: isTrickCandidate,
+  });
+  const decision = selectTrickOnly(outcome.allStats, outcome.verifications, {
+    state,
+    table,
+    targets,
+    simulate: simulateShotWasm,
+  });
+  return buildDecisionTrace({
+    outcome,
+    decision,
+    state,
+    player: 1,
+    targets,
+    physicsUnitsAllowed: config.simulations,
+    model: null,
+    fallback: null,
+    timing: {
+      totalMs: 812,
+      neuralEncodeMs: null,
+      neuralRunMs: prior ? 1.234 : null,
+      physicsMs: outcome.trace?.physicsMs ?? 0,
+      selectionMs: 0,
+    },
+  });
+}
+
 let classical: DecisionTraceV1;
 let hybridLike: DecisionTraceV1;
 
 describe("reasoning overlay: only real values, only earned vocabulary", () => {
   beforeAll(async () => {
     await initPhysics(readFileSync(join(APP_ROOT, "src/wasm/showboat_physics_bg.wasm")));
-    const candidates = generateCandidates(board, table, targets);
-    const config = { ...defaultConfig, simulations: 40, seed: 99 };
-    const ctx = {
-      generated: candidates,
-      player: 1 as const,
-      shotIndex: 3,
-      legalTargets: targets,
-      totalMs: 812,
-      hashVerified: false,
-    };
-    classical = adaptSearchResult(searchCandidates(candidates, board, targets, config), ctx);
+    // The live path: exactly the brain `ui/planner/plan.ts` gets from
+    // `getBrain(false, …)`, and exactly the trace it hands the renderer.
+    classical = (await classicalTrickOnlyBrain().plan(state, table, 1, config)).decision;
     // A synthetic-but-well-formed prior: this test is about rendering, and the
     // real model is exercised end to end in src/ai/neural/hybrid.test.ts.
-    const scores = candidates.map((_, i) => ((i * 37) % 101) / 100);
-    hybridLike = adaptSearchResult(
-      searchCandidates(candidates, board, targets, {
-        ...config,
-        prior: { scores, keepTop: 10, source: "showboat-ranker-phase2d", inferenceMs: 1.234 },
-      }),
-      ctx,
-    );
+    // Confined to [0.60, 0.99] so no synthetic score can *coincide* with the
+    // 0.50 reliability threshold, which the panel legitimately prints as part
+    // of the rung sentence. Without that gap the "no prior score is rendered"
+    // assertion below would fail on a collision rather than on a leak.
+    const scores = generateCandidates(board, table, targets).map((_, i) => 0.6 + ((i * 37) % 40) / 100);
+    hybridLike = traceFor({
+      scores,
+      keepTop: 10,
+      source: "showboat-ranker-phase2d",
+      inferenceMs: 1.234,
+    });
   }, 60_000);
+
+  it("the fixture is the live decision, not a reconstruction of one", () => {
+    // If `traceFor` ever drifts from what the brain does, the neural fixture
+    // below stops being evidence about the shipped renderer. Timing is measured
+    // and therefore differs run to run; everything else must match.
+    const local = traceFor();
+    expect({ ...local, timing: null }).toEqual({ ...classical, timing: null });
+    expect(classical.policy).toBe("trick-only");
+    expect(classical.selected?.kind).not.toBe("direct");
+  });
 
   it("classical mode says 'Physics search' and shows no model claims", () => {
     const text = panel(classical);

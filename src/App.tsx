@@ -195,6 +195,10 @@ export default function App() {
     setState,
     setPhase,
     commit,
+    // `shot === null` reaches here only when the opponent had no legal target
+    // at all. The hook has already rested the phase; this is the sentence that
+    // tells the visitor why nothing is happening.
+    onNoLegalShot: () => setMessage("no legal shot for the opponent."),
     onModelStatus: (s) =>
       setModelBadge(
         s.status === "ready"

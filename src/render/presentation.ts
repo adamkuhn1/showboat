@@ -503,11 +503,21 @@ export function frameAt(
         r.alpha = state === "SHOOTING" ? 0.45 : 1;
         routes.push(r);
       } else if (trace.selected) {
-        // A generated safety has no candidate; its own path is the route.
+        // A generated safety has no candidate row, so its own trace entry is
+        // the route. `cuePath` is the contract's cue-ball route — for a kick,
+        // [cue position, rail point, target] — and its first segment is the
+        // line the white actually travels first. Only that segment is drawn:
+        // the rest of the kick is cue-ball geometry, and `objectLeg` is the
+        // OBJECT ball's route, which a safety plans none of (`path` is empty).
+        // Putting cue geometry there would draw more of the shot at the cost of
+        // saying something false about which ball goes where.
         routes.push({
           index: -1,
           kind: trace.selected.kind,
-          cueLeg: trace.selected.path.length > 0 ? [geom.cuePos, trace.selected.path[0]] : null,
+          cueLeg:
+            trace.selected.cuePath.length >= 2
+              ? [trace.selected.cuePath[0], trace.selected.cuePath[1]]
+              : null,
           objectLeg: trace.selected.path,
           reveal: 1,
           weight: 1,
