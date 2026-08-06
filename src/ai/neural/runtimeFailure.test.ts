@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { NeuralCandidateEvaluator } from "./evaluator";
 import { makeFileFetch } from "./fileFetch";
-import { neuralHybridBrain, getBrain, brainLabel } from "../brain";
+import { neuralTrickOnlyBrain, getBrain, brainLabel } from "../brain";
 import { _resetRankerForTests } from "../onnx";
 import { initPhysics } from "../../physics/wasm-bridge";
 import { makeTable } from "../../physics/table";
@@ -109,7 +109,7 @@ describe("neural hybrid: a runtime ONNX failure (not just a load failure) still 
       new Error("simulated ORT runtime failure"),
     );
 
-    const brain = neuralHybridBrain(evaluator);
+    const brain = neuralTrickOnlyBrain(evaluator);
     // This must resolve — not hang, and not throw — exactly like the
     // existing "unloadable model" fallback test, but for a failure that
     // happens after a successful load instead of before one.
@@ -121,7 +121,7 @@ describe("neural hybrid: a runtime ONNX failure (not just a load failure) still 
     // And the user-facing brain selection honestly reports classical once
     // the evaluator has downgraded itself — never a neural label over a
     // decision the model didn't actually produce.
-    expect(getBrain(true, evaluator).kind).toBe("classical");
+    expect(getBrain(true, evaluator).kind).toBe("classical-trick-only");
     expect(brainLabel(true, evaluator)).toBe("the physics-search opponent");
   });
 });
