@@ -120,9 +120,10 @@ applies the **corrected** gate
 (`docs/repair/visual-authorship/showboat/CORRECTED_GATE.md`, the one that
 determines today's default — see the banner above) to a single fresh-seed
 result file. Both scripts cross-check that the classical arm is
-byte-identical across runs of the same seed — the search's wall-clock
-seeding guard is disabled during evaluation (`SearchConfig.seedTimeoutMs`)
-precisely so results measure policy and not machine load.
+byte-identical across runs of the same seed — the search's two wall-clock
+guards are both disabled during evaluation (`SearchConfig.seedTimeoutMs` and
+`SearchConfig.searchTimeoutMs`, in every arm) precisely so results measure
+policy and not machine load.
 
 **Run evaluations sequentially on an idle machine.** They report real decision
 latency, and the runs are long (~20 min per 120-fixture seed; the corrected
@@ -257,16 +258,27 @@ Durations derive from trace size, never from fixed waits:
 |---|---|
 | ENUMERATING | `clamp(candidatesGenerated × 18 ms, 400, 900)` |
 | RANKING | `600 ms`, or the state does not exist |
-| VERIFYING | the search's **real** physics time (`timing.physicsMs`), revealed one candidate per measured average |
-| SELECTED | `clamp(250 + losers × 20 ms, 350, 800)` |
+| VERIFYING | the search's **real** physics time (`timing.physicsMs`), revealed one candidate per measured average, clamped to 1,000 ms |
+| SELECTED | `clamp(900 + losers × 35 ms, 1500, 2000)` |
 | READY | `clamp(500 + words × 28 ms, 700, 1400)` |
 | STROKE | `350 ms`, direction and power from the real `CueAction` |
 | SHOOTING | the authoritative simulation at **1.0×** |
 
-A 6.5 s ceiling is applied as a uniform scale over the *hold* states only —
+A 5.6 s ceiling is applied as a uniform scale over the *hold* states only —
 never over VERIFYING, because scaling preserves relative cost and truncating
 would misrepresent it. A per-session decay shortens the holds from the third
 opponent turn onward, and pointer-down / `Space` skips to READY in 250 ms.
+
+**SELECTED is the longest beat, at every point in the decay**, and it has its
+own gentler decay floor. The sequence used to be proportioned the other way:
+measured on a production build by polling the panel's state label, `physics
+verification` held 2.2–2.6 s while `selected` — the frame that shows the route
+about to be played, and the only frame whose content differs from turn to turn
+— was on screen for 0.20–0.36 s. The decay's premise (a visitor who has watched
+two sequences has learned to read them) is true of the process states, whose
+shape repeats, and false of SELECTED. Re-measured the same way over 32 opponent
+turns: SELECTED 1,097–1,501 ms, VERIFYING 995–1,017 ms, and the reasoning
+sequence is *shorter* overall than before, not longer.
 
 **Known gap, stated rather than papered over:** the trace contract carries no
 per-candidate verification time and no progress stream, so VERIFYING is paced
@@ -346,6 +358,34 @@ direct pot at strength 0.63 — and asserts the shot that comes back is not a
 direct, that the executed action is the selected shot's action, and that the
 directs are still present in the trace as truthfully-labelled rejections.
 
+### The safety rung says what it did, and did what it says
+
+Rungs 4 and 5 play a **kick**: the cue ball into a cushion first, off the
+cushion into a legal target. That sentence is the module's reason for existing,
+and it was not always true. The generator ran two passes — clear paths, then a
+top-up for snookered positions — and the top-up dropped the obstruction check
+entirely, so a route with the target *between* the cue ball and the rail point
+survived, simulated foul-free, and shipped labelled `safety-kick` and described
+as "a safety off the cushion" while the cue went straight at the ball and potted
+it. Measured on 4,000 adversarial two-ball positions: **171 of 3,234 rung-4
+shots (5.3 %) were not rail-first, and 82 of those potted.**
+
+The cue → rail leg is now screened in both passes, and the screen is extended
+one ball diameter past the rail point (`isPathClear` ignores balls projecting
+beyond the segment end, and a ball hugging the cushion just past the rail point
+is struck on the way in). Same 4,000 positions after: **0 not rail-first.** The
+cost is 92 boards — 2.8 % of rung-4 selections — which drop to rung 5 rather
+than disappearing. `safety.test.ts` B6 asserts it on the executed simulation's
+event log, not on the generator's intent.
+
+Rung 5 is reached by two different states of knowledge and used to describe both
+as "the shortest legal contact", which asserted a legality nothing had
+established — in the same adversarial sample 94 % of those shots scratched.
+`SafetyResult.quality` was already the honest field and was being dropped one
+line before the trace was built; it now reaches `SelectedShotTrace.safetyQuality`
+and the panel distinguishes "this kick fouls, but it does reach a legal ball"
+from "nothing came back legal, so this is the shortest kick off the cushion".
+
 ### The opponent thinks in a worker
 
 `src/ui/planner/` moves the whole turn — search, selection, and the
@@ -365,6 +405,49 @@ fallback (a `file://` page, a hardened CSP, a test runner with no `Worker`)
 cannot drift from the worker. Failure to construct the worker is logged loudly
 rather than downgraded silently, because a silent downgrade would hide the
 freeze coming back.
+
+### One clock per turn
+
+Every neural failure that *returns* — 404, HTML from an SPA fallback, a
+byte-length or sha256 mismatch, a schema mismatch, `session.run()` throwing —
+falls back to classical trick-only and says so. A failure that **stalls** used
+to be unhandled: no `AbortSignal` on any fetch, no deadline around
+`evaluator.load()`, no watchdog on the worker round-trip. A stall inside
+`InferenceSession.create()`, or a worker reclaimed under memory pressure, left
+the panel at `searching…` permanently, with the Shoot button gone from the DOM.
+
+`src/ai/deadline.ts` is the whole fix, and it is one object rather than three
+races:
+
+| bound | value | covers |
+|---|---|---|
+| `MODEL_LOAD_DEADLINE_MS` | 6,000 ms | both artifact fetches and `InferenceSession.create()` |
+| `DECISION_DEADLINE_MS` | 5,000 ms | inference, the physics search, selection, the safety rung |
+| `NEURAL_SCORE_DEADLINE_MS` | 250 ms | one `session.run()`, on top of whatever the turn has left |
+| `searchTimeoutMs` | 3,500 ms | the seeding **and** UCB refinement loops, from one start instant |
+| `WORKER_SILENCE_MS` | 8,000 ms | silence from the planning worker, re-armed by every message |
+
+The decision's clock starts *after* the load resolves, so a slow-but-successful
+first load does not eat the search's budget, and `brain.plan` folds whatever is
+left into `searchTimeoutMs`. A race cannot cancel the work it lost to and this
+does not pretend to: the losing promise is abandoned, the evaluator caches its
+own result, and a load that finally lands is picked up by a later turn. A load
+that has already blown its deadline is not waited on again until it settles, so
+a stalled network costs one turn six seconds and not every turn six seconds.
+
+The worker's watchdog is the one guard that cannot live inside the worker,
+because the failure it detects is the worker not being there. Silence past the
+worker's own sub-budgets means it is terminated, dropped, and the turn is
+replanned on the main thread without the model — the one plan with no dependency
+on what just failed. Demonstrated on a production build by dropping the worker's
+`done` reply: the panel holds `searching…` for 8 s, then plays the turn with
+`classical fallback: the planning worker stopped responding for 8000 ms` on
+screen, and the next turn builds a fresh worker and runs neural again.
+
+Every one of `FallbackTrace`'s eight causes is reachable and tested
+(`src/ai/fallback.test.ts`), including the two — `model-absent` and
+`model-invalid` — that used to be unreachable because `getBrain` routed a
+non-ready evaluator to a classical brain carrying `fallback: null`.
 
 ### Controls
 
