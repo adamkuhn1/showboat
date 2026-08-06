@@ -184,15 +184,15 @@ describe("timing derives from the trace, not from constants", () => {
 
   it("VERIFYING comes from the search's real physics time", () => {
     const t = trace({
-      timing: { totalMs: 2400, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 2400, selectionMs: 0 },
+      timing: { totalMs: 1120, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 1120, selectionMs: 0 },
       candidates: Array.from({ length: 16 }, (_, i) => candidate(i, { verified: true })),
     });
     const v = buildSchedule({ trace: t, sentenceWords: 8 }).segments.find(
       (s) => s.state === "VERIFYING",
     )!;
-    // 2400 ms over 16 verified candidates = 150 ms each, inside the per-item
+    // 1120 ms over 16 verified candidates = 70 ms each, inside the per-item
     // bounds, so the state is exactly as long as the physics was.
-    expect(v.durationMs).toBeCloseTo(2400, 5);
+    expect(v.durationMs).toBeCloseTo(1120, 5);
   });
 
   it("READY is long enough to read the sentence, and no longer than its ceiling", () => {
@@ -203,7 +203,7 @@ describe("timing derives from the trace, not from constants", () => {
     expect(readyOf(long)).toBe(TIMING.READY_MAX_MS);
   });
 
-  it("the 6.5 s ceiling is spent on the holds and never on VERIFYING", () => {
+  it("the reasoning ceiling is spent on the holds and never on VERIFYING", () => {
     const t = trace({
       mode: "neural-hybrid",
       timing: { totalMs: 9000, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 9000, selectionMs: 0 },
@@ -215,6 +215,31 @@ describe("timing derives from the trace, not from constants", () => {
     expect(verify.durationMs).toBe(TIMING.VERIFY_MAX_MS);
     expect(s.reasoningEndMs).toBeLessThanOrEqual(TIMING.REASONING_CEILING_MS + 0.001);
     expect(s.holdScale).toBeLessThan(1);
+  });
+
+  // The defect this pins: the sequence was proportioned backwards. Measured on
+  // a production build, `physics verification` held 2.2-2.6 s and `selected` —
+  // the only frame whose content changes from turn to turn — held 0.20-0.36 s.
+  // SELECTED is the payload; it must be the longest beat, and it must stay
+  // readable once the per-session decay has run its course.
+  it("SELECTED is the longest reasoning beat, at every point in the decay", () => {
+    const t = trace({
+      mode: "neural-hybrid",
+      timing: { totalMs: 9000, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 9000, selectionMs: 0 },
+      candidates: Array.from({ length: 45 }, (_, i) => candidate(i, { verified: true })),
+    });
+    for (const turn of [1, 2, 3, 5, 6, 9, 40]) {
+      const s = buildSchedule({ trace: t, sentenceWords: 12, decay: holdScaleForTurn(turn) });
+      const dur = (name: string) => s.segments.find((x) => x.state === name)?.durationMs ?? 0;
+      const selected = dur("SELECTED");
+      for (const other of ["ENUMERATING", "RANKING", "VERIFYING", "READY"]) {
+        expect(selected, `turn ${turn}: SELECTED must outlast ${other}`).toBeGreaterThan(dur(other));
+      }
+      // Long enough to read a route on the felt, not a flash.
+      expect(selected, `turn ${turn}`).toBeGreaterThanOrEqual(900);
+      // And the whole sequence still fits its ceiling.
+      expect(s.reasoningEndMs).toBeLessThanOrEqual(TIMING.REASONING_CEILING_MS + 0.001);
+    }
   });
 
   it("the per-session decay shortens the holds and leaves VERIFYING alone", () => {

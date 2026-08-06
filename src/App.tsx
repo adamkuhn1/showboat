@@ -44,6 +44,15 @@ function postToShell(type: string) {
   window.parent.postMessage({ source: "portfolio-embed", type, id: "showboat" }, "*");
 }
 
+/**
+ * True when this app is running inside the portfolio's iframe.
+ *
+ * Read once, at module load: whether a document is framed cannot change during
+ * its lifetime, and making it state would only add a first-paint flash of the
+ * header this exists to suppress. Same test `postToShell` uses.
+ */
+const EMBEDDED = typeof window !== "undefined" && window.parent !== window;
+
 /** Run `fn` when the browser is next idle, or soon, in engines without it. */
 function idle(fn: () => void): void {
   const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
@@ -378,8 +387,13 @@ export default function App() {
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <h1>Showboat</h1>
+      {/* The title is printed by whoever owns the page. Standalone that is this
+          app; inside the portfolio it is the portfolio, which sets "Showboat"
+          in the same typeface with the same rule under it about 180 px above
+          this one — the same word twice, once on cream and once on black. The
+          tagline stays either way: nothing upstream says it. */}
+      <header className={`topbar${EMBEDDED ? " topbar--embedded" : ""}`}>
+        {!EMBEDDED && <h1>Showboat</h1>}
         <p className="tag">Eight-ball, against an opponent that goes looking for the bank shot.</p>
       </header>
 
