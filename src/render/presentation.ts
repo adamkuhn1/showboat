@@ -85,15 +85,31 @@ export const TIMING = {
   ENUM_MAX_MS: 900,
   /** 450 ms reorder + 150 ms settle: long enough to track an item moving. */
   RANK_MS: 600,
-  /** Per-candidate floor/ceiling on the averaged physics cost. */
+  /**
+   * Per-candidate floor/ceiling on the averaged physics cost.
+   *
+   * The ceiling came down from 260 ms (and the state ceiling from 3200 ms)
+   * because the sequence was proportioned backwards. Measured on a production
+   * build by polling the panel's state label: `physics verification` held for
+   * 2.2-2.6 s while SELECTED — the one frame that shows what the opponent
+   * actually chose, and the only frame whose content differs from turn to turn
+   * — was on screen for 0.20-0.36 s. VERIFYING is a reveal of a set of already
+   * finished simulations; it does not need two and a half seconds to be
+   * legible, and the time is worth more to SELECTED.
+   */
   VERIFY_MIN_ITEM_MS: 40,
-  VERIFY_MAX_ITEM_MS: 260,
-  VERIFY_MIN_MS: 600,
-  VERIFY_MAX_MS: 3200,
-  SELECT_BASE_MS: 250,
-  SELECT_PER_LOSER_MS: 20,
-  SELECT_MIN_MS: 350,
-  SELECT_MAX_MS: 800,
+  VERIFY_MAX_ITEM_MS: 90,
+  VERIFY_MIN_MS: 500,
+  VERIFY_MAX_MS: 1200,
+  /**
+   * SELECTED is now the longest beat of the sequence, by design and at every
+   * decay. It is the payload: the route that is about to be played, locking in
+   * against the ones that lost.
+   */
+  SELECT_BASE_MS: 900,
+  SELECT_PER_LOSER_MS: 35,
+  SELECT_MIN_MS: 1200,
+  SELECT_MAX_MS: 2000,
   READY_BASE_MS: 500,
   /** ~430 wpm — a scan rate, not a read rate; the visitor is watching the table too. */
   READY_PER_WORD_MS: 28,
@@ -102,9 +118,20 @@ export const TIMING = {
   /** Backswing and strike. Direction and power come from the real action. */
   STROKE_MS: 350,
   /** Uniform scale over hold states only. Never applied to VERIFYING. */
-  REASONING_CEILING_MS: 6500,
+  REASONING_CEILING_MS: 5600,
   /** The hold states never collapse below this fraction of their natural length. */
   MIN_HOLD_SCALE: 0.25,
+  /**
+   * SELECTED's own floor, and the reason it has one.
+   *
+   * The per-session decay exists because a visitor who has watched two full
+   * sequences has learned to READ them — and that is true of the process
+   * states, whose shape is identical every turn, and false of SELECTED, whose
+   * content is a different shot on a different board every time. Decaying it
+   * like the rest is what crushed the informative frame to a fifth of a second
+   * by the third turn. It still shortens; it does not disappear.
+   */
+  SELECT_MIN_HOLD_SCALE: 0.75,
   /** Skipping lands in READY for long enough to read the sentence's shape. */
   SKIP_READY_MS: 250,
 } as const;
@@ -195,7 +222,9 @@ export function buildSchedule(input: ScheduleInput): PresentationSchedule {
   };
 
   // The ceiling is spent on the holds, never on VERIFYING: scaling preserves
-  // relative cost, truncating would misrepresent it.
+  // relative cost, truncating would misrepresent it. (VERIFYING's own clamp is
+  // a bound on the state, applied before this, and is disclosed as an average
+  // in `verifyMs` — it is not a scale.)
   const holdsNatural = natural.ENUMERATING + natural.RANKING + natural.SELECTED + natural.READY;
   const budgetForHolds = TIMING.REASONING_CEILING_MS - natural.VERIFYING;
   const ceilingScale =
@@ -203,6 +232,8 @@ export function buildSchedule(input: ScheduleInput): PresentationSchedule {
       ? clamp(budgetForHolds / (holdsNatural || 1), TIMING.MIN_HOLD_SCALE, 1)
       : 1;
   const holdScale = clamp(decay * ceilingScale, TIMING.MIN_HOLD_SCALE, 1);
+  // SELECTED shrinks on its own, gentler floor. See SELECT_MIN_HOLD_SCALE.
+  const selectScale = clamp(decay * ceilingScale, TIMING.SELECT_MIN_HOLD_SCALE, 1);
 
   const segments: Segment[] = [];
   let t = 0;
@@ -214,7 +245,7 @@ export function buildSchedule(input: ScheduleInput): PresentationSchedule {
   push("ENUMERATING", natural.ENUMERATING * holdScale);
   push("RANKING", natural.RANKING * holdScale);
   push("VERIFYING", natural.VERIFYING);
-  push("SELECTED", natural.SELECTED * holdScale);
+  push("SELECTED", natural.SELECTED * selectScale);
   push("READY", natural.READY * holdScale);
 
   const reasoningEndMs = t;

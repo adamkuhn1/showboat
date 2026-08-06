@@ -151,4 +151,15 @@ describe("the opponent's name is never a claim about a model that isn't loaded",
     expect(headerText).not.toMatch(/neural/i);
     expect(headerText).not.toMatch(/physics-search/i);
   });
+
+  it("the app does not print its own title inside the portfolio's frame", () => {
+    // "Showboat" was set twice, 180 px apart, in the same typeface with the
+    // same rule under both — the shell's and this app's — and it was the first
+    // thing a visitor saw after pressing "Play a rack". The h1 is rendered only
+    // when this app owns the page.
+    expect(APP_SRC).toContain("const EMBEDDED =");
+    expect(APP_SRC).toMatch(/\{!EMBEDDED && <h1>Showboat<\/h1>\}/);
+    // And the standalone case still has one.
+    expect(APP_SRC).toContain("<h1>Showboat</h1>");
+  });
 });
