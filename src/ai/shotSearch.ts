@@ -1,7 +1,7 @@
 import { type Ball, cloneBall } from "../physics/ball";
 import { type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
-import { type SimResult } from "../physics/engine";
+import { type ShotEvent, type SimResult } from "../physics/engine";
 import { type Candidate, type CandidateKind, generateCandidates } from "./candidates";
 import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics/wasm-bridge";
 import { railsBeforePot } from "./trace";
@@ -72,6 +72,10 @@ export interface CandidateStat {
   // 1-based rank by priorScore, i.e. the order the model wanted candidates
   // examined in, before any simulation ran.
   priorRank?: number;
+  // Raw pre-calibration model output for this candidate. Carried only so the
+  // decision trace can show what the model actually emitted alongside the
+  // calibrated score; nothing reads it for a decision.
+  priorLogit?: number;
   // Did the authoritative physics search actually simulate this candidate?
   // False for candidates pruned by the prior or cut off by the budget — those
   // can never be selected, since selectBest only sees visits>0 stats.
@@ -122,13 +126,66 @@ export interface DecisionTrace {
   selectionReason?: SelectionReason;
   /** Verified tricks that pot AND clear `TRICK_RELIABILITY_THRESHOLD`. */
   qualifyingTricks?: number;
+  /** Candidates the `eligible` predicate excluded before physics ran. */
+  ineligible?: number;
+  /**
+   * Indices the search intended to verify, in visit order — i.e. what survived
+   * the eligibility filter and the prior's pruning. An index that is here but
+   * not in `verifiedIndices` ran out of budget or hit the seed timeout; an
+   * eligible index that is in neither was pruned by the prior. That
+   * distinction is what lets the published trace give each candidate its real
+   * rejection reason instead of a plausible one.
+   */
+  consideredIndices?: number[];
+  /** Did `seedTimeoutMs` truncate the seeding loop? */
+  seedTimedOut?: boolean;
+  /** Wall-clock ms spent inside the seeding + refinement loops. */
+  physicsMs?: number;
 }
 
-export interface SearchResult {
-  best: CandidateStat | null;
+/**
+ * The real simulation record for one candidate, kept so the decision trace can
+ * publish what the physics actually did instead of a summary of it. Populated
+ * only for candidates a physics call was really spent on — which is exactly
+ * what makes the trace's anti-fabrication check possible.
+ */
+export interface CandidateVerification {
+  /** Index into the candidate list the search was given (generation order). */
+  index: number;
+  firstContact: number | null;
+  legalFirstContact: boolean;
+  scratched: boolean;
+  legalPot: boolean;
+  pocketed: number[];
+  railsBeforePot: number;
+  events: ShotEvent[];
+}
+
+/**
+ * What `searchCandidates` returns. Note what is NOT here: a chosen shot.
+ * The search generates, prunes, verifies and values; it does not decide.
+ * Selection lives in `policy/trickOnly.ts` for live play and in
+ * `selectBestWithReason` for the evaluation baseline.
+ */
+export interface SearchOutcome {
+  /** Seeded candidates, sorted by visits then value. Historic display order. */
   stats: CandidateStat[];
+  /**
+   * EVERY candidate, in generation order, seeded or not. `stats` drops
+   * `visits === 0` rows — including candidates whose simulation scratched,
+   * which the trace must still be able to explain. Index here IS the
+   * candidate's stable trace id.
+   */
+  allStats: CandidateStat[];
+  /** Index-aligned with `allStats`; null where no simulation was run. */
+  verifications: (CandidateVerification | null)[];
   simulations: number;
   trace?: DecisionTrace;
+}
+
+/** A `SearchOutcome` plus the legacy mixed policy's choice. Baseline only. */
+export interface SearchResult extends SearchOutcome {
+  best: CandidateStat | null;
 }
 
 const UCB_C = 1.2;
@@ -175,6 +232,19 @@ export interface SearchConfig {
   // decides the order candidates are physics-verified in, and which ones get
   // dropped before physics runs at all. See `CandidatePrior`.
   prior?: CandidatePrior;
+  /**
+   * Optional budget filter: candidates this returns false for never receive a
+   * physics call. The trick-only policy passes `isTrickCandidate` here so the
+   * budget is not spent verifying shots it can never select.
+   *
+   * **This is an efficiency filter, not the exclusion mechanism.** The
+   * exclusion is enforced by the type of the selection ladder in
+   * `policy/trickOnly.ts`; `trickOnly.test.ts` A7 runs with this filter
+   * deliberately disabled and proves selection alone is sufficient. Excluded
+   * candidates still appear in the trace, with `physics: null` and an honest
+   * rejection reason.
+   */
+  eligible?: (c: Candidate) => boolean;
 }
 
 /**
@@ -196,6 +266,8 @@ export interface SearchConfig {
 export interface CandidatePrior {
   scores: number[];
   keepTop: number;
+  /** Raw pre-calibration logits, index-aligned with `scores`. Trace only. */
+  logits?: number[];
   /** Model identity for the trace, e.g. "showboat-ranker-phase2d". */
   source: string;
   /** Encode + inference cost, ms, for the trace. */
@@ -289,12 +361,44 @@ export const defaultConfig: SearchConfig = {
   seed: 12345,
 };
 
+/**
+ * LEGACY MIXED POLICY — evaluation baseline and training/self-play path only.
+ * **Not the live policy.** See `selectBestWithReason`'s doc comment for why it
+ * still exists and why it must not change.
+ */
+export const searchWithLegacySelection = (
+  candidates: Candidate[],
+  balls: Ball[],
+  targets: number[],
+  config: SearchConfig = defaultConfig,
+): SearchResult => {
+  const outcome = searchCandidates(candidates, balls, targets, config);
+  const selection = selectBestWithReason(outcome.stats);
+  return {
+    ...outcome,
+    best: selection.best,
+    trace: outcome.trace && {
+      ...outcome.trace,
+      selectionReason: selection.reason,
+      qualifyingTricks: selection.qualifyingTricks,
+    },
+  };
+};
+
+/**
+ * LEGACY MIXED POLICY entry point (generates candidates, then selects with
+ * `selectBestWithReason`). Retained unchanged because
+ * `training/ranker/phase2c/selfplay.ts` generates the committed model's
+ * training-state distribution through it: changing this policy would change
+ * that distribution and break reproducibility of the shipped artifact.
+ */
 export const searchBaseline = (
   balls: Ball[],
   table: Table,
   targets: number[],
   config: SearchConfig = defaultConfig,
-): SearchResult => searchCandidates(generateCandidates(balls, table, targets), balls, targets, config);
+): SearchResult =>
+  searchWithLegacySelection(generateCandidates(balls, table, targets), balls, targets, config);
 
 /**
  * The authoritative shot search, over an already-generated candidate list.
@@ -304,13 +408,17 @@ export const searchBaseline = (
  * without the search having to know or care where the prior came from. Every
  * legality, reliability and value judgement below is made by the real physics
  * engine on this exact list, identically in both modes.
+ *
+ * **It does not choose a shot.** It used to; selection moved out to
+ * `policy/trickOnly.ts` so that there is exactly one place in the codebase
+ * where a playable shot is produced, and that place cannot produce a direct.
  */
 export const searchCandidates = (
   candidates: Candidate[],
   balls: Ball[],
   targets: number[],
   config: SearchConfig = defaultConfig,
-): SearchResult => {
+): SearchOutcome => {
   const prior = config.prior;
   const usePrior = prior !== undefined && prior.scores.length === candidates.length;
   const baseTrace = (): DecisionTrace => ({
@@ -324,12 +432,16 @@ export const searchCandidates = (
     scratched: 0,
     physicsCalls: 0,
     reservePromotions: 0,
+    ineligible: 0,
+    seedTimedOut: false,
+    consideredIndices: [],
+    physicsMs: 0,
     neuralInferenceMs: usePrior ? prior!.inferenceMs : undefined,
     modelId: usePrior ? prior!.source : undefined,
   });
 
   if (candidates.length === 0) {
-    return { best: null, stats: [], simulations: 0, trace: baseTrace() };
+    return { stats: [], allStats: [], verifications: [], simulations: 0, trace: baseTrace() };
   }
 
   // Separate any overlapping balls before handing to Rust — the TS animation
@@ -353,19 +465,30 @@ export const searchCandidates = (
   // through on a busy table. Hybrid mode walks the learned prior's order and
   // hands physics only the top `keepTop` — the same budget, spent on the
   // candidates the trained model rates highest instead of on a fixed prefix.
-  let order: number[] = candidates.map((_, i) => i);
+  //
+  // `config.eligible`, when supplied, removes candidates from the visit order
+  // entirely: no physics call is ever spent on a shot the policy could not
+  // select. They keep their slot in `allStats` and in the trace, with
+  // `verified: false`, so nothing disappears — it is only budget that moves.
+  const isEligible = config.eligible ?? (() => true);
+  const eligibleIdx = candidates.map((c, i) => (isEligible(c) ? i : -1)).filter((i) => i >= 0);
+  const ineligible = candidates.length - eligibleIdx.length;
+  let order: number[] = eligibleIdx;
   let prunedByPrior = 0;
   let reservePromotions = 0;
   if (usePrior) {
     const scores = prior!.scores;
-    // Global learned ranking. `priorRank` is always this rank — the reserve
-    // changes which candidates are kept, never what rank the overlay reports
-    // the model gave them.
-    const ranked = order.slice().sort((a, b) => scores[b] - scores[a] || a - b);
-    ranked.forEach((ci, rank) => {
+    const logits = prior!.logits;
+    // Global learned ranking, over EVERY candidate including ineligible ones —
+    // `priorRank` reports what the model said, not what the policy allowed.
+    const rankedAll = candidates.map((_, i) => i).sort((a, b) => scores[b] - scores[a] || a - b);
+    rankedAll.forEach((ci, rank) => {
       stats[ci].priorScore = scores[ci];
       stats[ci].priorRank = rank + 1;
+      if (logits && logits.length === candidates.length) stats[ci].priorLogit = logits[ci];
     });
+    // Only eligible candidates compete for the physics budget below.
+    const ranked = rankedAll.filter((ci) => isEligible(candidates[ci]));
 
     const keep = Math.max(1, Math.min(prior!.keepTop, ranked.length));
     const globalTop = ranked.slice(0, keep);
@@ -447,11 +570,16 @@ export const searchCandidates = (
   const seedStart = performance.now();
 
   const verifiedIndices: number[] = [];
+  const verifications: (CandidateVerification | null)[] = candidates.map(() => null);
   let legalPots = 0;
   let scratched = 0;
+  let seedTimedOut = false;
 
   for (const ci of order) {
-    if (performance.now() - seedStart > SEED_TIMEOUT_MS) break;
+    if (performance.now() - seedStart > SEED_TIMEOUT_MS) {
+      seedTimedOut = true;
+      break;
+    }
     if (sims + 1 > BUDGET) break; // can't even afford the seeding shot sim
     const s = stats[ci];
     const copy = workBalls.map(cloneBall);
@@ -459,9 +587,24 @@ export const searchCandidates = (
     sims += 1;
     s.verified = true;
     verifiedIndices.push(ci);
+    // Keep the real simulation record. This is the ONLY source of a non-null
+    // `physics` block in the published trace, which is what makes "the trace
+    // cannot claim physics that did not run" a mechanical property rather
+    // than a convention.
+    const scratchedHere = sim.pocketed.includes(0);
+    verifications[ci] = {
+      index: ci,
+      firstContact: sim.firstContact,
+      legalFirstContact: sim.firstContact === s.candidate.target,
+      scratched: scratchedHere,
+      legalPot: !scratchedHere && isLegalPot(sim, s.candidate),
+      pocketed: [...sim.pocketed],
+      railsBeforePot: railsBeforePot(sim),
+      events: sim.events,
+    };
     // Cue ball id is always 0. A scratch is a foul regardless of what else was
     // pocketed — skip the candidate entirely so it can't win UCB selection.
-    if (sim.pocketed.includes(0)) {
+    if (scratchedHere) {
       scratched++;
       continue;
     }
@@ -527,8 +670,6 @@ export const searchCandidates = (
     .filter(s => s.visits > 0)
     .sort((a, b) => b.visits - a.visits || b.value - a.value);
 
-  const selection = selectBestWithReason(sorted);
-  const best = selection.best;
   const trace: DecisionTrace = {
     ...baseTrace(),
     candidatesConsidered: order.length,
@@ -539,10 +680,12 @@ export const searchCandidates = (
     scratched,
     physicsCalls: sims,
     reservePromotions,
-    selectionReason: selection.reason,
-    qualifyingTricks: selection.qualifyingTricks,
+    ineligible,
+    seedTimedOut,
+    consideredIndices: order,
+    physicsMs: performance.now() - seedStart,
   };
-  return { best, stats: sorted, simulations: sims, trace };
+  return { stats: sorted, allStats: stats, verifications, simulations: sims, trace };
 };
 
 // A trick candidate must clear this strength score to be considered reliable
@@ -560,30 +703,42 @@ export const TRICK_RELIABILITY_THRESHOLD = 0.5;
 // nudges toward flashier routes among comparably-reliable options, it does
 // not let a wildly less reliable trick beat a more reliable one outright —
 // that job belongs to `TRICK_RELIABILITY_THRESHOLD` above.
-const STYLE_WEIGHT = 0.12;
-
-const trickUtility = (s: CandidateStat): number => s.strength + STYLE_WEIGHT * s.styleScore;
+export const STYLE_WEIGHT = 0.12;
 
 /**
- * Showboat's actual selection objective, not just "highest search value":
- * a trick shot (anything other than a direct pot — bank, double-bank, combo,
- * rail-combo) is preferred whenever at least one qualifies, i.e. actually
- * pots its target *and* clears `TRICK_RELIABILITY_THRESHOLD`. Among
- * qualifying tricks, the one maximizing strength + style wins. A direct shot
- * is only selected when no trick candidate qualifies (including "rules make
- * every trick candidate impossible," which shows up here as an empty
- * qualifying set) — matching the product requirement that Showboat is not
- * merely an optimizer for the easiest pot. This is the ONE place shot choice
- * is decided; the overlay's "chosen" highlight and `chooseShot` both read
- * this same result, so the reasoning display can never disagree with it.
+ * Ranking score among *qualifying* tricks. Exported so the live trick-only
+ * policy uses this exact expression rather than a second copy of it — rung 1
+ * of the production ladder is byte-for-byte the same objective the evaluation
+ * baseline uses, which is what makes the two arms comparable.
+ */
+export const trickUtility = (s: CandidateStat): number => s.strength + STYLE_WEIGHT * s.styleScore;
+
+/**
+ * LEGACY MIXED POLICY — **evaluation baseline only. Not the live policy.**
+ *
+ * A trick is preferred whenever at least one qualifies (pots its target AND
+ * clears `TRICK_RELIABILITY_THRESHOLD`); among qualifying tricks the one
+ * maximizing strength + style wins; and — this is the part the product
+ * decision retired — a **direct** pot is selected when no trick qualifies.
+ *
+ * It is deliberately kept, unchanged, for three reasons:
+ *
+ *  1. `training/ranker/phase2c/selfplay.ts` generates the committed model's
+ *     training-state distribution through `planTurn` -> `searchBaseline` ->
+ *     this function. Changing it changes that distribution and breaks
+ *     reproducibility of `showboat-ranker-phase2e-deepsets.onnx`.
+ *  2. `eval/harness.ts` sources self-play fixtures the same way.
+ *  3. It is arm A of the trick-only evaluation: the "previous opponent" that
+ *     trick-only Showboat is measured against.
+ *
+ * Nothing on the live path calls it. `policy/trickOnlySourceGuard.test.ts`
+ * asserts that mechanically.
  */
 export function selectBest(sorted: CandidateStat[]): CandidateStat | null {
   return selectBestWithReason(sorted).best;
 }
 
-/** Which branch of `selectBest` fired. The overlay renders this string; it is
- *  produced by the selection itself, so the displayed reason cannot disagree
- *  with the shot that was actually chosen. */
+/** Which branch of the legacy `selectBest` fired. Baseline reporting only. */
 export type SelectionReason =
   | "trick-qualified"
   | "no-trick-qualified"

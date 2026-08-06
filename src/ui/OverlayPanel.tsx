@@ -1,57 +1,29 @@
-import {
-  type CandidateStat,
-  type SearchResult,
-  TRICK_RELIABILITY_THRESHOLD,
-} from "../ai/shotSearch";
-
 // ---------------------------------------------------------------------------
-// The reasoning overlay.
+// The reasoning panel.
 //
-// Rule for this file, enforced by review and by `overlayTruthfulness.test.ts`:
-// everything rendered here is read straight off the `SearchResult` the AI
-// actually decided with. There is no derived-for-display quantity, no
-// animation that implies work happening after the search already finished, and
-// no vocabulary the algorithm doesn't earn:
+// Rule for this file, enforced by `overlayTruthfulness.test.tsx`: everything
+// rendered here is read straight off the `DecisionTraceV1` the opponent
+// actually decided with. No derived-for-display quantity, no animation that
+// implies work happening after the search finished, and no vocabulary the
+// algorithm hasn't earned:
 //
 //   - not "MCTS": the search is a flat UCB bandit over candidates, so it says
 //     "physics search".
-//   - not "win probability" and not "AI confidence": nothing here predicts
-//     game outcomes, so nothing here claims to.
-//   - no fabricated natural-language reasoning. The last line is
-//     `trace.selectionReason`, emitted by the selection function itself.
+//   - not "win probability" and not "confidence": nothing here predicts game
+//     outcomes, so nothing here claims to.
+//   - no fabricated natural-language reasoning. The last line is the selection
+//     ladder's own rung, mapped one-to-one to a phrase.
 //
-// It is also, deliberately, three sentences long. It used to be a ranked table
-// of eight candidates carrying a model-internal enumeration index, two
-// unlabelled decimals set flush together, per-row bars several of which
-// rendered empty, five saturated hues, and raw pocket enum keys. Every number
-// in it was true and none of it was legible. What survives is the part a
-// player can actually use: that there were alternatives, which shot is being
-// played, and why that one.
+// It is deliberately about five lines long, and it must stay that way: at the
+// portfolio's ~1180 px embed the panel takes 288 px and the table gets the
+// remaining ~74 %. That ratio is the floor. Which is also why the per-route
+// elimination reasons are drawn on the felt beside the route they belong to
+// rather than listed here.
 // ---------------------------------------------------------------------------
 
-const KIND_LABEL: Record<string, string> = {
-  direct: "direct pot",
-  bank: "bank",
-  "double-bank": "two-rail bank",
-  combo: "combination",
-  "rail-combo": "rail combination",
-};
-
-const POCKET_NAME: Record<string, string> = {
-  bl: "bottom-left",
-  tl: "top-left",
-  br: "bottom-right",
-  tr: "top-right",
-  sb: "bottom-side",
-  st: "top-side",
-};
-
-export const SELECTION_TEXT: Record<string, string> = {
-  "trick-qualified": `the trick cleared the ${TRICK_RELIABILITY_THRESHOLD.toFixed(2)} reliability bar`,
-  "no-trick-qualified": "no trick cleared the reliability bar, so this is the best verified pot",
-  "no-verified-pot": "nothing potted in simulation, so this is the best available",
-  none: "no candidate survived physics verification",
-};
+import type { DecisionTraceV1 } from "../ai/trace/contract";
+import { STATE_LABEL, isReasoning, type PresentationState } from "../render/presentation";
+import { rungText, shotSentence } from "./shotSentence";
 
 export interface ModelBadge {
   /** What is configured to run. The rendered mode always comes from the trace. */
@@ -62,82 +34,115 @@ export interface ModelBadge {
   hashVerified?: boolean;
 }
 
-/** "a bank on the 3, into the top-side pocket" — no key required to read it. */
-function describeCandidate(c: CandidateStat["candidate"]): string {
-  const kind = KIND_LABEL[c.kind] ?? c.kind;
-  const pocket = POCKET_NAME[c.pocket] ?? c.pocket;
-  return `a ${kind} on the ${c.target}, into the ${pocket} pocket`;
+export interface OverlayPanelProps {
+  trace: DecisionTraceV1 | null;
+  state: PresentationState;
+  /** True between "the opponent is up" and the trace arriving. */
+  planning: boolean;
+  /** True while the onnxruntime session is being created for the first time. */
+  modelLoading: boolean;
+  badge: ModelBadge;
+  /** Shown from the second opponent turn onward, never on the first. */
+  showSkipHint: boolean;
+  /** Shown on the first opponent turn of a session only. */
+  showDisclosure: boolean;
+  compare: { available: boolean; useNeural: boolean; onChange: (v: boolean) => void };
+  /** Non-null only at SETTLED. Both replays are free — the trace is retained. */
+  replay: { onDecision: () => void; onShot: () => void } | null;
 }
 
 export function OverlayPanel({
-  result,
-  searching,
-  stale = false,
+  trace,
+  state,
+  planning,
+  modelLoading,
   badge,
-}: {
-  result: SearchResult | null;
-  /** True while the physics search is actually running for this turn. */
-  searching: boolean;
-  stale?: boolean;
-  badge: ModelBadge;
-}) {
-  const trace = result?.trace;
-  // Title reflects the mode of the decision actually on screen; the configured
-  // mode is only used before there is a decision to describe.
-  const mode = trace?.mode ?? badge.mode;
-  const usedNeural = mode === "neural-hybrid" && !trace?.fallbackReason;
+  showSkipHint,
+  showDisclosure,
+  compare,
+  replay,
+}: OverlayPanelProps) {
+  // The title names what decided *this* decision. Before there is one, it names
+  // what is configured.
+  const mode = trace?.mode ?? (badge.mode === "neural-hybrid" ? "neural-hybrid" : "classical-trick-only");
+  const usedNeural = mode === "neural-hybrid" && !trace?.fallback;
   const title = usedNeural ? "Neural evaluator and physics search" : "Physics search";
 
-  if (!result || result.stats.length === 0) {
-    // Reachable in real play only when a search actually ran and found
-    // nothing to evaluate (e.g. no legal target) — the app doesn't mount this
-    // panel at all before the opponent's first turn (see App.tsx), so there
-    // is no "nothing has happened yet" placeholder to write here.
-    return (
-      <aside className="overlay">
-        <p className="overlay-title">{title}</p>
-        <p className="overlay-empty">
-          {searching ? "searching…" : trace?.fallbackReason ?? "no shot to evaluate this turn"}
-        </p>
-        {badge.fallbackReason && (
-          <p className="overlay-warn">classical fallback: {badge.fallbackReason}</p>
-        )}
-      </aside>
-    );
-  }
-
-  const best = result.best;
-  const considered = result.stats.length;
+  const sentence = trace ? shotSentence(trace) : null;
+  const rung = trace ? rungText(trace) : null;
+  const label = isReasoning(state) ? STATE_LABEL[state] : null;
+  const decided =
+    state === "SELECTED" ||
+    state === "READY" ||
+    state === "STROKE" ||
+    state === "SHOOTING" ||
+    state === "SETTLED";
+  const fallbackDetail = trace?.fallback?.detail ?? badge.fallbackReason ?? null;
 
   return (
-    <aside className="overlay" style={stale ? { opacity: 0.45 } : undefined}>
-      <p className="overlay-title">
-        {title}
-        {stale && <span className="overlay-meta">last turn</span>}
-      </p>
+    <aside className="overlay">
+      <p className="overlay-title">{title}</p>
 
-      {trace?.fallbackReason && !usedNeural && (
-        <p className="overlay-warn">classical fallback: {trace.fallbackReason}</p>
+      {/* The state slot. Only the five reasoning labels ever appear here. */}
+      {label !== null && (
+        <p className="overlay-state" data-state={state}>
+          {label}
+        </p>
       )}
 
-      {/* What the panel says, and all it says: that alternatives existed, which
-          one is being played, and why that one. The ranked table that used to
-          sit here printed a model-internal enumeration index beside an already
-          sorted list and two unlabelled decimals flush together; it was a
-          scoreboard nobody could read. The alternatives themselves are already
-          drawn on the felt as dashed lines, which is the legible version of
-          the same fact. */}
-      <p className="overlay-line">
-        {considered === 1
-          ? "One shot survived physics verification this turn."
-          : `${considered} shots survived physics verification this turn.`}
-      </p>
-
-      {best && <p className="overlay-line chosen-why">Playing {describeCandidate(best.candidate)}.</p>}
-
-      {trace?.selectionReason && (
-        <p className="overlay-line overlay-reason">{SELECTION_TEXT[trace.selectionReason]}</p>
+      {planning && label === null && (
+        <p className="overlay-state overlay-state--live">
+          {modelLoading ? "loading the trained model…" : "searching…"}
+        </p>
       )}
+
+      {fallbackDetail && !usedNeural && (
+        <p className="overlay-warn">classical fallback: {fallbackDetail}</p>
+      )}
+
+      {/* The plan is written when it has been made, not before. Showing it
+          during ENUMERATING would give the answer away and make the SELECTED
+          beat meaningless — the sequence would be narrating a conclusion the
+          panel had already printed. */}
+      {decided && sentence && <p className="overlay-line chosen-why">{sentence.text}</p>}
+      {decided && rung && <p className="overlay-line overlay-reason">{rung}</p>}
+
+      {showDisclosure && trace && (
+        <p className="overlay-note">
+          The search finishes before this plays; what you are watching is the decision it
+          made, in the order it made it.
+        </p>
+      )}
+
+      {showSkipHint && isReasoning(state) && (
+        <p className="overlay-note">press space to skip</p>
+      )}
+
+      {replay && (
+        <p className="overlay-actions">
+          <button type="button" className="linkish" onClick={replay.onDecision}>
+            replay the decision
+          </button>
+          <button type="button" className="linkish" onClick={replay.onShot}>
+            replay the shot
+          </button>
+        </p>
+      )}
+
+      {/* The comparison is one of the most interesting things in the project;
+          it was sitting among the gameplay controls as an A/B research switch
+          with a 40-word tooltip. Here it reads as what it is. The structurally
+          shorter classical sequence (no "neural ranking" state at all) does the
+          rest of the explaining. */}
+      <label className={`overlay-compare${compare.available ? "" : " is-disabled"}`}>
+        <input
+          type="checkbox"
+          checked={compare.useNeural && compare.available}
+          disabled={!compare.available}
+          onChange={(e) => compare.onChange(e.target.checked)}
+        />
+        rank with the trained model
+      </label>
     </aside>
   );
 }

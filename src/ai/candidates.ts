@@ -61,7 +61,10 @@ const aimAction = (cue: Vec2, ghost: Vec2, power: number): CueAction => {
 };
 
 // Mirror a point across a cushion line (for bank-shot geometry).
-const mirrorAcross = (p: Vec2, table: Table, side: string): Vec2 => {
+// Exported (with `railCrossing` and `isPathClear` below) so `ai/policy/safety.ts`
+// builds its rail-first kicks out of these exact primitives instead of a second
+// copy of the same geometry.
+export const mirrorAcross = (p: Vec2, table: Table, side: string): Vec2 => {
   const hx = table.length / 2;
   const hy = table.width / 2;
   switch (side) {
@@ -78,12 +81,12 @@ const mirrorAcross = (p: Vec2, table: Table, side: string): Vec2 => {
   }
 };
 
-const SIDES = ["left", "right", "top", "bottom"] as const;
+export const SIDES = ["left", "right", "top", "bottom"] as const;
 
 // Check the line segment from `from` to `to` is clear of blocking balls.
 // A ball blocks if its center is within 2*BALL_RADIUS of the segment.
 // `skipIds` contains balls that are intentionally on the path (cue, target).
-const isPathClear = (
+export const isPathClear = (
   from: Vec2,
   to: Vec2,
   live: Ball[],
@@ -322,7 +325,7 @@ const dotv = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
 // Where the segment obj->mirror crosses the given rail line (the bank point on
 // the actual rail). Returns null if it doesn't cross within the rail extent.
-const railCrossing = (
+export const railCrossing = (
   obj: Vec2,
   mirror: Vec2,
   table: Table,

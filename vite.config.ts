@@ -7,6 +7,17 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
 
+  // The planning worker (src/ui/planner/planWorker.ts) is a module worker, and
+  // it has to be: it dynamically imports onnxruntime-web and the physics WASM,
+  // so its bundle is code-split. Vite 5 defaults `worker.format` to "iife",
+  // which Rollup refuses to emit for a code-splitting build —
+  //   "Invalid value 'iife' for option 'output.format' — UMD and IIFE output
+  //    formats are not supported for code-splitting builds"
+  // Module workers are available in every engine this app targets (Chrome 80+,
+  // Firefox 114+, Safari 15+), and `usePlanner` degrades to planning inline,
+  // loudly, if construction fails anywhere else.
+  worker: { format: "es" },
+
   optimizeDeps: {
     // Do NOT let Vite's dependency pre-bundler rewrite onnxruntime-web.
     //

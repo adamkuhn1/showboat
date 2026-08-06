@@ -18,6 +18,7 @@ import { initPhysics } from "../../physics/wasm-bridge";
 import { generateCandidates, type Candidate } from "../candidates";
 import {
   searchCandidates,
+  searchWithLegacySelection,
   defaultConfig,
   TRICK_RELIABILITY_THRESHOLD,
   type SearchConfig,
@@ -25,7 +26,7 @@ import {
 } from "../shotSearch";
 import { NeuralCandidateEvaluator } from "./evaluator";
 import { makeFileFetch } from "./fileFetch";
-import { neuralHybridBrain, classicalBrain, getBrain, brainLabel } from "../brain";
+import { neuralTrickOnlyBrain, classicalTrickOnlyBrain, getBrain, brainLabel } from "../brain";
 import { _resetRankerForTests } from "../onnx";
 import { type GameState } from "../../game/state";
 
@@ -118,8 +119,8 @@ describe("neural hybrid: material influence on real decisions", () => {
         name,
         candidates,
         priorScores: scored!.scores,
-        classical: searchCandidates(candidates, balls, targets, config),
-        hybrid: searchCandidates(candidates, balls, targets, {
+        classical: searchWithLegacySelection(candidates, balls, targets, config),
+        hybrid: searchWithLegacySelection(candidates, balls, targets, {
           ...config,
           prior: {
             scores: scored!.scores,
@@ -197,6 +198,13 @@ describe("neural hybrid: what the model must NOT be able to do", () => {
   // scores. That is the point: the guarantee has to hold for ANY score vector
   // the model could ever emit, including a maximally wrong one — proving it
   // with the real model's (reasonable) output would prove much less.
+  //
+  // They run through `searchWithLegacySelection` — the evaluation baseline —
+  // because they are about what a PRIOR can and cannot do to a physics search,
+  // which is shared by both policies, and the baseline is the one that returns
+  // a `best` to inspect. The equivalent guarantees for the live trick-only
+  // policy are in `src/ai/policy/trickOnly.test.ts`, including an adversarial
+  // prior that scores every direct 0.99 with the eligibility filter disabled.
 
   const board = BOARDS.longTable;
   const targets = targetsFor(board);
@@ -225,7 +233,7 @@ describe("neural hybrid: what the model must NOT be able to do", () => {
     expect(potting, "fixture must contain a potting candidate").toBeDefined();
 
     const scores = candidates.map((c) => (c === nonPotting!.candidate ? 1 : 0.999));
-    const res = searchCandidates(candidates, board, targets, {
+    const res = searchWithLegacySelection(candidates, board, targets, {
       ...config,
       simulations: fullBudget,
       prior: { scores, keepTop: candidates.length, source: "adversarial" },
@@ -239,7 +247,7 @@ describe("neural hybrid: what the model must NOT be able to do", () => {
 
   it("cannot make an unreliable trick qualify: the threshold is on physics strength", () => {
     const scores = candidates.map((c) => (c.kind === "direct" ? 0 : 1));
-    const res = searchCandidates(candidates, board, targets, {
+    const res = searchWithLegacySelection(candidates, board, targets, {
       ...config,
       simulations: fullBudget,
       prior: { scores, keepTop: candidates.length, source: "adversarial-trick-max" },
@@ -274,7 +282,7 @@ describe("neural hybrid: what the model must NOT be able to do", () => {
     if (scratching.length === 0) return; // nothing to prove on this fixture
 
     const scores = candidates.map((_, i) => (scratching.includes(i) ? 1 : 0));
-    const res = searchCandidates(candidates, board, targets, {
+    const res = searchWithLegacySelection(candidates, board, targets, {
       ...config,
       simulations: fullBudget,
       prior: { scores, keepTop: candidates.length, source: "adversarial-scratch" },
@@ -310,7 +318,7 @@ describe("neural hybrid: fallback is real and never mislabelled", () => {
     expect(state.status).toBe("absent");
 
     // Asking for the hybrid brain explicitly, with a dead evaluator.
-    const brain = neuralHybridBrain(broken);
+    const brain = neuralTrickOnlyBrain(broken);
     const res = await brain.plan(asState(BOARDS.openSpread), table, 0, config);
     expect(res.trace!.fallbackReason).toMatch(/model unavailable/);
     expect(res.best).not.toBeNull();
@@ -319,7 +327,7 @@ describe("neural hybrid: fallback is real and never mislabelled", () => {
     expect(res.trace!.prunedByPrior).toBe(0);
 
     // And the user-facing selection never claims neural.
-    expect(getBrain(true, broken).kind).toBe("classical");
+    expect(getBrain(true, broken).kind).toBe("classical-trick-only");
     expect(brainLabel(true, broken)).toBe("the physics-search opponent");
   }, 30_000);
 
@@ -330,8 +338,8 @@ describe("neural hybrid: fallback is real and never mislabelled", () => {
     await dead.load(makeFileFetch(join(APP_ROOT, "public"), { "model/ranker/manifest.json": null }));
 
     const st = asState(BOARDS.clusteredRight);
-    const viaFallback = await neuralHybridBrain(dead).plan(st, table, 0, config);
-    const viaClassical = await classicalBrain().plan(st, table, 0, config);
+    const viaFallback = await neuralTrickOnlyBrain(dead).plan(st, table, 0, config);
+    const viaClassical = await classicalTrickOnlyBrain().plan(st, table, 0, config);
     expect(viaFallback.best?.candidate.kind).toBe(viaClassical.best?.candidate.kind);
     expect(viaFallback.best?.candidate.pocket).toBe(viaClassical.best?.candidate.pocket);
     expect(viaFallback.simulations).toBe(viaClassical.simulations);
