@@ -171,7 +171,7 @@ export function drawContactMarks(
     const a = (passed ? 0.25 : 0.9) * alpha;
     if (a <= 0.02) continue;
     const [x, y] = toPx(m.at, v);
-    const r = m.kind === "cushion" ? 5 : 6.5;
+    const r = m.kind === "cushion" ? 5 : 4;
 
     ctx.strokeStyle = `rgba(126, 233, 174, ${a})`;
     ctx.lineWidth = 1.3;
@@ -187,13 +187,15 @@ export function drawContactMarks(
     }
     ctx.stroke();
 
-    // Combination order, so a two-ball route reads in sequence.
+    // Combination order, so a multi-ball route reads in sequence. Set BESIDE
+    // the ring, not inside it: a numbered circle the size of a ball reads as a
+    // ball, which is the one thing on this canvas it must not be confused with.
     if (m.kind === "ball") {
-      ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
-      ctx.textAlign = "center";
+      ctx.font = "600 8px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = `rgba(126, 233, 174, ${a})`;
-      ctx.fillText(String(m.order), x, y + 0.5);
+      ctx.fillStyle = `rgba(126, 233, 174, ${a * 0.85})`;
+      ctx.fillText(String(m.order), x + r + 2, y - r);
     }
   }
 }

@@ -334,7 +334,10 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
         return;
       }
 
-      const marks = contactMarks(planned.report.sim);
+      // Capped at 8: a break chains 20+ events and the marks would bury the
+      // table. The cap drops the LATEST events, so what is shown is always a
+      // true prefix of what happened.
+      const marks = contactMarks(planned.report.sim, 8);
       lastTurnRef.current = { pre: planState, planned, marks };
       setTrace(planned.trace);
       setPlanning(false);

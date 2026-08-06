@@ -145,9 +145,11 @@ physics-core/  (Rust → WASM)   event-based Han-2005 physics + UCB search rollo
 src/game/                      8-ball ruleset + game controller (engine-agnostic)
 src/ai/                        candidate generator, UCB shot search, ONNX loader, brain seam
 src/ai/neural/                 NeuralCandidateEvaluator: manifest validation + batched inference
+src/ai/trace/                  the decision-trace contract the renderer reads (types only)
 public/model/ranker/           the shipped, hash-verified trained artifact + its manifest
 eval/                          equal-budget classical-vs-hybrid evaluation harness
-src/render/ + src/ui/          canvas render + reasoning overlay
+src/render/                    canvas render, the decision presentation machine, contact marks
+src/ui/                        the panel, the opponent-turn orchestration, the planning worker
 training/      (Python)        pooltool + LightZero self-play → ONNX
 ```
 
@@ -220,45 +222,125 @@ physics-derived strength. `src/ai/neural/hybrid.test.ts` proves those
 guarantees with an adversarial prior, so they hold for any score vector the
 model could ever emit — not just for the ones it happens to emit today.
 
-## How the overlay maps to real decisions
+## How the opponent's turn is presented
 
-Every number and line the overlay draws is **actual search output** — nothing is
-decorative (the `qa-audit` hard constraint). `src/ui/overlayTruthfulness.test.tsx`
-renders the real component against a real search result and fails if a number
-appears that the search didn't produce, or if the copy uses vocabulary the
-algorithm hasn't earned (MCTS, win probability, confidence, "thinking").
+The opponent's decision is shown as a sequence, not as a finished panel that
+appears all at once:
 
-- **Decision stages** come from `SearchResult.trace` (`DecisionTrace`), which
-  `searchCandidates` fills in as it runs: candidates generated, candidates
-  scored by the learned ranker and how many milliseconds that took, candidates
-  pruned before physics, candidates physics-verified and how many of them
-  legally potted, how many scratched the cue in simulation, and physics-engine
-  call units actually spent.
-- **Per-candidate strength** is the squashed rollout value the search optimized
-  — a relative, uncalibrated score (`CandidateStat.strength`), never displayed
-  as a percentage and never called a probability.
-- **Per-candidate make estimate** (neural mode only) is the model's *calibrated*
-  legal-pot probability. Calling it a probability is allowed here because it was
-  measured: ECE 0.0067–0.0155 post-Platt on the held-out test split. The
-  ranker's rank for each candidate is shown as `#n`.
-- **Ghost candidate paths** are the geometric aiming routes the search
-  enumerated. Line weight/opacity tracks each candidate's real UCB visit share.
-- The chosen shot is whatever `selectBestWithReason` returned, and the one line
-  of prose under it is that function's own `selectionReason` — the display
-  cannot describe a different decision than the one played.
-- The shot caption ("cue → rail → 3-ball → corner") is generated from the real
-  physics event trace (`src/ai/trace.ts`).
+```
+IDLE → ENUMERATING → RANKING → VERIFYING → SELECTED → READY → STROKE → SHOOTING → SETTLED
+        evaluating    neural     physics     selected   ready
+                      ranking  verification            to shoot
+```
 
-There is one timing concession, stated plainly: after the search finishes, the
-overlay is held on screen for a bounded 350–1100 ms before the balls move, so
-the decision is readable. Nothing is computed during that hold and nothing on
-screen animates as if it were.
+**RANKING is absent, not greyed, when no model ran.** Turning the ranker off in
+the reasoning panel produces a structurally shorter sequence, which is the most
+honest rendering of the toggle and makes the model's contribution legible
+without a sentence of claim.
+
+`src/render/presentation.ts` is the whole machine and it is **pure** — it takes
+a completed `DecisionTraceV1` and a wall-clock offset and returns what belongs
+on the felt. No canvas, no React, no timers, so `presentation.test.ts` can test
+the sequence as arithmetic.
+
+### What is measured and what is paced
+
+The search finishes before the sequence begins. Everything drawn — every route,
+every rejection reason, every contact — is read off the trace the opponent
+actually decided with; what the presentation adds is the *order and speed* of
+the reveal. That is stated in the panel on the first opponent turn of a session,
+and here.
+
+Durations derive from trace size, never from fixed waits:
+
+| state | length |
+|---|---|
+| ENUMERATING | `clamp(candidatesGenerated × 18 ms, 400, 900)` |
+| RANKING | `600 ms`, or the state does not exist |
+| VERIFYING | the search's **real** physics time (`timing.physicsMs`), revealed one candidate per measured average |
+| SELECTED | `clamp(250 + losers × 20 ms, 350, 800)` |
+| READY | `clamp(500 + words × 28 ms, 700, 1400)` |
+| STROKE | `350 ms`, direction and power from the real `CueAction` |
+| SHOOTING | the authoritative simulation at **1.0×** |
+
+A 6.5 s ceiling is applied as a uniform scale over the *hold* states only —
+never over VERIFYING, because scaling preserves relative cost and truncating
+would misrepresent it. A per-session decay shortens the holds from the third
+opponent turn onward, and pointer-down / `Space` skips to READY in 250 ms.
+
+**Known gap, stated rather than papered over:** the trace contract carries no
+per-candidate verification time and no progress stream, so VERIFYING is paced
+by the *average* real physics cost rather than by each candidate's own. It makes
+no claim about any individual candidate. If a progress channel is added,
+`verifyMs()` in `presentation.ts` is the single function that changes.
+
+### How the drawing maps to real decisions
+
+`src/ui/overlayTruthfulness.test.tsx` renders the real panel against a real
+trace built from a real physics search, and fails if a number appears that the
+search did not produce, or if the copy uses vocabulary the algorithm has not
+earned (MCTS, win probability, confidence, "thinking").
+
+- **Every generated candidate is drawn**, in generation order, directs included.
+  The old overlay drew `stats.slice(0, 6)` ordered by *visits* while selection
+  was by *trick utility*, so the route about to be played could be missing from
+  the picture entirely. The winner is now addressed by generation index, which
+  makes that unrepresentable.
+- **Routes are drawn cue-first.** `candidate.path` starts at the *object* ball,
+  so the chosen line used to float unconnected to the white ball; the cue's own
+  leg (cue ball → ghost-ball contact) is drawn ahead of it.
+- **Rejection reasons come only from the trace.** `TracedCandidate.rejection` is
+  printed on the felt beside the route it belongs to. Where the trace supplies
+  no reason, the route dims and nothing is said — the renderer decides where a
+  line goes, never why a line died.
+- **Cushion and combination marks** come from the *executed* simulation's event
+  trace and waypoints (`src/render/annotate.ts`), not from the candidate
+  generator's planned mirror geometry. The plan is the search's intention; the
+  event trace is the physics' result.
+- **Line weight** is driven by real ordering (the model's rank, then physics
+  strength) and is never printed as a number. `strength` is a bounded monotonic
+  transform of the rollout value, not a probability, and nothing renders it.
+- **The sentence** ("Playing a two-rail bank on the 13, into the bottom-side
+  pocket, over a direct pot on the 11") restates the selected candidate and one
+  the trace itself labelled `lower-utility-than-selected`. The line under it is
+  the selection ladder's own rung, mapped one-to-one to a phrase.
+
+### The opponent thinks in a worker
+
+`src/ui/planner/` moves the whole turn — search, selection, and the
+authoritative shot simulation — off the main thread. Measured before: 3.4–5.0 s
+main-thread freezes on every opponent turn, 12.3 s worst case after a break, and
+a renderer crash after five plans back to back; independently profiled on a
+production build at 11 long tasks totalling 11,278 ms over 81.5 s. Measured
+after, same rAF-gap method on a production build at the 1180 px embed width over
+~50 s and four opponent turns: **one gap above 60 ms, max 67 ms.**
+
+It is also why `searching…` is now reachable at all. It never once painted
+before: `plan()` blocked the main thread before React could commit the frame
+that carried it.
+
+`planner/plan.ts` is imported by both the worker and the inline fallback, so the
+fallback (a `file://` page, a hardened CSP, a test runner with no `Worker`)
+cannot drift from the worker. Failure to construct the worker is logged loudly
+rather than downgraded silently, because a silent downgrade would hide the
+freeze coming back.
+
+### Controls
+
+Aiming is a **drag** on Pointer Events — one code path for mouse, pen and touch,
+with `setPointerCapture` so a drag that leaves the canvas keeps tracking and
+`touch-action: none` so it does not scroll the page out from under the embed.
+Two ±0.25° nudges exist because a fingertip covers ~26 mm of felt at embed
+scale. `Space` shoots, or skips the opponent's reasoning while it is running;
+`Escape` asks the portfolio shell to leave the focused embed.
 
 ## Metrics
 
-Live, in the overlay: candidates generated, candidates pruned before physics,
-candidates physics-verified, legal pots and scratches seen in simulation,
-physics calls spent, and (neural mode) inference milliseconds.
+Live, in the decision trace the presentation reads: candidates generated,
+candidates pruned before physics, candidates physics-verified, legal pots and
+scratches seen in simulation, physics calls spent, and (neural mode) inference
+milliseconds. The panel deliberately prints almost none of them — they are
+process telemetry, and they drive the drawing instead.
 
 Offline, reproducible with `npm run eval:hybrid` and written to
 `eval/results/*.json`: legal-pot / foul / scratch rate, trick attempt
