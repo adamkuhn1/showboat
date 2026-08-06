@@ -1,94 +1,231 @@
+// The reasoning overlay: routes on the felt.
+//
+// Everything drawn here comes from a `PresentationFrame`, which is computed by
+// `presentation.ts` from the real `DecisionTraceV1`. This file makes no
+// judgement of its own: it decides where a line goes, never why a line died.
+// If the trace did not carry a rejection reason, none is printed — the route
+// simply dims. That is a cut, not a fabrication.
+//
+// Role is the primary visual channel, because kind is not: on a typical table
+// most candidates are banks, so colouring by kind left every line looking the
+// same. Kind survives as a dash signature, which does not compete with the
+// brightness that carries "this one is still alive".
+
 import { type Vec2 } from "../physics/vec";
-import { type Table } from "../physics/table";
 import { type ViewTransform } from "./renderer";
-import { type CandidateStat, type SearchResult } from "../ai/shotSearch";
+import { BALL_RADIUS } from "../physics/constants";
+import {
+  REJECTION_TEXT,
+  type PresentationFrame,
+  type RouteRender,
+  type RouteRole,
+} from "./presentation";
+import { type ContactMark } from "./annotate";
 
-// Reasoning overlay renderer. Every number and path drawn here comes from the
-// REAL search output (candidate geometry, UCB visit counts, rollout value/
-// strength score, and the rails-before-pot measured from the actual simulated
-// event trace). Nothing here is decorative or invented — if the search didn't
-// produce it, it isn't drawn. This is the constraint from PLAN.md §5 / CLAUDE.md #2.
-
-const toPx = (p: Vec2, v: ViewTransform): [number, number] => [
+const toPx = (p: { x: number; y: number }, v: ViewTransform): [number, number] => [
   v.offsetX + p.x * v.scale,
   v.offsetY - p.y * v.scale,
 ];
 
-// Draw the candidate ghost paths, weighting opacity/width by visit share so the
-// most-searched lines read as the strongest — a faithful picture of where the
-// search actually spent its budget.
-export const drawCandidatePaths = (
+/** Dash signature per candidate kind. Solid = no cushion in the object route. */
+const DASH: Record<string, number[]> = {
+  direct: [],
+  bank: [9, 6],
+  "double-bank": [16, 6],
+  combo: [3, 4],
+  "rail-combo": [12, 4, 3, 4],
+  "safety-kick": [5, 5],
+};
+
+const ROLE_STROKE: Record<RouteRole, string> = {
+  // Chalk on felt, not UI colour.
+  candidate: "215, 226, 232",
+  verified: "168, 224, 190",
+  rejected: "196, 122, 108",
+  selected: "126, 233, 174",
+};
+
+/** Total length of a polyline in pixels. */
+function pxLength(pts: [number, number][]): number {
+  let n = 0;
+  for (let i = 1; i < pts.length; i++) n += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  return n;
+}
+
+/** Stroke the first `fraction` of a polyline, by arc length. */
+function strokePartial(
   ctx: CanvasRenderingContext2D,
-  result: SearchResult,
-  v: ViewTransform,
-  topN = 6,
-): void => {
-  const shown = result.stats.slice(0, topN);
-  const maxVisits = Math.max(1, ...shown.map((s) => s.visits));
+  pts: [number, number][],
+  fraction: number,
+): void {
+  if (pts.length < 2) return;
+  const f = Math.max(0, Math.min(1, fraction));
+  if (f === 0) return;
+  const target = pxLength(pts) * f;
 
-  // Draw weakest first so the best line sits on top.
-  for (let i = shown.length - 1; i >= 0; i--) {
-    const s = shown[i];
-    const isBest = result.best === s;
-    const weight = s.visits / maxVisits;
-    const path = s.candidate.path;
-    if (path.length < 2) continue;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  let travelled = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    const seg = Math.hypot(x1 - x0, y1 - y0);
+    if (travelled + seg >= target) {
+      const t = seg === 0 ? 1 : (target - travelled) / seg;
+      ctx.lineTo(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+      break;
+    }
+    ctx.lineTo(x1, y1);
+    travelled += seg;
+  }
+  ctx.stroke();
+}
 
-    ctx.lineWidth = isBest ? 3 : 1 + weight * 1.5;
-    ctx.strokeStyle = colorFor(s, isBest, weight);
-    ctx.setLineDash(s.candidate.kind === "direct" ? [] : [7, 5]);
+function drawRoute(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransform): void {
+  if (r.alpha <= 0.01) return;
+  const rgb = ROLE_STROKE[r.role];
+  const objectPts = r.objectLeg.map((p) => toPx(p, v));
+
+  // The cue leg first — this is the fix for the chosen line "floating" with no
+  // connection to the white ball. `candidate.path` starts at the OBJECT ball;
+  // the cue's own travel is [cue ball, ghost-ball contact point] and is what
+  // makes the picture tell the shot.
+  // Drawn only for routes that are still in play. Forty cue legs radiating
+  // from one point is a starburst, not a picture — during VERIFYING the dead
+  // routes keep their object leg (so you can see what was considered) and lose
+  // the leg that says "the cue would go here".
+  const showCueLeg =
+    r.role === "selected" || r.role === "verified" || r.resolving || r.role === "candidate";
+  if (r.cueLeg && showCueLeg) {
+    const cuePts = r.cueLeg.map((p) => toPx(p, v));
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.7})`;
+    ctx.lineWidth = 1 + r.weight * 1.6;
+    ctx.setLineDash([2, 5]);
+    strokePartial(ctx, cuePts, r.reveal);
+    ctx.setLineDash([]);
+  }
+
+  if (objectPts.length >= 2) {
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha})`;
+    ctx.lineWidth = 1 + r.weight * 2.6;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.setLineDash(DASH[r.kind] ?? []);
+    strokePartial(ctx, objectPts, r.reveal);
+    ctx.setLineDash([]);
+  }
+
+  // Ghost-ball contact circle: where the cue must arrive for this route.
+  if (r.role === "selected" && r.cueLeg) {
+    const [gx, gy] = toPx(r.cueLeg[1], v);
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.85})`;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    const [x0, y0] = toPx(path[0], v);
-    ctx.moveTo(x0, y0);
-    for (let k = 1; k < path.length; k++) {
-      const [x, y] = toPx(path[k], v);
-      ctx.lineTo(x, y);
+    ctx.arc(gx, gy, BALL_RADIUS * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+/**
+ * The elimination reason, on the felt beside the route it belongs to — never
+ * as a list in the panel, which would grow the panel and shrink the table.
+ * Drawn for one route at a time: the one resolving this instant.
+ */
+function drawReason(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransform): void {
+  if (r.reason === null) return;
+  const pts = r.objectLeg;
+  if (pts.length === 0) return;
+  const anchor: Vec2 = pts[Math.floor(pts.length / 2)];
+  const [ax, ay] = toPx(anchor, v);
+  ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const text = REJECTION_TEXT[r.reason];
+  const w = ctx.measureText(text).width;
+  // Keep the caption on the cloth: anchored at a route midpoint it otherwise
+  // runs over the rail and reads as a truncated word. `INSET` is the rail
+  // width drawn by `drawTable`, plus a little air.
+  const INSET = 30;
+  const x = Math.min(Math.max(ax + 6, INSET), ctx.canvas.width - w - INSET);
+  const y = Math.min(Math.max(ay, INSET), ctx.canvas.height - INSET);
+  ctx.fillStyle = `rgba(8, 12, 10, ${0.62 * r.alpha + 0.2})`;
+  ctx.fillRect(x, y - 8, w + 8, 16);
+  ctx.fillStyle = `rgba(${ROLE_STROKE.rejected}, ${Math.max(0.55, r.alpha)})`;
+  ctx.fillText(text, x + 4, y + 1);
+}
+
+/**
+ * Cushion contacts and combination order from the executed simulation.
+ * `simTime` fades a mark once the ball has actually passed it during playback;
+ * pass `null` before the shot, when every mark is still ahead.
+ */
+export function drawContactMarks(
+  ctx: CanvasRenderingContext2D,
+  marks: ContactMark[],
+  v: ViewTransform,
+  simTime: number | null,
+  alpha = 1,
+): void {
+  for (const m of marks) {
+    const passed = simTime !== null && simTime >= m.timeSec;
+    const a = (passed ? 0.25 : 0.9) * alpha;
+    if (a <= 0.02) continue;
+    const [x, y] = toPx(m.at, v);
+    const r = m.kind === "cushion" ? 5 : 4;
+
+    ctx.strokeStyle = `rgba(126, 233, 174, ${a})`;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    if (m.kind === "cushion") {
+      // A tick, not a ring: a cushion contact is a bounce off a line.
+      ctx.moveTo(x - r, y - r);
+      ctx.lineTo(x + r, y + r);
+      ctx.moveTo(x + r, y - r);
+      ctx.lineTo(x - r, y + r);
+    } else {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
     }
     ctx.stroke();
-    ctx.setLineDash([]);
-    // The strength/style numbers used to be painted here too (text on the
-    // felt, over the actual game). That's the reasoning panel's job — the
-    // path itself, colour-coded by kind and weighted by visit share, is the
-    // real information the table can carry without turning into a second
-    // copy of the panel.
+
+    // Combination order, so a multi-ball route reads in sequence. Set BESIDE
+    // the ring, not inside it: a numbered circle the size of a ball reads as a
+    // ball, which is the one thing on this canvas it must not be confused with.
+    if (m.kind === "ball") {
+      ctx.font = "600 8px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = `rgba(126, 233, 174, ${a * 0.85})`;
+      ctx.fillText(String(m.order), x + r + 2, y - r);
+    }
   }
-};
+}
 
-const colorFor = (s: CandidateStat, isBest: boolean, weight: number): string => {
-  if (isBest) return "rgba(92, 214, 160, 0.95)";
-  // Trick routes are tinted by kind so they read distinctly from direct pots.
-  // Colors label the real candidate kind — not scripted shots.
-  const alpha = 0.25 + weight * 0.5;
-  if (s.candidate.kind === "double-bank") return `rgba(255, 100, 100, ${alpha})`;
-  if (s.candidate.kind === "bank") return `rgba(255, 179, 111, ${alpha})`;
-  if (s.candidate.kind === "combo") return `rgba(191, 143, 255, ${alpha})`;
-  if (s.candidate.kind === "rail-combo") return `rgba(255, 209, 102, ${alpha})`;
-  return `rgba(140, 200, 255, ${alpha})`;
-};
-
-// Mark the aim (ghost-ball) contact point of the chosen shot.
-export const drawChosenAim = (
+/** Draw one presentation frame. This is the whole public surface. */
+export function drawPresentation(
   ctx: CanvasRenderingContext2D,
-  result: SearchResult,
+  frame: PresentationFrame,
   v: ViewTransform,
-): void => {
-  if (!result.best) return;
-  const [x, y] = toPx(result.best.candidate.aimPoint, v);
-  ctx.strokeStyle = "rgba(92,214,160,0.9)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(x, y, 6, 0, Math.PI * 2);
-  ctx.stroke();
-};
+  marks: ContactMark[] = [],
+  simTime: number | null = null,
+): void {
+  ctx.save();
+  // Weakest first, so the live routes sit on top of the dead ones.
+  const ordered = [...frame.routes].sort((a, b) => a.alpha - b.alpha);
+  for (const r of ordered) drawRoute(ctx, r, v);
 
-// The table isn't needed for drawing but is accepted to keep the overlay's
-// signature aligned with the renderer family and allow future rail annotations.
-export const drawOverlay = (
-  ctx: CanvasRenderingContext2D,
-  result: SearchResult,
-  _table: Table,
-  v: ViewTransform,
-): void => {
-  drawCandidatePaths(ctx, result, v);
-  drawChosenAim(ctx, result, v);
-};
+  // One caption at a time. During VERIFYING it belongs to the candidate the
+  // physics just finished with, so each elimination reads as it happens;
+  // during SELECTED it belongs to the loudest survivor that lost, so the
+  // dimming is a reason and not a blanket fade.
+  const captioned =
+    frame.routes.find((r) => r.justResolved && r.reason !== null) ??
+    (frame.state === "SELECTED"
+      ? frame.routes
+          .filter((r) => r.role === "rejected" && r.reason !== null && r.alpha > 0.2)
+          .sort((a, b) => b.alpha - a.alpha)[0]
+      : undefined);
+  if (captioned) drawReason(ctx, captioned, v);
+
+  if (frame.showContacts && marks.length > 0) drawContactMarks(ctx, marks, v, simTime);
+  ctx.restore();
+}
