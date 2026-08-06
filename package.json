@@ -8,7 +8,6 @@
     "build": "vite build && node scripts/verify-build-model.mjs",
     "preview": "vite preview --port 5175 --strictPort",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:wasm": "cargo test --manifest-path physics-core/Cargo.toml",
     "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json",
