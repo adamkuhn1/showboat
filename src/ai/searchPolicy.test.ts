@@ -20,6 +20,7 @@ import { initPhysics } from "../physics/wasm-bridge";
 import { generateCandidates } from "./candidates";
 import {
   searchCandidates,
+  searchWithLegacySelection,
   defaultConfig,
   DEFAULT_PRIOR_RESERVE,
   type SearchConfig,
@@ -124,8 +125,18 @@ describe("kind reserve inside the learned prior's top-K", () => {
     // Reserve a direct AND rank everything so that direct is the model's
     // favourite. Physics still decides `potsTarget`, and the selection rule
     // still only picks from candidates the simulation sanctioned.
+    //
+    // Runs through the LEGACY mixed policy on purpose: this test is about the
+    // search-policy/reserve interaction, which is shared by both policies, and
+    // the legacy selector is the one that still returns a `best` to inspect.
+    // The live trick-only policy's own guarantees live in policy/*.test.ts.
     const scores = directsLastScores();
-    const r = run(scores, { direct: 2 });
+    const r = searchWithLegacySelection(
+      generateCandidates(BALLS, table, targets),
+      BALLS,
+      targets,
+      { ...config, prior: { scores, keepTop: KEEP_TOP, source: "synthetic-prior", reserve: { direct: 2 } } },
+    );
     for (const s of r.stats) {
       // Every stat the selection can see was really simulated.
       expect(s.verified).toBe(true);

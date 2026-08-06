@@ -19,7 +19,10 @@ import { makeBall } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
 import { initPhysics } from "../physics/wasm-bridge";
 import { generateCandidates } from "../ai/candidates";
-import { searchCandidates, defaultConfig, type SearchResult } from "../ai/shotSearch";
+// `searchWithLegacySelection`, not `searchCandidates`: the search no longer
+// chooses a shot (selection moved to `ai/policy/trickOnly.ts`), and this suite
+// needs a `SearchResult` with a `best` to render the panel against.
+import { searchWithLegacySelection, defaultConfig, type SearchResult } from "../ai/shotSearch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -64,11 +67,11 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     await initPhysics(readFileSync(join(APP_ROOT, "src/wasm/showboat_physics_bg.wasm")));
     const candidates = generateCandidates(board, table, targets);
     const config = { ...defaultConfig, simulations: 40, seed: 99 };
-    classical = searchCandidates(candidates, board, targets, config);
+    classical = searchWithLegacySelection(candidates, board, targets, config);
     // A synthetic-but-well-formed prior: this test is about rendering, and the
     // real model is exercised end to end in src/ai/neural/hybrid.test.ts.
     const scores = candidates.map((_, i) => ((i * 37) % 101) / 100);
-    hybridLike = searchCandidates(candidates, board, targets, {
+    hybridLike = searchWithLegacySelection(candidates, board, targets, {
       ...config,
       prior: { scores, keepTop: 10, source: "showboat-ranker-phase2d", inferenceMs: 1.234 },
     });

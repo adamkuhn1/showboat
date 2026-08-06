@@ -106,7 +106,7 @@ const dTrickDone = pairedDiff(trickDoneH, trickDoneC);
 const dCalls = pairedDiff(callsH, callsC);
 
 // Direct-fallback preservation, restricted to states where a makeable direct existed.
-const withDirect = cl.map((d, i) => i).filter((i) => cl[i].pottingDirects > 0);
+const withDirect = cl.map((_, i) => i).filter((i) => cl[i].pottingDirects > 0);
 const dfC = withDirect.filter((i) => cl[i].verifiedPottingDirects > 0).length / (withDirect.length || 1);
 const dfH = withDirect.filter((i) => hy[i].verifiedPottingDirects > 0).length / (withDirect.length || 1);
 

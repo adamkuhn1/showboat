@@ -115,11 +115,10 @@ const dScratch = pairedDiff(scrH, scrC);
 const dRegret = pairedDiff(regretH, regretC);
 const dMultiwall = pairedDiff(mwH, mwC);
 const dMultiwallDone = pairedDiff(mwDoneH, mwDoneC);
-const dTrick = pairedDiff(trickH, trickC);
 const dCalls = pairedDiff(callsH, callsC);
 
 // Direct-fallback preservation, restricted to states where a makeable direct existed.
-const withDirect = cl.map((d, i) => i).filter((i) => cl[i].pottingDirects > 0);
+const withDirect = cl.map((_, i) => i).filter((i) => cl[i].pottingDirects > 0);
 const dfC = withDirect.filter((i) => cl[i].verifiedPottingDirects > 0).length / (withDirect.length || 1);
 const dfH = withDirect.filter((i) => hy[i].verifiedPottingDirects > 0).length / (withDirect.length || 1);
 
