@@ -65,6 +65,14 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* Embedded, the header is one line of prose and the shell has already drawn a
+   rule of its own directly above it. A second one immediately under a single
+   sentence reads as a repeated component, which is what it was. */
+.topbar--embedded {
+  border-bottom: none;
+  padding-bottom: 0.25rem;
+}
+
 /* A sentence about what you are playing, so it is set as one. */
 .tag {
   font-size: 0.95rem;

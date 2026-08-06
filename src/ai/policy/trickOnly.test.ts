@@ -251,6 +251,7 @@ describe("A. a direct is available and better, and still cannot be selected", ()
         ...defaultConfig,
         seed: 20260805,
         seedTimeoutMs: Infinity,
+        searchTimeoutMs: Infinity,
       });
       expect(result.shot, `${name} must produce a shot`).not.toBeNull();
       expect(result.shot!.kind, `${name} chose a direct`).not.toBe("direct");
@@ -303,7 +304,12 @@ describe("A. a direct is available and better, and still cannot be selected", ()
       makeBall(15, 0.620042, 0.362930),
     ];
     const targets = [2, 3, 5, 6, 7, 9, 10, 11, 12, 14, 15];
-    const cfg = { ...defaultConfig, seed: 20260101, seedTimeoutMs: Infinity };
+    const cfg = {
+      ...defaultConfig,
+      seed: 20260101,
+      seedTimeoutMs: Infinity,
+      searchTimeoutMs: Infinity,
+    };
     const candidates = generateCandidates(balls, table, targets);
 
     const legacy = searchWithLegacySelection(candidates, balls, targets, cfg);
@@ -340,6 +346,7 @@ describe("A. a direct is available and better, and still cannot be selected", ()
       ...defaultConfig,
       seed: 20260805,
       seedTimeoutMs: Infinity,
+      searchTimeoutMs: Infinity,
       // NOTE: no `eligible` — directs get physics and are visited first.
       prior: { scores, keepTop: 16, source: "adversarial-directs-first" },
     });
@@ -373,6 +380,63 @@ describe("A. a direct is available and better, and still cannot be selected", ()
     };
     expect(forged).toBeDefined();
   });
+
+  // A9 did not exist. A1-A8 and A10 were written and the number was skipped, so
+  // the docs' "A1-A10" pointed at nine tests and one gap. This is the gap
+  // filled with the property the other nine assume rather than check: the
+  // ladder is STRICTLY ORDERED. A1-A3 each pit one rung against a direct; none
+  // of them pits a rung against a weaker rung, which is what makes "five rungs,
+  // strictly ordered" a claim about the code rather than about the comment
+  // above it.
+  it("A9: a lower rung never fires while a higher one has a member", () => {
+    // Every rung is populated at once, and deliberately inverted: the weakest
+    // shot sits on the highest rung. A ladder that ranked by quality instead of
+    // by rung would pick the 0.95 attempt every time.
+    const qualified = stat("bank", { strength: TRICK_RELIABILITY_THRESHOLD + 0.01, potsTarget: true });
+    const belowBar = stat("combo", { strength: TRICK_RELIABILITY_THRESHOLD - 0.3, potsTarget: true });
+    const attempt = stat("double-bank", { strength: 0.95, potsTarget: false });
+    // Index 2 is the attempt: verified, legal contact, no scratch, did not pot.
+    const verifications = [null, null, verification(2)];
+
+    const all = pick([qualified, belowBar, attempt], verifications);
+    expect(all.rung).toBe("trick-qualified");
+    expect(all.shot!.candidateIndex).toBe(0);
+
+    // Remove the top rung; the next one down must take over, not the strongest
+    // remaining shot overall (the attempt is 0.95 against the potter's 0.99 —
+    // and here they are the other way round on purpose in the next case).
+    const noQualified = pick(
+      [stat("combo", { strength: 0.2, potsTarget: true }), stat("double-bank", { strength: 0.95, potsTarget: false })],
+      [null, verification(1)],
+    );
+    expect(noQualified.rung).toBe("trick-below-threshold");
+    expect(noQualified.shot!.candidateIndex, "a 0.20 POT outranks a 0.95 miss").toBe(0);
+
+    // Remove rung 2; rung 3 takes over.
+    const onlyAttempts = pick(
+      [stat("bank", { strength: 0.3, potsTarget: false }), stat("double-bank", { strength: 0.7, potsTarget: false })],
+      [verification(0), verification(1)],
+    );
+    expect(onlyAttempts.rung).toBe("trick-attempt-no-verified-pot");
+    expect(onlyAttempts.shot!.candidateIndex, "among attempts, strength decides").toBe(1);
+
+    // Remove rung 3 — a verified trick that scratched is NOT an attempt — and
+    // the ladder must fall through to the safety rung. `pick` supplies a
+    // simulator that throws if reached, so this one runs the real one.
+    const scratchedOnly = selectTrickOnly(
+      [stat("bank", { strength: 0.9, potsTarget: false })],
+      [verification(0, { scratched: true })],
+      ctxFor(SAFETY_BOARD, [1]),
+    );
+    expect(scratchedOnly.rung === "non-direct-safety" || scratchedOnly.rung === "forced-legal-contact").toBe(true);
+    expect(scratchedOnly.shot!.kind).toBe("safety-kick");
+
+    // And the rung the decision reports is the rung stamped on the shot — the
+    // panel reads one and the felt reads the other.
+    for (const d of [all, noQualified, onlyAttempts, scratchedOnly]) {
+      expect(d.shot!.rung).toBe(d.rung);
+    }
+  }, 30_000);
 
   it("A10: the runtime invariant throws, and the degrade path is a safety, not a direct", () => {
     const forgedDirect = {
