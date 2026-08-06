@@ -8,7 +8,19 @@
 // legal target. It is not one of the four trick kinds and is never labelled as
 // one — it is `safety-kick` everywhere, including in the trace and the UI.
 //
-// Two properties matter more than shot quality here:
+// THREE properties matter more than shot quality here:
+//
+//   * **Rail-first by construction, on every generated kick.** The cue -> rail
+//     leg is screened for obstructions in BOTH generation passes, so no ball —
+//     including the target itself — sits between the cue ball and the cushion
+//     it is aimed at. This used to hold only in the clear-path pass: the top-up
+//     pass dropped the check entirely, and a route with the target in front of
+//     the rail point survived it, simulated foul-free, and shipped labelled
+//     `safety-kick` and described to the visitor as "a safety off the cushion"
+//     while the cue in fact went straight at the ball and potted it. Measured
+//     at 197 of 3,328 rung-4 shots, 135 of them potting. The generator's
+//     *reason* for existing is the first clause of the sentence above, so the
+//     fix is to make the sentence true rather than to stop saying it.
 //
 //   * **Legality is decided by the real ruleset**, not by geometry. Each
 //     verified kick is executed through `takeShot` + the real simulator and
@@ -25,6 +37,7 @@
 import { type Ball } from "../../physics/ball";
 import { type Table } from "../../physics/table";
 import { type Vec2 } from "../../physics/vec";
+import { BALL_RADIUS } from "../../physics/constants";
 import { type CueAction } from "../../physics/cue";
 import { CUE_ID } from "../../game/rack";
 import { type GameState } from "../../game/state";
@@ -74,8 +87,36 @@ const aimAt = (from: Vec2, to: Vec2, power: number): CueAction => {
   return { phi: Math.atan2(d.y, d.x), power, sideSpin: 0, topSpin: 0 };
 };
 
+/**
+ * `to`, pushed one ball diameter further along `from -> to`. See the call site:
+ * this is what makes the cue -> rail screen cover the contact itself rather
+ * than stopping at the cue ball's centre when it arrives.
+ */
+const extendPast = (from: Vec2, to: Vec2): Vec2 => {
+  const d = sub(to, from);
+  const len = mag(d);
+  if (len < 1e-9) return to;
+  const k = (len + 2 * BALL_RADIUS) / len;
+  return { x: from.x + d.x * k, y: from.y + d.y * k };
+};
+
 const kickPower = (length: number, tableLength: number): number =>
   Math.max(MIN_KICK_POWER, Math.min(MAX_KICK_POWER, 0.3 + (length / tableLength) * 0.22));
+
+/**
+ * Which legs of the kick are screened for obstructions.
+ *
+ *   `both-legs`        cue -> rail AND rail -> target. The strict pass.
+ *   `cue-to-rail-only` cue -> rail only. Used to top up a snookered position:
+ *                      the rail -> target leg is left to the real simulator,
+ *                      which resolves as a glancing miss many routes the
+ *                      conservative geometric check rejects outright.
+ *
+ * There is deliberately no "screen nothing" option. The cue -> rail leg is what
+ * makes a kick a kick; dropping it produces routes that hit the object ball
+ * first and are still labelled `safety-kick`.
+ */
+export type KickScreen = "both-legs" | "cue-to-rail-only";
 
 /**
  * Rail-first kicks at the nearest legal targets.
@@ -86,15 +127,18 @@ const kickPower = (length: number, tableLength: number): number =>
  * same reflection principle `candidates.ts` uses for bank shots, applied to the
  * cue ball rather than to the object ball.
  *
- * `clearPathsOnly=false` drops the obstruction check, which is how the caller
- * degrades gracefully in a fully snookered position rather than returning
- * nothing.
+ * The cue -> rail screen is unconditional. `isPathClear` rejects a route whose
+ * centre line passes within a ball diameter (+4 mm) of any other live ball, and
+ * a kick carries no side or top spin at ≤ 0.7 power, so a route that survives
+ * it reaches the cushion without touching a ball. That is the whole of the
+ * rail-first guarantee, and it is now a property of the generator rather than
+ * of which pass happened to produce the kick.
  */
 export const generateSafetyKicks = (
   balls: Ball[],
   table: Table,
   targets: number[],
-  clearPathsOnly = true,
+  screen: KickScreen = "both-legs",
 ): SafetyKick[] => {
   const cue = balls.find((b) => b.id === CUE_ID);
   if (!cue || cue.pocketed) return [];
@@ -112,9 +156,21 @@ export const generateSafetyKicks = (
       const mirror = mirrorAcross(t.pos, table, side);
       const railPoint = railCrossing(cuePos, mirror, table, side);
       if (!railPoint) continue;
-      if (clearPathsOnly) {
-        const skip = new Set([CUE_ID]);
-        if (!isPathClear(cuePos, railPoint, live, skip)) continue;
+      // Leg 1, always. `skip` holds only the cue ball, so the TARGET is a
+      // blocker here — a target sitting between the cue and the rail point is
+      // exactly the case that turned a "kick" into a straight pot.
+      //
+      // The segment is extended one ball diameter PAST the rail point.
+      // `isPathClear` ignores balls whose projection falls beyond the segment
+      // end, and a ball hugging the cushion just past the rail point is hit by
+      // the cue on the way in, before the cue's own cushion contact registers —
+      // measured as every one of the 46 kicks that survived the un-extended
+      // check and still struck a ball first. Physically the extension is just
+      // the cue ball's own width: anything whose centre is within 2R of the
+      // contact point is in the way of the contact.
+      const skip = new Set([CUE_ID]);
+      if (!isPathClear(cuePos, extendPast(cuePos, railPoint), live, skip)) continue;
+      if (screen === "both-legs") {
         skip.add(t.id);
         if (!isPathClear(railPoint, t.pos, live, skip)) continue;
       }
@@ -146,16 +202,21 @@ export const pickSafety = (
   simulate: Simulator,
   budget: number = SAFETY_SIM_BUDGET,
 ): SafetyResult => {
-  // Clear-path kicks first, then top up with obstructed ones. The geometric
-  // obstruction check is conservative — it rejects a route whose *centre line*
-  // passes within a ball diameter of another ball, which the real simulator
-  // often resolves as a glancing miss — so in a tight snooker the filtered set
-  // can be small or empty while a genuinely legal route exists. Simulating the
-  // top-ups costs nothing extra: the budget below is what bounds the work, and
-  // the filtered candidates are still tried first.
-  const clear = generateSafetyKicks(state.balls, table, targets, true);
+  // Fully-clear kicks first, then top up with ones whose RAIL -> TARGET leg is
+  // obstructed. The geometric obstruction check is conservative — it rejects a
+  // route whose *centre line* passes within a ball diameter of another ball,
+  // which the real simulator often resolves as a glancing miss — so in a tight
+  // snooker the strict set can be small or empty while a genuinely legal route
+  // exists. Simulating the top-ups costs nothing extra: the budget below is
+  // what bounds the work, and the strict candidates are still tried first.
+  //
+  // The top-up pass used to drop BOTH obstruction checks. Dropping the second
+  // is the graceful degradation this comment describes; dropping the first
+  // produced kicks that never reached a cushion, which is a different shot with
+  // the same label.
+  const clear = generateSafetyKicks(state.balls, table, targets, "both-legs");
   const seen = new Set(clear.map((k) => `${k.target}:${k.cushion}`));
-  const topUp = generateSafetyKicks(state.balls, table, targets, false).filter(
+  const topUp = generateSafetyKicks(state.balls, table, targets, "cue-to-rail-only").filter(
     (k) => !seen.has(`${k.target}:${k.cushion}`),
   );
   let kicks = [...clear, ...topUp].slice(0, MAX_GENERATED);

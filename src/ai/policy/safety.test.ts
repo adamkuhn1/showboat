@@ -55,7 +55,12 @@ const asState = (balls: Ball[]): GameState => ({
   shotCount: 1,
 });
 
-const cfg = { ...defaultConfig, seed: 20260805, seedTimeoutMs: Infinity };
+const cfg = {
+  ...defaultConfig,
+  seed: 20260805,
+  seedTimeoutMs: Infinity,
+  searchTimeoutMs: Infinity,
+};
 
 /** Full live-path decision on a board, through the real search and policy. */
 const decide = (balls: Ball[], targets: number[], config = cfg, simulate: Simulator = simulateShotWasm) => {
@@ -228,7 +233,7 @@ describe("safety kick generation is bounded and rail-first by construction", () 
       makeBall(5, 0.7, 0.05),
       makeBall(6, -0.7, -0.05),
     ];
-    const kicks = generateSafetyKicks(crowded, table, [1, 2, 3, 4, 5, 6], false);
+    const kicks = generateSafetyKicks(crowded, table, [1, 2, 3, 4, 5, 6], "cue-to-rail-only");
     expect(kicks.length).toBeLessThanOrEqual(MAX_GENERATED);
     for (const k of kicks) {
       // Rail-first: the cue's first waypoint is a cushion, not the object ball.
@@ -248,4 +253,96 @@ describe("safety kick generation is bounded and rail-first by construction", () 
     expect(res.quality).toBe("none");
     expect(res.simsSpent).toBe(0);
   });
+
+  // B6. The module header says, without qualification, that a kick sends the
+  // CUE ball into a cushion FIRST. That was false for a measurable fraction of
+  // what `pickSafety` returned: the top-up generation pass dropped the
+  // obstruction check entirely, so a route with the target sitting between the
+  // cue and the rail point survived, simulated foul-free, and shipped labelled
+  // `safety-kick` and described to the visitor as "a safety off the cushion"
+  // while the cue in fact went straight at the ball — and potted it in most of
+  // those cases.
+  //
+  // Judged on what the SIMULATOR did, not on what the generator intended: the
+  // shot is executed through the real ruleset and its event log is read for a
+  // cue-cushion contact preceding the cue's first ball contact. That is the
+  // same test the cold review used to find the defect.
+  it("B6: no selected safety kick ever strikes a ball before a cushion", () => {
+    let seed = 20260806 >>> 0;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const between = (a: number, b: number) => a + rnd() * (b - a);
+    const hx = table.length / 2 - BALL_RADIUS;
+    const hy = table.width / 2 - BALL_RADIUS;
+
+    // Three families. The two rail-hug ones are adversarial on purpose: they
+    // put the target within a ball diameter of the cue's rail point, which is
+    // the geometry the un-extended obstruction check could not see.
+    const families = [
+      (): Ball[] => [
+        makeBall(CUE_ID, between(-hx, hx), between(-hy, hy)),
+        makeBall(1, between(-hx, hx), between(-hy, hy)),
+        makeBall(8, between(-hx, hx), between(-hy, hy)),
+      ],
+      (): Ball[] => {
+        const y = (rnd() < 0.5 ? 1 : -1) * (hy - between(0, 0.02));
+        const cx = between(-hx, hx);
+        return [
+          makeBall(CUE_ID, cx, y),
+          makeBall(1, cx + (rnd() < 0.5 ? 1 : -1) * between(0.06, 0.5), y + between(-0.01, 0.01)),
+          makeBall(8, between(-hx, hx), between(-hy, hy)),
+        ];
+      },
+      (): Ball[] => {
+        const x = (rnd() < 0.5 ? 1 : -1) * (hx - between(0, 0.02));
+        const cy = between(-hy, hy);
+        return [
+          makeBall(CUE_ID, x, cy),
+          makeBall(1, x + between(-0.01, 0.01), cy + (rnd() < 0.5 ? 1 : -1) * between(0.06, 0.4)),
+          makeBall(8, between(-hx, hx), between(-hy, hy)),
+        ];
+      },
+    ];
+    const overlapping = (b: Ball[]) => {
+      for (let i = 0; i < b.length; i++) {
+        for (let j = i + 1; j < b.length; j++) {
+          if (Math.hypot(b[i].pos.x - b[j].pos.x, b[i].pos.y - b[j].pos.y) < 2 * BALL_RADIUS + 1e-4) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    let boards = 0;
+    let kicks = 0;
+    const offenders: string[] = [];
+    while (boards < 300) {
+      const balls = families[boards % 3]();
+      if (overlapping(balls)) continue;
+      boards++;
+      const state = asState(balls);
+      // Forced onto the safety rung: an empty trick set with a legal target.
+      const d = selectTrickOnly([], [], { state, table, targets: [1], simulate: simulateShotWasm });
+      if (!d.shot) continue;
+      kicks++;
+      const report = takeShot(state, table, d.shot.action, simulateShotWasm);
+      const ev = report.sim.events;
+      const cushion = ev.findIndex((e) => e.kind === "ball-cushion" && e.balls.includes(CUE_ID));
+      const contact = ev.findIndex((e) => e.kind === "ball-ball" && e.balls.includes(CUE_ID));
+      const ballFirst = contact >= 0 && (cushion < 0 || contact < cushion);
+      if (ballFirst) {
+        offenders.push(
+          `${d.rung} cue=(${balls[0].pos.x.toFixed(3)},${balls[0].pos.y.toFixed(3)}) ` +
+            `target=(${balls[1].pos.x.toFixed(3)},${balls[1].pos.y.toFixed(3)})`,
+        );
+      }
+    }
+
+    // The rung has to still exist for the guarantee to be worth anything —
+    // "no bad kicks" is trivially satisfiable by generating none.
+    expect(kicks, "the safety rung must still produce shots").toBeGreaterThan(250);
+    expect(offenders, `${offenders.length} of ${kicks} kicks hit a ball before a cushion`).toEqual(
+      [],
+    );
+  }, 120_000);
 });
