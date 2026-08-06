@@ -26,11 +26,15 @@ const NUDGE = (0.25 * Math.PI) / 180;
 // Without this ratio, aiming/placement is measurably off on any window
 // narrower than the canvas's intrinsic width.
 const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
-  const canvas = e.currentTarget;
-  const rect = canvas.getBoundingClientRect();
+  const rect = e.currentTarget.getBoundingClientRect();
+  // Maps into the LOGICAL 900x500 space `computeView` works in — deliberately
+  // not `canvas.width / rect.width`. The backing store is `CANVAS_W * dpr`
+  // device pixels (see the resolution effect below), so that ratio would be
+  // 2x off on a retina display and every aim and cue-ball placement would land
+  // at half the intended offset.
   return {
-    x: (e.clientX - rect.left) * (canvas.width / rect.width),
-    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    x: (e.clientX - rect.left) * (CANVAS_W / rect.width),
+    y: (e.clientY - rect.top) * (CANVAS_H / rect.height),
   };
 };
 
@@ -136,9 +140,14 @@ export default function App() {
     });
   }, []);
 
+  // Last scene handed to `paintScene`, so a backing-store resize can repaint
+  // exactly what was on screen. Assigning canvas.width wipes the surface.
+  const lastSceneRef = useRef<Scene | null>(null);
+
   /** The one place anything reaches the canvas. */
   const paintScene = useCallback(
     (scene: Scene) => {
+      lastSceneRef.current = scene;
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
       render(ctx, scene.state, table, view);
@@ -161,6 +170,35 @@ export default function App() {
     },
     [table, view],
   );
+
+  // Backing-store resolution follows devicePixelRatio while every draw call
+  // keeps working in the fixed 900x500 logical space `computeView` was built
+  // for. Without this the table renders at half resolution on a retina display
+  // — visibly soft on the one surface a visitor is asked to study closely,
+  // while the rocket-lab canvas on the same page (rocket-lab/shared/canvas.ts)
+  // has always been scaled correctly. Capped at 2: beyond that the fill-rate
+  // cost is real and the visible gain is not.
+  //
+  // Re-applied on resize because moving a window between displays changes the
+  // ratio at runtime. Assigning width/height resets the context state and
+  // clears the surface, so the transform is re-set and the last scene repainted.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const applyResolution = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.round(CANVAS_W * dpr);
+      const h = Math.round(CANVAS_H * dpr);
+      if (canvas.width === w && canvas.height === h) return;
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (lastSceneRef.current) paintScene(lastSceneRef.current);
+    };
+    applyResolution();
+    window.addEventListener("resize", applyResolution);
+    return () => window.removeEventListener("resize", applyResolution);
+  }, [paintScene]);
 
   const commit = useCallback((report: ShotReport) => {
     setState(report.next);

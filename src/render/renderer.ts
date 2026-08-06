@@ -439,9 +439,17 @@ export const render = (
   // accumulated as permanent tan smears along the canvas edges for the life of
   // the page. Found in live Chrome QA (visible in
   // docs/repair/release-candidate/showboat/); invisible to the headless suites,
-  // which never rasterise. `clearRect` over the intrinsic canvas size is the
-  // correct scope: the CSS box may be smaller, but the drawing surface is not.
+  // which never rasterise.
+  //
+  // Cleared in DEVICE pixels, with the transform temporarily reset. The context
+  // carries a devicePixelRatio scale (see App.tsx), so `ctx.canvas.width` —
+  // which is in device pixels — must not be passed through it: on a 2x display
+  // that would clear a region four times the surface. Resetting first makes the
+  // clear exactly the drawing surface, whatever the ratio.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
   drawTable(ctx, table, v);
   for (const b of state.balls) drawBall(ctx, b, v);
 };

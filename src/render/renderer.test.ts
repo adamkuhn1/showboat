@@ -41,6 +41,7 @@ function recordingContext() {
     fill: noop("fill"),
     stroke: noop("stroke"),
     save: noop("save"),
+    setTransform: noop("setTransform"),
     restore: noop("restore"),
     translate: noop("translate"),
     rotate: noop("rotate"),
@@ -87,6 +88,33 @@ describe("render", () => {
       "clearRect",
     );
     expect(first!.args).toEqual([0, 0, CANVAS_W, CANVAS_H]);
+  });
+
+  // The context carries a devicePixelRatio scale (App.tsx sets the backing
+  // store to CANVAS_W * dpr and transforms by dpr so draws stay in logical
+  // space). `ctx.canvas.width` is in DEVICE pixels, so clearing through that
+  // transform would wipe dpr-times too large a region — harmless overdraw at
+  // 2x, but wrong, and it hides the real invariant. The clear must therefore
+  // happen with the transform reset, and must be restored afterwards so the
+  // rest of `render` still draws in logical coordinates.
+  it("clears in device space, with the transform reset and then restored", () => {
+    const { ctx, calls } = recordingContext();
+    const table = makeTable();
+    render(ctx, state, table, computeView(CANVAS_W, CANVAS_H, table));
+
+    const clearIdx = calls.findIndex((c) => c.fn === "clearRect");
+    const saveIdx = calls.findIndex((c) => c.fn === "save");
+    const resetIdx = calls.findIndex(
+      (c) => c.fn === "setTransform" && JSON.stringify(c.args) === JSON.stringify([1, 0, 0, 1, 0, 0]),
+    );
+    const restoreIdx = calls.findIndex((c) => c.fn === "restore");
+
+    expect(saveIdx, "no save before the clear").toBeGreaterThanOrEqual(0);
+    expect(resetIdx, "the transform was never reset to identity").toBeGreaterThanOrEqual(0);
+    expect(restoreIdx, "the transform was never restored").toBeGreaterThanOrEqual(0);
+    expect(saveIdx).toBeLessThan(resetIdx);
+    expect(resetIdx).toBeLessThan(clearIdx);
+    expect(clearIdx).toBeLessThan(restoreIdx);
   });
 
   it("clears using the canvas's intrinsic size, not a hard-coded one", () => {
