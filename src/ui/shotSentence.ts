@@ -47,13 +47,28 @@ const shortForm = (c: TracedCandidate): string =>
  * `lower-utility-than-selected` is a label the search applied; "strongest" only
  * chooses which of the losers to name, and the claim made about it — that the
  * chosen shot was taken over it — is true of every member of that set.
+ *
+ * `describedAs` is the short form of the shot being played. A loser that reads
+ * identically to it is skipped, because the generator routinely produces two
+ * banks on the same ball into different pockets and "Playing a bank on the 8,
+ * into the top-side pocket, over a bank on the 8" reads as the sentence naming
+ * itself. That was observed verbatim. The comparison stays as specific as it
+ * was — a *different* loser is named when one exists, and the clause is dropped
+ * when none does; the sentence is never made vaguer to hide the collision.
  */
-export function runnerUp(trace: DecisionTraceV1): TracedCandidate | null {
+export function runnerUp(
+  trace: DecisionTraceV1,
+  describedAs: string | null = null,
+): TracedCandidate | null {
   const losers = trace.candidates.filter(
     (c) => c.rejection === "lower-utility-than-selected" && c.physics !== null,
   );
   if (losers.length === 0) return null;
-  return losers.reduce((a, b) => ((b.physics?.strength ?? 0) > (a.physics?.strength ?? 0) ? b : a));
+  const strongest = (xs: TracedCandidate[]): TracedCandidate =>
+    xs.reduce((a, b) => ((b.physics?.strength ?? 0) > (a.physics?.strength ?? 0) ? b : a));
+  if (describedAs === null) return strongest(losers);
+  const distinct = losers.filter((c) => shortForm(c) !== describedAs);
+  return distinct.length === 0 ? null : strongest(distinct);
 }
 
 export interface ShotSentence {
@@ -74,7 +89,10 @@ export function shotSentence(trace: DecisionTraceV1): ShotSentence | null {
     : // A generated safety has no candidate row; it still has a real kind.
       `a ${KIND_LABEL[sel.kind] ?? sel.kind}`;
 
-  const over = runnerUp(trace);
+  // The chosen shot's own short form, so a loser that would print the same
+  // words is not named as the thing it lost to.
+  const chosenShort = chosen ? shortForm(chosen) : null;
+  const over = runnerUp(trace, chosenShort);
   const text =
     over && over.index !== sel.candidateIndex
       ? `Playing ${head}, over ${shortForm(over)}.`
@@ -101,7 +119,14 @@ export function rungText(trace: DecisionTraceV1): string | null {
     case "non-direct-safety":
       return "no trick was makeable here, so this is a safety off the cushion";
     case "forced-legal-contact":
-      return "the target is snookered; this is the shortest legal contact";
+      // Rung 5 is reached by two different states of knowledge, and saying
+      // "the shortest legal contact" for both asserted a legality nothing had
+      // established — on a shot that scratched in 94 % of an adversarial
+      // sample. `safetyQuality` is `pickSafety`'s own verdict and the sentence
+      // now follows it.
+      return sel.safetyQuality === "legal-contact-only"
+        ? "the target is snookered; this kick fouls, but it does reach a legal ball"
+        : "the target is snookered; nothing came back legal, so this is the shortest kick off the cushion";
     default:
       return null;
   }
