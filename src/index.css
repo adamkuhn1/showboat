@@ -124,6 +124,10 @@ h1::after {
   cursor: crosshair;
   max-width: 100%;
   display: block;
+  /* Aiming is a drag. Without this, a vertical drag on a touch device scrolls
+     the page instead — and inside the portfolio's 1150px iframe it scrolls the
+     portfolio, not the game. */
+  touch-action: none;
 }
 
 /* ── Status bar ──────────────────────────────────────────────────── */
@@ -157,48 +161,105 @@ h1::after {
   max-width: 60ch;
 }
 
-/* Ball-count dots in the status bar */
-.ball-dots {
+/* What is left on the table, set as a rack rather than as fifteen identical
+   telemetry dots with tooltips. Same data, read the way a player reads it. */
+.rack {
   display: flex;
-  gap: 3px;
+  gap: 2px;
   align-items: center;
 }
 
-.ball-dot {
-  width: 10px;
-  height: 10px;
+.rack-gap { width: 0.5rem; }
+
+.rack-ball {
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
   flex-shrink: 0;
+  color: #17110a;
+  background: #ddd2bb;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.28);
 }
 
-.ball-dot.pocketed {
-  opacity: 0.18;
-  border-style: dashed;
+/* A stripe is a band, so it is drawn as one. */
+.rack-ball.stripe {
+  background: linear-gradient(
+    to bottom,
+    #a8977c 0 26%,
+    #ece3d0 26% 74%,
+    #a8977c 74% 100%
+  );
+}
+
+.rack-ball.down {
+  background: none;
+  color: rgba(163,154,134,0.5);
+  box-shadow: inset 0 0 0 1px rgba(163,154,134,0.28);
 }
 
 /* ── Controls ────────────────────────────────────────────────────── */
 
+/* Power and the stroke read first; the two spin dials the opponent provably
+   never uses (candidates.ts emits sideSpin: 0, topSpin: 0 on every candidate
+   it generates) are real human expressiveness and stay — one tier down, where
+   they no longer outrank the reasoning panel. */
 .controls {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem 1.2rem;
-  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
   width: 100%;
   max-width: 760px;
 }
+
+.primary-row {
+  display: flex;
+  gap: 1.2rem;
+  align-items: end;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.primary-row .power { flex: 1 1 220px; max-width: 320px; }
+
+.fine {
+  display: flex;
+  gap: 0.9rem;
+  align-items: end;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  opacity: 0.82;
+}
+
+.fine label { flex: 0 1 170px; }
 
 .controls label {
   display: flex;
   flex-direction: column;
   gap: 0.28rem;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   color: var(--muted);
 }
 
 .controls label span { color: var(--text); font-weight: 600; }
 
 .controls input[type="range"] { width: 100%; accent-color: var(--text); cursor: pointer; }
+
+.nudge {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.nudge:hover:not(:disabled) { border-color: var(--text); background: transparent; color: var(--text); }
 
 input[type="checkbox"] {
   accent-color: var(--text);
@@ -208,11 +269,8 @@ input[type="checkbox"] {
 .buttons {
   display: flex;
   gap: 0.55rem;
-  grid-column: 1 / -1;
   justify-content: center;
   align-items: center;
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--border);
 }
 
 /* Printed-rule buttons, not filled pills: a border and an invert on hover, no
@@ -241,25 +299,6 @@ button.secondary {
 }
 button.secondary:hover:not(:disabled) { border-color: var(--text); }
 
-/* `.controls label` is a column; this one is a row. The !important overrides
-   that used to undo a monospace-uppercase inheritance here are gone with the
-   recipe itself. */
-.toggle {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.32rem;
-  cursor: pointer;
-}
-
-.hint {
-  font-size: 0.78rem;
-  color: var(--muted);
-  max-width: 72ch;
-  text-align: center;
-  line-height: 1.5;
-}
-
 /* ── Overlay panel ───────────────────────────────────────────────── */
 /* Mounted only once there is a real decision to show (see App.tsx) — before
    the opponent's first turn, nothing renders here at all. */
@@ -286,18 +325,64 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   color: var(--text);
 }
 
-.overlay-meta {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin-left: 0.5rem;
+/* The state slot. Exactly one of five strings ever lands here, and each names
+   something that actually happened: evaluating · neural ranking · physics
+   verification · selected · ready to shoot. No spinner, no counter, no bar —
+   the reveal on the felt is the progress indicator, and it is a reveal of a
+   finished set, not a simulation of work in flight. */
+.overlay-state {
+  margin: 0 0 0.15rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--accent);
+  filter: brightness(1.55);
+  line-height: 1.4;
 }
 
-.overlay-empty {
-  font-size: 0.9rem;
+/* The one state that is genuinely in flight while it is shown. */
+.overlay-state--live { color: var(--muted); filter: none; }
+
+.overlay-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
   color: var(--muted);
-  margin: 0;
-  line-height: 1.5;
+  opacity: 0.8;
 }
+
+.overlay-actions {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0.7rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.linkish {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.linkish:hover:not(:disabled) { color: var(--text); border-bottom-color: var(--text); background: none; }
+
+.overlay-compare {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.overlay-compare.is-disabled { opacity: 0.45; cursor: not-allowed; }
 
 .overlay-warn {
   font-size: 0.85rem;
@@ -374,4 +459,43 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   margin-top: 1.2rem;
   padding: 0.55rem 2rem;
   font-size: 0.88rem;
+}
+
+/* ── Viewport and input adaptation ───────────────────────────────── */
+/* There were no @media rules in this file at all before this block, which is
+   the other half of why the game was unplayable on a phone: no pointer
+   handlers, and no layout that acknowledged a narrow screen. */
+
+/* Below the embed width the panel and the table stop competing for one row. */
+@media (max-width: 1100px) {
+  .layout { flex-direction: column; align-items: center; }
+  .overlay { flex: 1 1 auto; width: 100%; max-width: 900px; }
+}
+
+@media (max-width: 620px) {
+  .shell { padding: 1rem 0.6rem 1.5rem; }
+  .topbar { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .status { justify-content: flex-start; }
+  .rack-ball { width: 13px; height: 13px; font-size: 8px; }
+  .fine { gap: 0.6rem; }
+  .fine label { flex: 1 1 130px; }
+}
+
+/* A coarse pointer cannot resolve a cut shot by drag alone, so the fine-aim
+   nudges get real hit targets rather than the desktop's compact ones. */
+@media (pointer: coarse) {
+  .nudge { padding: 0.55rem 1.1rem; font-size: 0.85rem; }
+  .table { cursor: default; }
+}
+
+/* The ball motion is content and stays at full speed. The staggered reveal and
+   the dimming choreography are presentation, and go: `buildSchedule` collapses
+   the reasoning sequence to one static resolved frame, and the transitions
+   below stop animating. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
