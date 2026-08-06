@@ -276,47 +276,7 @@ export const drawAim = (
   }
 
   // --- Cue stick (unclipped — can extend into rail area) ---
-  const pullback = 10 + power * 30;
-  const tipX = cx - dx * (r + pullback);
-  const tipY = cy - dy * (r + pullback);
-  const stickLen = 190;
-  const buttX = tipX - dx * stickLen;
-  const buttY = tipY - dy * stickLen;
-
-  const stickGrad = ctx.createLinearGradient(tipX, tipY, buttX, buttY);
-  stickGrad.addColorStop(0,    "#8a6030");
-  stickGrad.addColorStop(0.06, "#c09050");
-  stickGrad.addColorStop(0.45, "#d4aa70");
-  stickGrad.addColorStop(0.88, "#b08040");
-  stickGrad.addColorStop(1,    "#3e2008");
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(tipX - perX * 2.5, tipY - perY * 2.5);
-  ctx.lineTo(tipX + perX * 2.5, tipY + perY * 2.5);
-  ctx.lineTo(buttX + perX * 7.5, buttY + perY * 7.5);
-  ctx.lineTo(buttX - perX * 7.5, buttY - perY * 7.5);
-  ctx.closePath();
-  ctx.fillStyle = stickGrad;
-  ctx.fill();
-
-  // Wrap band near butt
-  const wrapT = 0.80;
-  const wrapX = tipX - dx * stickLen * wrapT;
-  const wrapY = tipY - dy * stickLen * wrapT;
-  ctx.strokeStyle = "rgba(40,20,5,0.55)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(wrapX - perX * 6.8, wrapY - perY * 6.8);
-  ctx.lineTo(wrapX + perX * 6.8, wrapY + perY * 6.8);
-  ctx.stroke();
-
-  // Chalk tip
-  ctx.fillStyle = "#5890b0";
-  ctx.beginPath();
-  ctx.arc(tipX, tipY, 2.8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawStick(ctx, cx, cy, dx, dy, perX, perY, r + 10 + power * 30);
 
   // --- Aim ghost line (clipped to table+rail, cut at ghost ball) ---
   let lineLen = (0.25 + power * 0.75) * tableDiag(v);
@@ -373,6 +333,98 @@ export const drawAim = (
 };
 
 const tableDiag = (v: ViewTransform): number => Math.max(140, v.scale * 0.6);
+
+/**
+ * The cue stick itself. `tipGap` is the distance in pixels from the cue ball's
+ * centre back to the tip along the aim direction, so callers control the
+ * backswing without duplicating the stick's geometry.
+ */
+function drawStick(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+  perX: number,
+  perY: number,
+  tipGap: number,
+): void {
+  const tipX = cx - dx * tipGap;
+  const tipY = cy - dy * tipGap;
+  const stickLen = 190;
+  const buttX = tipX - dx * stickLen;
+  const buttY = tipY - dy * stickLen;
+
+  const stickGrad = ctx.createLinearGradient(tipX, tipY, buttX, buttY);
+  stickGrad.addColorStop(0, "#8a6030");
+  stickGrad.addColorStop(0.06, "#c09050");
+  stickGrad.addColorStop(0.45, "#d4aa70");
+  stickGrad.addColorStop(0.88, "#b08040");
+  stickGrad.addColorStop(1, "#3e2008");
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(tipX - perX * 2.5, tipY - perY * 2.5);
+  ctx.lineTo(tipX + perX * 2.5, tipY + perY * 2.5);
+  ctx.lineTo(buttX + perX * 7.5, buttY + perY * 7.5);
+  ctx.lineTo(buttX - perX * 7.5, buttY - perY * 7.5);
+  ctx.closePath();
+  ctx.fillStyle = stickGrad;
+  ctx.fill();
+
+  // Wrap band near butt
+  const wrapT = 0.8;
+  const wrapX = tipX - dx * stickLen * wrapT;
+  const wrapY = tipY - dy * stickLen * wrapT;
+  ctx.strokeStyle = "rgba(40,20,5,0.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(wrapX - perX * 6.8, wrapY - perY * 6.8);
+  ctx.lineTo(wrapX + perX * 6.8, wrapY + perY * 6.8);
+  ctx.stroke();
+
+  // Chalk tip
+  ctx.fillStyle = "#5890b0";
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 2.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * The opponent's stroke. The AI's shot used to begin with the cue ball already
+ * moving, which reads as teleportation and severs the chosen line from the
+ * ball. This is a backswing and a strike over `progress` 0..1, with the
+ * direction and the length of the backswing taken from the real `CueAction`
+ * the search chose — nothing here is invented, and the balls do not move until
+ * it finishes.
+ */
+export const drawCueStroke = (
+  ctx: CanvasRenderingContext2D,
+  cue: Ball,
+  phi: number,
+  power: number,
+  progress: number,
+  v: ViewTransform,
+): void => {
+  if (cue.pocketed) return;
+  const [cx, cy] = toPx(cue.pos.x, cue.pos.y, v);
+  const r = BALL_RADIUS * v.scale;
+  const dx = Math.cos(phi);
+  const dy = -Math.sin(phi);
+
+  // Backswing scales with the real power: a soft safety is a short stroke.
+  const rest = 10;
+  const back = 18 + power * 46;
+  const t = Math.max(0, Math.min(1, progress));
+  // Draw back over the first 45%, then accelerate through the ball.
+  const gap =
+    t < 0.45
+      ? rest + (back - rest) * (t / 0.45)
+      : back * Math.pow(1 - (t - 0.45) / 0.55, 2);
+
+  drawStick(ctx, cx, cy, dx, dy, dy, -dx, r + gap);
+};
 
 export const render = (
   ctx: CanvasRenderingContext2D,

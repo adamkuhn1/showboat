@@ -3,9 +3,9 @@
 // vocabulary the algorithm hasn't earned.
 //
 // It renders the real component with `react-dom/server` against a real
-// `SearchResult` produced by the real physics search on a fixed board — not a
+// `DecisionTraceV1` built from a real physics search on a fixed board — not a
 // hand-written stub — so a number appearing in the markup that isn't in the
-// search result is a test failure.
+// trace is a test failure.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -19,10 +19,10 @@ import { makeBall } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
 import { initPhysics } from "../physics/wasm-bridge";
 import { generateCandidates } from "../ai/candidates";
-// `searchWithLegacySelection`, not `searchCandidates`: the search no longer
-// chooses a shot (selection moved to `ai/policy/trickOnly.ts`), and this suite
-// needs a `SearchResult` with a `best` to render the panel against.
-import { searchWithLegacySelection, defaultConfig, type SearchResult } from "../ai/shotSearch";
+import { searchCandidates, defaultConfig } from "../ai/shotSearch";
+import { adaptSearchResult } from "./planner/adaptTrace";
+import { REASONING_STATES, STATE_LABEL } from "../render/presentation";
+import type { DecisionTraceV1 } from "../ai/trace/contract";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -55,184 +55,200 @@ const BANNED = [
 const textOf = (markup: string) =>
   markup
     .replace(/<[^>]*>/g, " ")
-    .replace(/&[a-z]+;/g, " ")
+    .replace(/&[a-z#0-9]+;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-let classical: SearchResult;
-let hybridLike: SearchResult;
+const idleCompare = { available: true, useNeural: true, onChange: () => {} };
+
+const panel = (trace: DecisionTraceV1 | null, over: Partial<Parameters<typeof OverlayPanel>[0]> = {}) =>
+  textOf(
+    renderToStaticMarkup(
+      <OverlayPanel
+        trace={trace}
+        state="READY"
+        planning={false}
+        modelLoading={false}
+        badge={{ mode: "classical" }}
+        showSkipHint={false}
+        showDisclosure={false}
+        compare={idleCompare}
+        replay={null}
+        {...over}
+      />,
+    ),
+  );
+
+let classical: DecisionTraceV1;
+let hybridLike: DecisionTraceV1;
 
 describe("reasoning overlay: only real values, only earned vocabulary", () => {
   beforeAll(async () => {
     await initPhysics(readFileSync(join(APP_ROOT, "src/wasm/showboat_physics_bg.wasm")));
     const candidates = generateCandidates(board, table, targets);
     const config = { ...defaultConfig, simulations: 40, seed: 99 };
-    classical = searchWithLegacySelection(candidates, board, targets, config);
+    const ctx = {
+      generated: candidates,
+      player: 1 as const,
+      shotIndex: 3,
+      legalTargets: targets,
+      totalMs: 812,
+      hashVerified: false,
+    };
+    classical = adaptSearchResult(searchCandidates(candidates, board, targets, config), ctx);
     // A synthetic-but-well-formed prior: this test is about rendering, and the
     // real model is exercised end to end in src/ai/neural/hybrid.test.ts.
     const scores = candidates.map((_, i) => ((i * 37) % 101) / 100);
-    hybridLike = searchWithLegacySelection(candidates, board, targets, {
-      ...config,
-      prior: { scores, keepTop: 10, source: "showboat-ranker-phase2d", inferenceMs: 1.234 },
-    });
+    hybridLike = adaptSearchResult(
+      searchCandidates(candidates, board, targets, {
+        ...config,
+        prior: { scores, keepTop: 10, source: "showboat-ranker-phase2d", inferenceMs: 1.234 },
+      }),
+      ctx,
+    );
   }, 60_000);
 
   it("classical mode says 'Physics search' and shows no model claims", () => {
-    const markup = renderToStaticMarkup(
-      <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
-    );
-    const text = textOf(markup);
+    const text = panel(classical);
     expect(text).toContain("Physics search");
-    expect(text).not.toContain("Neural");
+    expect(text).not.toContain("Neural evaluator");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 
-  it("the trace's own counts stay internally consistent, even though the panel no longer prints them", () => {
-    // The raw search counters (candidates generated / physics-verified /
-    // scratched in sim / physics calls spent) were deleted from the panel —
-    // they're process telemetry that pushed the actually-interesting ranked
-    // list below the fold — but the underlying trace data they came from is
-    // untouched, and is still the thing the rendered candidate list must
-    // agree with. This test now checks the data model directly rather than
-    // the markup, since the markup is where those fields used to be.
-    const t = classical.trace!;
-    expect(t.physicsVerified).toBe(t.verifiedIndices.length);
-    // `legalPots` counts pots among ALL verified candidates, which can exceed
-    // the pots visible in `stats`: a candidate can be simulated (and pot) and
-    // then be dropped for `visits === 0` when the budget ran out before its
-    // rollout, so >= is the correct relationship here.
-    expect(t.legalPots).toBeGreaterThanOrEqual(
-      classical.stats.filter((s) => s.potsTarget).length,
-    );
+  it("the state slot only ever holds one of the five labels", () => {
+    for (const state of REASONING_STATES) {
+      const text = panel(classical, { state });
+      expect(text).toContain(STATE_LABEL[state]);
+      // No other reasoning label leaks in at the same time.
+      for (const other of REASONING_STATES) {
+        if (other === state) continue;
+        if (STATE_LABEL[other].includes(STATE_LABEL[state])) continue;
+        expect(text).not.toContain(STATE_LABEL[other]);
+      }
+    }
   });
 
-  it("the deleted raw search counters do not reappear in the panel", () => {
-    // Regression guard for the DELETE_LIST item (D4): these four numbers, and
-    // the neural-mode-only "learned ranking" / "pruned before physics" rows
-    // that used to sit alongside them, are gone. The reasoning that's left —
-    // mode, per-candidate strength/rank, the chosen shot, the selection
-    // sentence — is exactly what's asserted as present in the other tests
-    // in this file.
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
-      ),
-    );
+  it("outside the reasoning sequence there is no state label at all", () => {
+    const text = panel(classical, { state: "SETTLED" });
+    for (const state of REASONING_STATES) expect(text).not.toContain(STATE_LABEL[state]);
+  });
+
+  it("every number rendered appears in the trace", () => {
+    // The replacement for the old "at most three numbers from an allowlist"
+    // rule, which was a fact about one revision of the copy. This one is
+    // stronger and survives a richer panel: any digit on screen must be
+    // traceable to a value the search produced.
+    const text = panel(classical, { state: "READY" });
+    const numbers = text.match(/\d+(\.\d+)?/g) ?? [];
+    const fromTrace = new Set<string>();
+    for (const c of classical.candidates) {
+      fromTrace.add(String(c.target));
+      fromTrace.add(String(c.potId));
+    }
+    if (classical.selected) {
+      fromTrace.add(classical.selected.reliabilityThreshold.toFixed(2));
+      fromTrace.add(String(classical.selected.qualifyingTricks));
+    }
+    for (const n of numbers) expect(fromTrace).toContain(n);
+  });
+
+  it("the deleted raw search counters do not reappear", () => {
+    const text = panel(classical);
     expect(text).not.toContain("candidates generated");
     expect(text).not.toContain("physics-verified");
     expect(text).not.toContain("scratched in sim");
     expect(text).not.toContain("physics calls spent");
     expect(text).not.toContain("learned ranking");
     expect(text).not.toContain("pruned before physics");
-  });
-
-  it("the ranked candidate table is gone, and nothing numeric replaced it", () => {
-    // The panel used to print, per candidate, a model-internal enumeration
-    // index (`#6` beside an already-sorted list), a calibrated prior and a
-    // physics strength as two bare decimals set flush together, and a bar.
-    // Every value was real; none of it was legible without a key. The one
-    // number left is the count of candidates that survived verification,
-    // which is a sentence.
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
-      ),
-    );
     expect(text).not.toContain("make est.");
     expect(text).not.toMatch(/#\d/);
-    for (const s of classical.stats.slice(0, 8)) {
-      if (s.priorScore !== undefined) expect(text).not.toContain(s.priorScore.toFixed(2));
-    }
-    // Every number left in the panel is inside a sentence and is one of
-    // exactly three things: how many candidates survived, which ball is being
-    // played, and the reliability bar named in the selection reason. No bare
-    // decimal, no rank, no bar.
-    const allowed = new Set(
-      [
-        String(classical.stats.length),
-        String(classical.best!.candidate.target),
-        "0.50",
-      ],
-    );
-    const numbers = text.match(/\d+(\.\d+)?/g) ?? [];
-    expect(numbers.length).toBeLessThanOrEqual(3);
-    for (const n of numbers) expect(allowed).toContain(n);
   });
 
   it("the chosen shot is named in words a player can read without a key", () => {
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
-      ),
-    );
-    const best = classical.best!;
-    // Kind and pocket come from the readable tables, not the raw enum keys
-    // (`BL` / `SB` / `ST`) the panel used to print.
-    expect(text).toContain(`on the ${best.candidate.target}`);
+    const text = panel(classical);
+    const sel = classical.selected!;
+    const chosen = classical.candidates.find((c) => c.index === sel.candidateIndex)!;
+    expect(text).toContain(`on the ${chosen.target}`);
     expect(text).toMatch(/into the (bottom|top)-(left|right|side) pocket/);
     expect(text).not.toMatch(/\bBL\b|\bSB\b|\bST\b|\bTR\b|\bTL\b|\bBR\b/);
   });
 
+  it("the 'over …' clause only ever names a candidate the trace says lost", () => {
+    const text = panel(classical);
+    const m = text.match(/over a [a-z- ]+ on the (\d+)/);
+    if (m) {
+      const named = Number(m[1]);
+      const losers = classical.candidates.filter(
+        (c) => c.rejection === "lower-utility-than-selected",
+      );
+      expect(losers.some((c) => c.target === named)).toBe(true);
+    }
+  });
+
   it("neural mode adds only fields the prior really supplied", () => {
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel result={hybridLike} searching={false} badge={{ mode: "neural-hybrid", hashVerified: true }} />,
-      ),
-    );
+    const text = panel(hybridLike, {
+      badge: { mode: "neural-hybrid", hashVerified: true },
+    });
     expect(text).toContain("Neural evaluator and physics search");
-    // Neural mode changes the panel's title, because the title names what
-    // decided. It adds no per-candidate readout: the prior's calibrated
-    // estimates are real decision data, but printed eight-to-a-panel as bare
-    // decimals they were a scoreboard, not reasoning.
-    const withPrior = hybridLike.stats.slice(0, 8).filter((s) => s.priorScore !== undefined);
+    // The prior's calibrated estimates are real decision data, but printed
+    // eight-to-a-panel as bare decimals they were a scoreboard, not reasoning.
+    const withPrior = hybridLike.candidates.filter((c) => c.neural !== null);
     expect(withPrior.length).toBeGreaterThan(0);
-    for (const s of withPrior) expect(text).not.toContain(s.priorScore!.toFixed(2));
+    for (const c of withPrior) expect(text).not.toContain(c.neural!.score.toFixed(2));
     expect(text).not.toContain("showboat-ranker-phase2d");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 
   it("a fallback decision is never dressed up as a neural one", () => {
-    const fallback: SearchResult = {
+    const fallback: DecisionTraceV1 = {
       ...classical,
-      trace: { ...classical.trace!, mode: "neural-hybrid", fallbackReason: "model unavailable: HTTP 404" },
+      mode: "neural-hybrid",
+      fallback: {
+        from: "neural-hybrid",
+        to: "classical-trick-only",
+        cause: "model-absent",
+        detail: "model unavailable: HTTP 404",
+      },
     };
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel
-          result={fallback}
-          searching={false}
-          badge={{ mode: "neural-hybrid", fallbackReason: "model unavailable: HTTP 404" }}
-        />,
-      ),
-    );
+    const text = panel(fallback, {
+      badge: { mode: "neural-hybrid", fallbackReason: "model unavailable: HTTP 404" },
+    });
     expect(text).toContain("Physics search");
     expect(text).not.toContain("Neural evaluator");
-    expect(text).not.toContain("learned ranking");
     expect(text).toContain("classical fallback");
     expect(text).toContain("HTTP 404");
   });
 
-  it("the selection sentence is the one the selection function emitted", () => {
-    const text = textOf(
-      renderToStaticMarkup(
-        <OverlayPanel result={classical} searching={false} badge={{ mode: "classical" }} />,
-      ),
-    );
-    const reason = classical.trace!.selectionReason!;
+  it("the selection sentence is the ladder's own rung, not prose about it", () => {
+    const text = panel(classical);
+    const rung = classical.selected!.rung;
     const expected: Record<string, string> = {
-      "trick-qualified": "the trick cleared the 0.50 reliability bar",
-      "no-trick-qualified": "no trick cleared the reliability bar",
-      "no-verified-pot": "nothing potted in simulation",
-      none: "no candidate survived physics verification",
+      "trick-qualified": "reliability bar",
+      "trick-below-threshold": "still pots in simulation",
+      "trick-attempt-no-verified-pot": "best legal attempt",
+      "non-direct-safety": "safety off the cushion",
+      "forced-legal-contact": "shortest legal contact",
     };
-    expect(text).toContain(expected[reason]);
+    expect(text).toContain(expected[rung]);
+  });
+
+  it("the searching state is reachable and says so honestly", () => {
+    expect(panel(null, { state: "IDLE", planning: true })).toContain("searching…");
+    expect(panel(null, { state: "IDLE", planning: true, modelLoading: true })).toContain(
+      "loading the trained model…",
+    );
   });
 
   it("the component source contains no progress animation and no banned words", () => {
     const src = readFileSync(join(__dirname, "OverlayPanel.tsx"), "utf8");
     // Strip the file's own explanatory header, which necessarily *names* the
-    // words it forbids.
-    const body = src.slice(src.indexOf("const isTrickShot"));
+    // words it forbids. (This used to slice from a marker that no longer
+    // existed in the file, so `indexOf` returned -1 and the assertion ran
+    // against the last character of the source — i.e. it checked nothing.)
+    const marker = "export interface ModelBadge";
+    const start = src.indexOf(marker);
+    expect(start, "header marker not found — the source guard would be vacuous").toBeGreaterThan(0);
+    const body = src.slice(start);
     for (const re of BANNED) expect(body).not.toMatch(re);
     expect(body).not.toContain("thinking-dots");
     expect(body).not.toContain("setTimeout");

@@ -25,6 +25,7 @@ import type { NeuralCandidateEvaluator } from "../ai/neural/evaluator";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_SRC = readFileSync(join(__dirname, "../App.tsx"), "utf8");
+const TURN_SRC = readFileSync(join(__dirname, "useAiTurn.ts"), "utf8");
 
 /** An evaluator that is present but not yet ready — the mid-download state. */
 const notReady = { isReady: () => false } as unknown as NeuralCandidateEvaluator;
@@ -38,24 +39,78 @@ const ready = {
 describe("toggling neural ranking mid-turn cannot wedge the opponent", () => {
   it("the AI-turn effect does not depend on `useNeural`", () => {
     // The dependency array of the AI-turn effect, matched by the comment that
-    // documents the two intentional exclusions immediately above it.
-    const deps = APP_SRC.match(/\}, \[state, vsAI, engineReady[^\]]*\]\);/);
+    // documents the two intentional exclusions immediately above it. The
+    // effect moved out of App.tsx into its own hook; the invariant did not.
+    const deps = TURN_SRC.match(/\}, \[state, active[^\]]*\]\);/);
     expect(deps, "AI-turn effect dependency array not found").not.toBeNull();
     expect(deps![0]).not.toContain("useNeural");
   });
 
   it("the effect still reads the live toggle value, through its ref", () => {
-    expect(APP_SRC).toContain("useNeuralRef.current");
-    expect(APP_SRC).toContain("getBrain(useNeuralRef.current)");
+    expect(TURN_SRC).toContain("useNeuralRef.current");
+    expect(TURN_SRC).toMatch(/planner\.plan\([^)]*useNeuralRef\.current/s);
   });
 
   it("the exclusion is documented at the dependency array, not just done", () => {
     // A lint autofix or a well-meaning cleanup will re-add `useNeural` unless
     // the reason is written where the change would be made.
-    const idx = APP_SRC.search(/\}, \[state, vsAI, engineReady[^\]]*\]\);/);
-    const preamble = APP_SRC.slice(Math.max(0, idx - 1200), idx);
+    const idx = TURN_SRC.search(/\}, \[state, active[^\]]*\]\);/);
+    const preamble = TURN_SRC.slice(Math.max(0, idx - 1400), idx);
     expect(preamble).toContain("useNeural");
     expect(preamble).toMatch(/wedge/i);
+  });
+});
+
+describe("the opponent thinks off the main thread", () => {
+  // The page froze 3.4-5.0 s on every opponent turn (measured rAF gap), which
+  // is also why the "searching…" state had never once been painted. If the
+  // plan ever moves back onto the main thread, both defects return together.
+  it("App.tsx never calls a brain or a search directly", () => {
+    expect(APP_SRC).not.toContain("getBrain(");
+    expect(APP_SRC).not.toContain("searchCandidates(");
+  });
+
+  it("the turn goes through the planner, which owns the worker", () => {
+    expect(TURN_SRC).toContain("usePlanner");
+    const worker = readFileSync(join(__dirname, "planner/usePlanner.ts"), "utf8");
+    expect(worker).toContain('new URL("./planWorker.ts", import.meta.url)');
+    expect(worker).toContain('type: "module"');
+  });
+
+  it("the worker and the inline fallback run the same function", () => {
+    const workerSrc = readFileSync(join(__dirname, "planner/planWorker.ts"), "utf8");
+    const hookSrc = readFileSync(join(__dirname, "planner/usePlanner.ts"), "utf8");
+    expect(workerSrc).toContain("planTurnTraced");
+    expect(hookSrc).toContain("planTurnTraced");
+  });
+
+  it("the searching state is painted before the search starts, not after", () => {
+    const idx = TURN_SRC.indexOf('setPhase("searching")');
+    expect(idx).toBeGreaterThan(0);
+    expect(TURN_SRC.indexOf("planner.plan(")).toBeGreaterThan(idx);
+  });
+});
+
+describe("Escape still leaves the focused embed", () => {
+  // d269d9b made this frame take the focus the shell offers, so space-to-shoot
+  // works inside the embed. That also means the parent's Escape listener never
+  // fires, and the shell's "Esc to leave" stopped being true. Both keys have
+  // to work; dropping window.focus() would only trade one for the other.
+  it("space is handled in the frame", () => {
+    expect(APP_SRC).toMatch(/e\.code === "Space"/);
+    expect(APP_SRC).toContain("shootRef.current()");
+  });
+
+  it("the frame still accepts the focus the shell hands it", () => {
+    expect(APP_SRC).toContain("window.focus()");
+  });
+
+  it("Escape is handed back up to the shell over the embed protocol", () => {
+    expect(APP_SRC).toMatch(/e\.code === "Escape"/);
+    const idx = APP_SRC.indexOf('e.code === "Escape"');
+    const block = APP_SRC.slice(idx, idx + 900);
+    expect(block).toContain('postToShell("releaseFocus")');
+    expect(APP_SRC).toContain('source: "portfolio-embed"');
   });
 });
 
