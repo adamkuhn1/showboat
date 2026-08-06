@@ -146,14 +146,38 @@ export const pickSafety = (
   simulate: Simulator,
   budget: number = SAFETY_SIM_BUDGET,
 ): SafetyResult => {
-  let kicks = generateSafetyKicks(state.balls, table, targets, true);
-  if (kicks.length === 0) {
-    // Snookered: drop the obstruction filter rather than return nothing. A
-    // blocked kick that makes contact with the wrong ball is a foul; returning
-    // no shot at all would wedge the turn, which is worse.
-    kicks = generateSafetyKicks(state.balls, table, targets, false);
-  }
+  // Clear-path kicks first, then top up with obstructed ones. The geometric
+  // obstruction check is conservative — it rejects a route whose *centre line*
+  // passes within a ball diameter of another ball, which the real simulator
+  // often resolves as a glancing miss — so in a tight snooker the filtered set
+  // can be small or empty while a genuinely legal route exists. Simulating the
+  // top-ups costs nothing extra: the budget below is what bounds the work, and
+  // the filtered candidates are still tried first.
+  const clear = generateSafetyKicks(state.balls, table, targets, true);
+  const seen = new Set(clear.map((k) => `${k.target}:${k.cushion}`));
+  const topUp = generateSafetyKicks(state.balls, table, targets, false).filter(
+    (k) => !seen.has(`${k.target}:${k.cushion}`),
+  );
+  let kicks = [...clear, ...topUp].slice(0, MAX_GENERATED);
   if (kicks.length === 0) return { kick: null, quality: "none", simsSpent: 0 };
+
+  // Power variants for the shortest routes, if the geometry left budget spare.
+  //
+  // The mirror construction assumes a perfectly elastic cushion. Real cushions
+  // have restitution below 1 and compress the rebound angle, so a geometrically
+  // exact kick can still miss — measured on fixture `blockedMid`, where every
+  // one of the four single-rail routes came back "no contact". The error grows
+  // with impact speed, so re-trying the shortest route at minimum power is a
+  // physically motivated second attempt rather than a random retry. It costs
+  // nothing: it only fills simulation slots the generated set left unused.
+  const cap = Math.min(budget, SAFETY_SIM_BUDGET);
+  if (kicks.length < cap) {
+    const variants = kicks
+      .slice(0, cap - kicks.length)
+      .map((k) => ({ ...k, action: { ...k.action, power: MIN_KICK_POWER } }))
+      .filter((k) => k.action.power !== kicks[0].action.power);
+    kicks = [...kicks, ...variants].slice(0, MAX_GENERATED);
+  }
 
   const allowed = Math.max(0, Math.min(budget, SAFETY_SIM_BUDGET, kicks.length));
   let simsSpent = 0;
