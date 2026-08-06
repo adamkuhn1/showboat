@@ -23,7 +23,7 @@ import { makeGame, takeShot, placeCueBall, cloneState } from "../src/game/game";
 import { initPhysics, simulateShotWasm, separateOverlaps } from "../src/physics/wasm-bridge";
 import { generateCandidates, type Candidate, type CandidateKind } from "../src/ai/candidates";
 import {
-  searchCandidates,
+  searchWithLegacySelection,
   isLegalPot,
   defaultConfig,
   DEFAULT_PRIOR_KEEP_TOP,
@@ -130,7 +130,7 @@ function classicalSelfPlayStates(table: Table, rng: () => number, maxShots: numb
     seen.push(cloneState(state));
     const targets = legalTargets(state, state.turn);
     if (targets.length === 0) break;
-    const res = searchCandidates(
+    const res = searchWithLegacySelection(
       generateCandidates(state.balls, table, targets),
       state.balls,
       targets,
@@ -271,7 +271,7 @@ export async function runDecision(
     neuralEncodeMs = scored.encodeMs;
     neuralRunMs = scored.runMs;
     const manifest = evaluator.getManifest()!;
-    result = searchCandidates(candidates, fixture.balls, fixture.targets, {
+    result = searchWithLegacySelection(candidates, fixture.balls, fixture.targets, {
       ...config,
       prior: {
         scores: applyPerKindFloor(scored.scores, candidates, perKindFloor),
@@ -282,7 +282,7 @@ export async function runDecision(
       },
     });
   } else {
-    result = searchCandidates(candidates, fixture.balls, fixture.targets, config);
+    result = searchWithLegacySelection(candidates, fixture.balls, fixture.targets, config);
   }
   const decisionMs = performance.now() - t0;
 
@@ -432,7 +432,7 @@ export async function playGame(
     if (isHybrid) {
       const scored = await evaluator.score(state.balls, table, candidates);
       const manifest = evaluator.getManifest()!;
-      result = searchCandidates(candidates, state.balls, targets, {
+      result = searchWithLegacySelection(candidates, state.balls, targets, {
         ...config,
         seed: config.seed + shot,
         prior: scored
@@ -445,7 +445,7 @@ export async function playGame(
           : undefined,
       });
     } else {
-      result = searchCandidates(candidates, state.balls, targets, {
+      result = searchWithLegacySelection(candidates, state.balls, targets, {
         ...config,
         seed: config.seed + shot,
       });

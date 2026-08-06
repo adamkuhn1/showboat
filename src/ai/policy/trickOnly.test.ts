@@ -186,7 +186,10 @@ describe("A. a direct is available and better, and still cannot be selected", ()
   it("A5: fuzz — 10,000 random stat lists never select a direct and never throw", () => {
     // A cheap deterministic PRNG; the point is coverage of the partition over
     // arbitrary kind/strength/potsTarget/verified combinations, not physics.
-    let s = 61903477 >>> 0;
+    // Not the pre-registered evaluation seed (61903477); that value stays
+    // reserved for the one evaluation run so it cannot be mistaken for a
+    // fixture this suite has already seen.
+    let s = 7788991 >>> 0;
     const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
     const kinds: CandidateKind[] = ["direct", "bank", "double-bank", "combo", "rail-combo"];
     // A stub simulator so the safety rung is exercised without 10,000 real
