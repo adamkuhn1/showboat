@@ -117,9 +117,6 @@ export default function App() {
     neuralEvaluator.preflight().then((pre) => {
       if (pre.ok) {
         setModelAvailable(true);
-        idle(() => {
-          void neuralEvaluator.load();
-        });
       } else {
         console.error(
           `[showboat] ranker artifact failed preflight: ${pre.reason} — the neural mode will be ` +
@@ -205,6 +202,19 @@ export default function App() {
           : { mode: "classical", fallbackReason: s.reason ?? "not loaded" },
       ),
   });
+
+  // Build the ranker session in the worker as soon as the page is idle, rather
+  // than on the first opponent turn. The session lives in the worker and
+  // nowhere else — the ~27 MB onnxruntime-web runtime is never instantiated on
+  // this thread. Deliberately inside the app, not the shell: the portfolio
+  // never mounts this iframe until the visitor presses "Play a rack", so a
+  // visitor who scrolls past the section downloads none of it.
+  useEffect(() => {
+    if (!modelAvailable) return;
+    idle(() => ai.warmModel());
+    // `ai.warmModel` is stable; re-running on every render would re-post it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelAvailable]);
 
   // The opponent's turn owns the canvas while it runs; this is the idle paint.
   useEffect(() => {

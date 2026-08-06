@@ -75,6 +75,37 @@ export interface AiTurnView {
   skip: () => void;
   replayDecision: () => void;
   replayShot: () => void;
+  /** Build the ranker session in the worker before the first turn needs it. */
+  warmModel: () => void;
+}
+
+/**
+ * What the opponent-turn effect should do this render.
+ *
+ * Pulled out as a pure function because the interesting part is not the
+ * planning, it is the re-entrancy: the effect re-triggers on every `state`
+ * change, including the ones it causes itself, and getting that wrong hangs
+ * the turn rather than failing it. Testable without a DOM.
+ */
+export type TurnAction = "idle" | "place-cue" | "plan";
+
+export function nextTurnAction(a: {
+  active: boolean;
+  turn: PlayerId;
+  aiPlayer: PlayerId;
+  winner: PlayerId | null;
+  phase: Phase;
+  ballInHand: GameState["ballInHand"];
+}): TurnAction {
+  if (!a.active) return "idle";
+  if (a.turn !== a.aiPlayer || a.winner !== null) return "idle";
+  // `phase !== "aiming"` is the re-entrancy guard: a turn already in flight
+  // has set the phase, and a second run must not start a second plan.
+  if (a.phase !== "aiming") return "idle";
+  // Placement is its own render. See the comment at the call site for what
+  // happens when it is not.
+  if (a.ballInHand !== false) return "place-cue";
+  return "plan";
 }
 
 /** Real-time playback: the WASM waypoints at true simulation seconds. */
@@ -118,6 +149,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   const skipRef = useRef(false);
   const rafRef = useRef(0);
   const cancelRef = useRef(false);
+  const runIdRef = useRef(0);
   /** Retained so both replays are free: no search re-runs, ever. */
   const lastTurnRef = useRef<{ pre: GameState; planned: PlannedTurn; marks: ContactMark[] } | null>(
     null,
@@ -227,22 +259,39 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   // ---- the turn ---------------------------------------------------------
   useEffect(() => {
-    if (!active) return;
-    if (state.turn !== aiPlayer || state.winner !== null || args.phase !== "aiming") return;
+    const action = nextTurnAction({
+      active,
+      turn: state.turn,
+      aiPlayer,
+      winner: state.winner,
+      phase: args.phase,
+      ballInHand: state.ballInHand,
+    });
+    if (action === "idle") return;
 
-    cancelRef.current = false;
-
-    // Ball-in-hand for the opponent: place the cue at a simple legal spot
-    // before searching. This `setState` re-triggers the effect; the re-run sees
-    // `ballInHand === false` and skips the block, and its cleanup cancels this
-    // run — which is correct, because the re-run does the real work.
-    let planState = state;
-    if (state.ballInHand !== false) {
-      planState = placeCueBall(state, -table.length / 4, 0);
-      setState(planState);
+    if (action === "place-cue") {
+      // Ball-in-hand for the opponent: place the cue at a simple legal spot,
+      // and RETURN. The `setState` re-triggers this effect, and the re-run —
+      // which now sees `ballInHand === false` — does the planning.
+      //
+      // Doing both in one pass is what hung the turn: the effect body's
+      // `setState` and the async body's `setPhase("searching")` land in the
+      // same React batch, so the re-run hit the `phase !== "aiming"` guard and
+      // bailed, while this run had already been torn down by the re-render.
+      // Nothing was left to finish the turn and the panel sat on "searching…"
+      // forever. Reproduced in Chrome against a production build: every AI
+      // ball-in-hand turn, indefinitely.
+      setState(placeCueBall(state, -table.length / 4, 0));
+      return;
     }
 
+    const planState = state;
+    cancelRef.current = false;
+    const runId = ++runIdRef.current;
     let disposed = false;
+    /** Has a newer run taken ownership of the presentation? */
+    const superseded = () => runIdRef.current !== runId;
+
     void (async () => {
       // Painted BEFORE the search starts, and it now actually paints: the
       // planning happens in a worker, so React gets to commit this frame. It
@@ -273,7 +322,17 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
         setPhase("aiming");
         return;
       }
-      if (disposed || cancelRef.current) return;
+      // A torn-down run must never leave the panel stuck on "searching…". If a
+      // newer run has taken over it owns those flags; if nothing has, this run
+      // is responsible for putting them back.
+      if (disposed || cancelRef.current) {
+        if (!superseded()) {
+          setPlanning(false);
+          setModelLoading(false);
+          setBusy(false);
+        }
+        return;
+      }
 
       const marks = contactMarks(planned.report.sim);
       lastTurnRef.current = { pre: planState, planned, marks };
@@ -357,5 +416,6 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     skip,
     replayDecision,
     replayShot,
+    warmModel: planner.warm,
   };
 }

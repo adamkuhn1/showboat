@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { GameState, PlayerId } from "../../game/state";
 import type { Table } from "../../physics/table";
-import type { PlanRequest, PlanResponse } from "./protocol";
+import type { PlanRequest, PlanResponse, WarmRequest } from "./protocol";
 import { planTurnTraced, type ModelStatus, type PlannedTurn } from "./plan";
 
 export interface PlanCallbacks {
@@ -17,9 +17,18 @@ export interface Planner {
     useNeural: boolean,
     cb?: PlanCallbacks,
   ) => Promise<PlannedTurn>;
+  /** Build the ranker session while the page is idle. */
+  warm: () => void;
   /** False when the worker could not be constructed and planning is inline. */
   offMainThread: () => boolean;
 }
+
+/**
+ * Absolute URL of the model directory, resolved against the document. It has
+ * to be absolute: inside the worker a relative path resolves against the
+ * worker's own `/assets/planWorker-*.js` URL, not the page.
+ */
+const modelDirUrl = (): string => new URL("model/ranker", document.baseURI).href;
 
 /**
  * Owns the planning worker.
@@ -75,6 +84,7 @@ export function usePlanner(): Planner {
           { onModelLoadStart: cb?.onModelLoading, onModelStatus: cb?.onModelStatus },
         );
       }
+      const modelDir = modelDirUrl();
 
       const id = nextId.current++;
       return new Promise<PlannedTurn>((resolve, reject) => {
@@ -102,13 +112,20 @@ export function usePlanner(): Planner {
         };
         worker.addEventListener("message", onMessage);
         worker.addEventListener("error", onError);
-        const req: PlanRequest = { type: "plan", id, state, table, player, useNeural };
+        const req: PlanRequest = { type: "plan", id, state, table, player, useNeural, modelDir };
         worker.postMessage(req);
       });
     },
     [ensureWorker],
   );
 
+  const warm = useCallback(() => {
+    const worker = ensureWorker();
+    if (!worker) return;
+    const req: WarmRequest = { type: "warm", modelDir: modelDirUrl() };
+    worker.postMessage(req);
+  }, [ensureWorker]);
+
   const offMainThread = useCallback(() => workerRef.current !== null, []);
-  return { plan, offMainThread };
+  return { plan, warm, offMainThread };
 }

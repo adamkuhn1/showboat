@@ -334,6 +334,12 @@ export interface RouteRender {
   reason: RejectionReason | null;
   /** True for the single route resolving this instant, during VERIFYING. */
   resolving: boolean;
+  /**
+   * True for the route physics most recently finished with. This is the one
+   * whose rejection reason is captioned on the felt, so each elimination is
+   * legible as it happens rather than as an undifferentiated fade.
+   */
+  justResolved: boolean;
 }
 
 export interface PresentationFrame {
@@ -382,6 +388,7 @@ export function frameAt(
     role: c.index === selectedIndex ? "selected" : "candidate",
     reason: null,
     resolving: false,
+    justResolved: false,
   });
 
   const routes: RouteRender[] = [];
@@ -427,16 +434,20 @@ export function frameAt(
       const resolvedCount = Math.floor(place.progress * verified.length);
       const resolvedIds = new Set(verified.slice(0, resolvedCount).map((c) => c.index));
       const resolvingId = verified[resolvedCount]?.index ?? null;
+      const justResolvedId = resolvedCount > 0 ? verified[resolvedCount - 1].index : null;
 
       for (const c of cands) {
         const r = base(c);
         if (c.physics === null) {
+          // Never simulated. Still drawn — it was considered — but at the
+          // weight of a memory, so the routes under real examination read.
           r.role = c.rejection === null ? "candidate" : "rejected";
           r.reason = c.rejection;
-          r.weight = 0.18;
-          r.alpha = 0.12;
+          r.weight = 0.15;
+          r.alpha = 0.07;
         } else if (resolvedIds.has(c.index)) {
           const ok = c.physics.legalPot && !c.physics.scratched;
+          r.justResolved = c.index === justResolvedId;
           r.role = ok ? "verified" : "rejected";
           r.reason = ok ? null : c.rejection;
           // Real search effort: visit share is what the bandit actually spent.
@@ -473,8 +484,8 @@ export function frameAt(
         } else {
           r.role = "rejected";
           r.reason = c.rejection;
-          r.weight = 0.18;
-          r.alpha = 0.12 * (1 - place.progress);
+          r.weight = 0.15;
+          r.alpha = 0.07 * (1 - place.progress);
         }
         routes.push(r);
       }
@@ -504,6 +515,7 @@ export function frameAt(
           role: "selected",
           reason: null,
           resolving: false,
+          justResolved: false,
         });
       }
       break;

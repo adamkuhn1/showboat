@@ -90,9 +90,15 @@ function drawRoute(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransfo
   // connection to the white ball. `candidate.path` starts at the OBJECT ball;
   // the cue's own travel is [cue ball, ghost-ball contact point] and is what
   // makes the picture tell the shot.
-  if (r.cueLeg) {
+  // Drawn only for routes that are still in play. Forty cue legs radiating
+  // from one point is a starburst, not a picture — during VERIFYING the dead
+  // routes keep their object leg (so you can see what was considered) and lose
+  // the leg that says "the cue would go here".
+  const showCueLeg =
+    r.role === "selected" || r.role === "verified" || r.resolving || r.role === "candidate";
+  if (r.cueLeg && showCueLeg) {
     const cuePts = r.cueLeg.map((p) => toPx(p, v));
-    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.75})`;
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.7})`;
     ctx.lineWidth = 1 + r.weight * 1.6;
     ctx.setLineDash([2, 5]);
     strokePartial(ctx, cuePts, r.reveal);
@@ -130,16 +136,22 @@ function drawReason(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransf
   const pts = r.objectLeg;
   if (pts.length === 0) return;
   const anchor: Vec2 = pts[Math.floor(pts.length / 2)];
-  const [x, y] = toPx(anchor, v);
+  const [ax, ay] = toPx(anchor, v);
   ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const text = REJECTION_TEXT[r.reason];
   const w = ctx.measureText(text).width;
+  // Keep the caption on the cloth: anchored at a route midpoint it otherwise
+  // runs over the rail and reads as a truncated word. `INSET` is the rail
+  // width drawn by `drawTable`, plus a little air.
+  const INSET = 30;
+  const x = Math.min(Math.max(ax + 6, INSET), ctx.canvas.width - w - INSET);
+  const y = Math.min(Math.max(ay, INSET), ctx.canvas.height - INSET);
   ctx.fillStyle = `rgba(8, 12, 10, ${0.62 * r.alpha + 0.2})`;
-  ctx.fillRect(x + 6, y - 8, w + 8, 16);
+  ctx.fillRect(x, y - 8, w + 8, 16);
   ctx.fillStyle = `rgba(${ROLE_STROKE.rejected}, ${Math.max(0.55, r.alpha)})`;
-  ctx.fillText(text, x + 10, y + 1);
+  ctx.fillText(text, x + 4, y + 1);
 }
 
 /**
@@ -199,16 +211,18 @@ export function drawPresentation(
   const ordered = [...frame.routes].sort((a, b) => a.alpha - b.alpha);
   for (const r of ordered) drawRoute(ctx, r, v);
 
-  const resolving = frame.routes.find((r) => r.resolving);
-  if (resolving) drawReason(ctx, resolving, v);
-  else {
-    // During SELECTED the losers dim out; show the reason for the strongest
-    // one still visible, so the beat is legible rather than a blanket fade.
-    const loudestRejected = frame.routes
-      .filter((r) => r.role === "rejected" && r.reason !== null && r.alpha > 0.2)
-      .sort((a, b) => b.alpha - a.alpha)[0];
-    if (loudestRejected && frame.state === "SELECTED") drawReason(ctx, loudestRejected, v);
-  }
+  // One caption at a time. During VERIFYING it belongs to the candidate the
+  // physics just finished with, so each elimination reads as it happens;
+  // during SELECTED it belongs to the loudest survivor that lost, so the
+  // dimming is a reason and not a blanket fade.
+  const captioned =
+    frame.routes.find((r) => r.justResolved && r.reason !== null) ??
+    (frame.state === "SELECTED"
+      ? frame.routes
+          .filter((r) => r.role === "rejected" && r.reason !== null && r.alpha > 0.2)
+          .sort((a, b) => b.alpha - a.alpha)[0]
+      : undefined);
+  if (captioned) drawReason(ctx, captioned, v);
 
   if (frame.showContacts && marks.length > 0) drawContactMarks(ctx, marks, v, simTime);
   ctx.restore();

@@ -71,6 +71,12 @@ export function OverlayPanel({
   const sentence = trace ? shotSentence(trace) : null;
   const rung = trace ? rungText(trace) : null;
   const label = isReasoning(state) ? STATE_LABEL[state] : null;
+  const decided =
+    state === "SELECTED" ||
+    state === "READY" ||
+    state === "STROKE" ||
+    state === "SHOOTING" ||
+    state === "SETTLED";
   const fallbackDetail = trace?.fallback?.detail ?? badge.fallbackReason ?? null;
 
   return (
@@ -94,8 +100,12 @@ export function OverlayPanel({
         <p className="overlay-warn">classical fallback: {fallbackDetail}</p>
       )}
 
-      {sentence && <p className="overlay-line chosen-why">{sentence.text}</p>}
-      {rung && <p className="overlay-line overlay-reason">{rung}</p>}
+      {/* The plan is written when it has been made, not before. Showing it
+          during ENUMERATING would give the answer away and make the SELECTED
+          beat meaningless — the sequence would be narrating a conclusion the
+          panel had already printed. */}
+      {decided && sentence && <p className="overlay-line chosen-why">{sentence.text}</p>}
+      {decided && rung && <p className="overlay-line overlay-reason">{rung}</p>}
 
       {showDisclosure && trace && (
         <p className="overlay-note">

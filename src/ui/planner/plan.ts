@@ -20,7 +20,7 @@ import { CUE_ID } from "../../game/rack";
 import { legalTargets } from "../../ai/turn";
 import { generateCandidates } from "../../ai/candidates";
 import { getBrain } from "../../ai/brain";
-import { neuralEvaluator } from "../../ai/neural/evaluator";
+import { NeuralCandidateEvaluator, neuralEvaluator } from "../../ai/neural/evaluator";
 import type { DecisionTraceV1 } from "../../ai/trace/contract";
 import { adaptSearchResult } from "./adaptTrace";
 
@@ -29,8 +29,44 @@ export interface PlanInput {
   table: Table;
   player: PlayerId;
   useNeural: boolean;
+  /**
+   * ABSOLUTE URL of the model directory.
+   *
+   * The evaluator's default is the relative `model/ranker`, which resolves
+   * against the *worker's* own URL inside a worker — `/assets/planWorker-*.js`
+   * — so `model/ranker/manifest.json` became `/assets/model/ranker/...`, the
+   * dev/preview server answered with index.html, and the ranker failed
+   * preflight with "returned HTML". The page resolves the real URL against
+   * `document.baseURI` (which honours Vite's `base: "./"` and the portfolio's
+   * embed path) and hands it over.
+   */
+  modelDir?: string;
   /** Bytes for the physics WASM, when the host cannot use Vite's `?url`. */
   wasmSource?: BufferSource | string;
+}
+
+// One evaluator per realm. The page keeps its own for `preflight()` (a small
+// JSON + sha256 check that pulls no ONNX runtime); this one is the worker's,
+// and it is the only place the ~27 MB onnxruntime-web runtime is instantiated.
+let scopedEvaluator: NeuralCandidateEvaluator | null = null;
+let scopedDir: string | null = null;
+
+function evaluatorFor(modelDir: string | undefined): NeuralCandidateEvaluator {
+  if (!modelDir) return neuralEvaluator;
+  if (!scopedEvaluator || scopedDir !== modelDir) {
+    scopedEvaluator = new NeuralCandidateEvaluator(modelDir);
+    scopedDir = modelDir;
+  }
+  return scopedEvaluator;
+}
+
+/**
+ * Create the ranker session ahead of the first opponent turn. Called when the
+ * page is idle, so the download and the session build are paid for while the
+ * human is lining up a break rather than in the middle of a turn.
+ */
+export async function warmModel(modelDir: string): Promise<void> {
+  await evaluatorFor(modelDir).load();
 }
 
 export interface ModelStatus {
@@ -57,12 +93,13 @@ export async function planTurnTraced(
 ): Promise<PlannedTurn> {
   await initPhysics(input.wasmSource);
 
+  const evaluator = evaluatorFor(input.modelDir);
   let hashVerified = false;
   if (input.useNeural) {
-    if (!neuralEvaluator.isReady()) hooks.onModelLoadStart?.();
+    if (!evaluator.isReady()) hooks.onModelLoadStart?.();
     // First neural turn pays for the onnxruntime-web session; idempotent after.
     // A failure is reported, never silently downgraded.
-    const loaded = await neuralEvaluator.load();
+    const loaded = await evaluator.load();
     if (loaded.status === "ready") {
       hashVerified = loaded.hashVerified;
       hooks.onModelStatus?.({ status: "ready", reason: null, hashVerified });
@@ -81,7 +118,7 @@ export async function planTurnTraced(
   // ordered list over directly and this call goes away with the adapter.
   const generated = generateCandidates(input.state.balls, input.table, targets);
 
-  const brain = getBrain(input.useNeural);
+  const brain = getBrain(input.useNeural, evaluator);
   const startedAt = performance.now();
   const result = await brain.plan(input.state, input.table, input.player);
   const totalMs = performance.now() - startedAt;
