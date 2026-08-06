@@ -18,14 +18,21 @@
 // (the page still needs it for `takeShot` and the waypoint capture), which is
 // one compile of a small module.
 
-import { planTurnTraced } from "./plan";
-import type { PlanRequest, PlanResponse } from "./protocol";
+import { planTurnTraced, warmModel } from "./plan";
+import type { PlanResponse, WorkerRequest } from "./protocol";
 
 const post = (msg: PlanResponse) => (self as unknown as Worker).postMessage(msg);
 
-self.onmessage = async (e: MessageEvent<PlanRequest>) => {
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const req = e.data;
-  if (!req || req.type !== "plan") return;
+  if (!req) return;
+  if (req.type === "warm") {
+    // Failure here is not fatal and is already logged by the evaluator; the
+    // first real turn will try again and report honestly either way.
+    await warmModel(req.modelDir).catch(() => {});
+    return;
+  }
+  if (req.type !== "plan") return;
   try {
     const planned = await planTurnTraced(
       {
@@ -33,6 +40,7 @@ self.onmessage = async (e: MessageEvent<PlanRequest>) => {
         table: req.table,
         player: req.player,
         useNeural: req.useNeural,
+        modelDir: req.modelDir,
       },
       {
         onModelLoadStart: () => post({ type: "model-loading", id: req.id }),

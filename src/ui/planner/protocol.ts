@@ -15,7 +15,17 @@ export interface PlanRequest {
   table: Table;
   player: PlayerId;
   useNeural: boolean;
+  /** Absolute; see `PlanInput.modelDir` for why it cannot be relative here. */
+  modelDir: string;
 }
+
+/** Build the ranker session before the first turn needs it. */
+export interface WarmRequest {
+  type: "warm";
+  modelDir: string;
+}
+
+export type WorkerRequest = PlanRequest | WarmRequest;
 
 export type PlanResponse =
   /** The model session is being created — the first neural turn pays for it. */

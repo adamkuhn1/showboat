@@ -318,6 +318,15 @@ describe("what gets drawn", () => {
     expect(seen.every((i) => t.candidates[i].physics !== null)).toBe(true);
   });
 
+  it("at most one route is captioned at a time, and only ones physics finished with", () => {
+    const seg = schedule.segments.find((s) => s.state === "VERIFYING")!;
+    for (let ms = seg.startMs; ms < seg.startMs + seg.durationMs; ms += 7) {
+      const just = frameAt(t, schedule, ms, geom).routes.filter((r) => r.justResolved);
+      expect(just.length).toBeLessThanOrEqual(1);
+      for (const r of just) expect(t.candidates[r.index].physics).not.toBeNull();
+    }
+  });
+
   it("the label slot is empty outside the reasoning sequence", () => {
     expect(frameAt(t, schedule, schedule.strokeEndMs + 1, geom).label).toBeNull();
   });
