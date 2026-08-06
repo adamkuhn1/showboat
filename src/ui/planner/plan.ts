@@ -18,7 +18,8 @@ import { type ShotReport } from "../../game/game";
 import { getBrain } from "../../ai/brain";
 import { executeAiShot } from "../../ai/policy/execute";
 import { NeuralCandidateEvaluator, neuralEvaluator } from "../../ai/neural/evaluator";
-import type { DecisionTraceV1 } from "../../ai/trace/contract";
+import type { DecisionTraceV1, FallbackTrace } from "../../ai/trace/contract";
+import { Deadline, DECISION_DEADLINE_MS, MODEL_LOAD_DEADLINE_MS } from "../../ai/deadline";
 
 export interface PlanInput {
   state: GameState;
@@ -39,6 +40,24 @@ export interface PlanInput {
   modelDir?: string;
   /** Bytes for the physics WASM, when the host cannot use Vite's `?url`. */
   wasmSource?: BufferSource | string;
+  /**
+   * A reason the HOST already knows the neural path cannot be used — the one
+   * failure this function cannot observe from in here, because it is this
+   * function's own worker having stopped answering. Recorded verbatim as the
+   * decision's `fallback`, so a main-thread rescue plan is labelled as one
+   * rather than passed off as an ordinary classical turn.
+   */
+  neuralUnavailable?: FallbackTrace;
+  /**
+   * TEST SEAM. Use this evaluator instead of the per-realm one.
+   *
+   * The realm's evaluator is a module singleton by design (one artifact, one
+   * session), which makes a test that needs a *stalled* one unable to clean up
+   * after itself. Never set in production: neither `planWorker.ts` nor
+   * `usePlanner.ts` passes it, and `PlanRequest` has no field for it, so it
+   * cannot cross the worker boundary.
+   */
+  evaluatorOverride?: NeuralCandidateEvaluator;
 }
 
 // One evaluator per realm. The page keeps its own for `preflight()` (a small
@@ -117,19 +136,49 @@ export async function planTurnTraced(
 ): Promise<PlannedTurn> {
   await initPhysics(input.wasmSource);
 
-  const evaluator = evaluatorFor(input.modelDir);
-  let hashVerified = false;
-  if (input.useNeural) {
+  const evaluator = input.evaluatorOverride ?? evaluatorFor(input.modelDir);
+  // A reason the neural path cannot be used, if there is one. Starts as
+  // whatever the host already knows; the load below can add to it.
+  let unavailable: FallbackTrace | null = input.neuralUnavailable ?? null;
+
+  if (input.useNeural && unavailable === null) {
     if (!evaluator.isReady()) hooks.onModelLoadStart?.();
     // First neural turn pays for the onnxruntime-web session; idempotent after.
-    // A failure is reported, never silently downgraded.
-    const loaded = await evaluator.load();
-    if (loaded.status === "ready") {
-      hashVerified = loaded.hashVerified;
-      hooks.onModelStatus?.({ status: "ready", reason: null, hashVerified });
+    // A failure is reported, never silently downgraded — and now a load that
+    // does not fail but does not *return* is bounded too. `InferenceSession
+    // .create()` and both artifact fetches live under this await; before the
+    // race, a stall in any of them left this promise pending forever and the
+    // panel wedged at "searching…" with no Shoot button and no way back short
+    // of a page reload.
+    //
+    // The losing promise is abandoned, not cancelled — a `fetch` with no
+    // `AbortSignal` cannot be. That is deliberate rather than sloppy: the
+    // evaluator caches its own result, so a load that finally lands after the
+    // deadline is picked up by the NEXT turn instead of being thrown away.
+    const raced = await Deadline.in(MODEL_LOAD_DEADLINE_MS).race(evaluator.load());
+    if (!raced.ok) {
+      const detail = `the trained model did not finish loading within ${Math.round(raced.waitedMs)} ms`;
+      console.error(`[showboat] ${detail}; this turn falls back to the physics search`);
+      unavailable = {
+        from: "neural-hybrid",
+        to: "classical-trick-only",
+        cause: "model-load-timeout",
+        detail,
+      };
+      hooks.onModelStatus?.({ status: "failed", reason: detail, hashVerified: false });
+    } else if (raced.value.status === "ready") {
+      hooks.onModelStatus?.({
+        status: "ready",
+        reason: null,
+        hashVerified: raced.value.hashVerified,
+      });
     } else {
-      console.error(`[showboat] neural ranker failed to load: ${loaded.reason}`);
-      hooks.onModelStatus?.({ status: "failed", reason: loaded.reason, hashVerified: false });
+      console.error(`[showboat] neural ranker failed to load: ${raced.value.reason}`);
+      hooks.onModelStatus?.({
+        status: "failed",
+        reason: raced.value.reason,
+        hashVerified: false,
+      });
     }
   }
 
@@ -141,8 +190,21 @@ export async function planTurnTraced(
   // synthesise a trace from `SearchResult` through `planner/adaptTrace.ts`;
   // both are gone. The renderer now reads the trace the decision was actually
   // made with, not a reconstruction of it.
-  const brain = getBrain(input.useNeural, evaluator);
-  const result = await brain.plan(input.state, input.table, input.player);
+  //
+  // The decision gets its own clock, started here rather than at the top of the
+  // function, so a slow-but-successful model load does not eat the search's
+  // budget. `brain.plan` folds whatever is left into `searchTimeoutMs`, which
+  // bounds the seeding AND refinement loops — the second of which had no
+  // wall-clock guard at all and is why a turn could run past 5 s having already
+  // hit the seed timeout.
+  const brain = getBrain(input.useNeural, evaluator, unavailable);
+  const result = await brain.plan(
+    input.state,
+    input.table,
+    input.player,
+    undefined,
+    Deadline.in(DECISION_DEADLINE_MS),
+  );
   const trace = result.decision;
 
   // `result.shot` is a branded `PlayableShot` — the only thing in the codebase

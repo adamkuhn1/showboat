@@ -43,7 +43,7 @@ import {
   trickUtility,
 } from "../shotSearch";
 import { TRICK_KINDS, type SelectionRung, type TrickKind } from "../trace/contract";
-import { pickSafety, SAFETY_SIM_BUDGET, type SafetyKick } from "./safety";
+import { pickSafety, SAFETY_SIM_BUDGET, type SafetyKick, type SafetyResult } from "./safety";
 
 export { TRICK_KINDS, type TrickKind };
 
@@ -118,6 +118,16 @@ export interface TrickOnlyDecision {
   safetySimsSpent: number;
   /** Set iff `shot.kind === "safety-kick"`. Geometry for the trace. */
   safety: SafetyKick | null;
+  /**
+   * `pickSafety`'s own verdict on how far verification got. Set iff `safety` is.
+   *
+   * The rung below collapses four qualities onto two rungs, which is the right
+   * shape for the *ladder* and the wrong shape for the *description*: rung 5 is
+   * reached both by a kick that made legal contact and fouled, and by a kick
+   * nothing verified at all. This field is what keeps that distinction, and it
+   * used to be dropped one line before the trace was built.
+   */
+  safetyQuality: SafetyResult["quality"] | null;
 }
 
 /** The one function that stamps the brand. Nothing else can. */
@@ -192,6 +202,7 @@ export function selectTrickOnly(
     excludedIndices,
     safetySimsSpent: 0,
     safety: null,
+    safetyQuality: null,
   });
 
   // Rung 1 — the shot Showboat wants: a trick that pots and is reliable.
@@ -233,6 +244,7 @@ export function selectTrickOnly(
       excludedIndices,
       safetySimsSpent: safety.simsSpent,
       safety: null,
+      safetyQuality: safety.quality,
     };
   }
   const rung: SelectionRung =
@@ -254,6 +266,7 @@ export function selectTrickOnly(
     excludedIndices,
     safetySimsSpent: safety.simsSpent,
     safety: safety.kick,
+    safetyQuality: safety.quality,
   };
 }
 

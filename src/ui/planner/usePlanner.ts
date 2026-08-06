@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { GameState, PlayerId } from "../../game/state";
 import type { Table } from "../../physics/table";
-import type { PlanRequest, PlanResponse, WarmRequest } from "./protocol";
+import type { WarmRequest } from "./protocol";
 import { planTurnTraced, type ModelStatus, type PlannedTurn } from "./plan";
+import { planViaWorker } from "./workerPlan";
 
 export interface PlanCallbacks {
   onModelLoading?: () => void;
@@ -84,35 +85,24 @@ export function usePlanner(): Planner {
           { onModelLoadStart: cb?.onModelLoading, onModelStatus: cb?.onModelStatus },
         );
       }
-      const modelDir = modelDirUrl();
-
-      const id = nextId.current++;
-      return new Promise<PlannedTurn>((resolve, reject) => {
-        const onMessage = (e: MessageEvent<PlanResponse>) => {
-          const msg = e.data;
-          if (!msg || msg.id !== id) return;
-          if (msg.type === "model-loading") return cb?.onModelLoading?.();
-          if (msg.type === "model-status") {
-            return cb?.onModelStatus?.({
-              status: msg.ok ? "ready" : "failed",
-              reason: msg.reason,
-              hashVerified: msg.hashVerified,
-            });
-          }
-          worker.removeEventListener("message", onMessage);
-          worker.removeEventListener("error", onError);
-          if (msg.type === "done") resolve(msg.planned);
-          else reject(new Error(msg.message));
-        };
-        const onError = (e: ErrorEvent) => {
-          worker.removeEventListener("message", onMessage);
-          worker.removeEventListener("error", onError);
-          reject(new Error(e.message || "planning worker failed"));
-        };
-        worker.addEventListener("message", onMessage);
-        worker.addEventListener("error", onError);
-        const req: PlanRequest = { type: "plan", id, state, table, player, useNeural, modelDir };
-        worker.postMessage(req);
+      // The request, its watchdog and the main-thread rescue all live in
+      // `planViaWorker` — no React in it, so `workerPlan.test.ts` can drive the
+      // silent-worker case directly with a stub channel and fake timers.
+      return planViaWorker({
+        worker,
+        id: nextId.current++,
+        state,
+        table,
+        player,
+        useNeural,
+        modelDir: modelDirUrl(),
+        onModelLoading: cb?.onModelLoading,
+        onModelStatus: cb?.onModelStatus,
+        // A worker declared dead must not be reused; the next turn builds a
+        // fresh one through `ensureWorker`.
+        onWorkerDeclaredDead: () => {
+          if (workerRef.current === worker) workerRef.current = null;
+        },
       });
     },
     [ensureWorker],

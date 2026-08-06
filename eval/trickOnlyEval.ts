@@ -81,16 +81,19 @@ const OUT_NAME = strArg("out", "trickonly.json");
 export type Arm = "A-previous" | "B-trickonly" | "C-classical-trickonly";
 type ChosenKind = CandidateKind | "safety-kick";
 
-// `seedTimeoutMs: Infinity` in every arm, for the same reason `hybridEval.ts`
-// does it: the production wall-clock guard truncates the seeding loop by
-// elapsed time, which makes results depend on machine load rather than on
+// `seedTimeoutMs`/`searchTimeoutMs: Infinity` in every arm, for the same reason
+// `hybridEval.ts` does it: the production wall-clock guards truncate the search
+// by elapsed time, which makes results depend on machine load rather than on
 // search policy. The physics budget stays the binding constraint, identically
-// in all three arms, so budget parity is preserved exactly.
+// in all three arms, so budget parity is preserved exactly. Both guards are
+// disabled together — disabling only the seeding one would leave the refinement
+// loop timed and reintroduce exactly the load-dependence this avoids.
 const CONFIG: SearchConfig = {
   ...defaultConfig,
   simulations: BUDGET,
   seed: 20260101,
   seedTimeoutMs: Infinity,
+  searchTimeoutMs: Infinity,
 };
 
 /**

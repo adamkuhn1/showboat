@@ -27,8 +27,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_SRC = readFileSync(join(__dirname, "../App.tsx"), "utf8");
 const TURN_SRC = readFileSync(join(__dirname, "useAiTurn.ts"), "utf8");
 
-/** An evaluator that is present but not yet ready — the mid-download state. */
-const notReady = { isReady: () => false } as unknown as NeuralCandidateEvaluator;
+/**
+ * An evaluator that is present but not yet ready — the mid-download state.
+ * `getState` is part of the stub because `getBrain` now reads it: the classical
+ * stand-in carries the reason it is standing in, rather than a null fallback.
+ */
+const notReady = {
+  isReady: () => false,
+  getState: () => ({ status: "absent", reason: "not loaded yet" }),
+} as unknown as NeuralCandidateEvaluator;
 const ready = {
   isReady: () => true,
   getState: () => ({ status: "ready" }),
