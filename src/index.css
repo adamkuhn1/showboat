@@ -466,10 +466,15 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
    the other half of why the game was unplayable on a phone: no pointer
    handlers, and no layout that acknowledged a narrow screen. */
 
-/* Below the embed width the panel and the table stop competing for one row. */
+/* Below the embed width the panel and the table stop competing for one row.
+   `.board`'s `flex: 1 1 480px` has to be reset here: once `.layout` is a
+   column, that 480px basis applies to the MAIN axis, which is now height — so
+   the board reserved 480px for 224px of content and left a quarter-screen
+   hole between the table and the controls. */
 @media (max-width: 1100px) {
   .layout { flex-direction: column; align-items: center; }
-  .overlay { flex: 1 1 auto; width: 100%; max-width: 900px; }
+  .board { flex: 0 0 auto; width: 100%; max-width: 900px; }
+  .overlay { flex: 0 0 auto; width: 100%; max-width: 900px; }
 }
 
 @media (max-width: 620px) {
