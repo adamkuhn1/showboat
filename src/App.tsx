@@ -390,8 +390,14 @@ export default function App() {
         // real `applyShotRules`, bounded at 6 extra simulations, synchronous.
         // The policy returns a shot whenever a legal target exists, so
         // `shot === null` now means only "there is no legal target" — the same
-        // condition under which no shot could be taken before.
-        if (!result.shot) return;
+        // condition under which no shot could be taken before. Leave the phase
+        // in a resting state rather than sitting at "searching…" forever; the
+        // effect does not re-run on a phase change, so this cannot spin.
+        if (!result.shot) {
+          setPhase("aiming");
+          setMessage("no legal shot for the opponent.");
+          return;
+        }
         const action = result.shot.action;
         const report = executeAiShot(planState, table, result.shot, simulateShotWasm);
         animateAndCommit(planState, action, report);
