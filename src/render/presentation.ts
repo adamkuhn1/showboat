@@ -98,9 +98,9 @@ export const TIMING = {
    * legible, and the time is worth more to SELECTED.
    */
   VERIFY_MIN_ITEM_MS: 40,
-  VERIFY_MAX_ITEM_MS: 90,
+  VERIFY_MAX_ITEM_MS: 80,
   VERIFY_MIN_MS: 500,
-  VERIFY_MAX_MS: 1200,
+  VERIFY_MAX_MS: 1000,
   /**
    * SELECTED is now the longest beat of the sequence, by design and at every
    * decay. It is the payload: the route that is about to be played, locking in
@@ -108,7 +108,7 @@ export const TIMING = {
    */
   SELECT_BASE_MS: 900,
   SELECT_PER_LOSER_MS: 35,
-  SELECT_MIN_MS: 1200,
+  SELECT_MIN_MS: 1500,
   SELECT_MAX_MS: 2000,
   READY_BASE_MS: 500,
   /** ~430 wpm — a scan rate, not a read rate; the visitor is watching the table too. */

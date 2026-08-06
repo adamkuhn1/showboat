@@ -130,6 +130,13 @@ export interface RestedTurn {
  */
 export type PlannedTurn = PlayedTurn | RestedTurn;
 
+/**
+ * Evaluators whose `load()` blew its deadline and has not settled since. See
+ * the branch that reads it: paying the same bounded wait on every turn is the
+ * bounded version of the same hang.
+ */
+const stalledLoads = new WeakSet<NeuralCandidateEvaluator>();
+
 export async function planTurnTraced(
   input: PlanInput,
   hooks: PlanHooks = {},
@@ -141,7 +148,18 @@ export async function planTurnTraced(
   // whatever the host already knows; the load below can add to it.
   let unavailable: FallbackTrace | null = input.neuralUnavailable ?? null;
 
-  if (input.useNeural && unavailable === null) {
+  if (input.useNeural && unavailable === null && stalledLoads.has(evaluator)) {
+    // A load that already blew its deadline and has not landed yet. Waiting on
+    // it again would cost every subsequent turn the same six seconds for the
+    // same answer, so this turn does not wait at all — the `.then` below puts
+    // the evaluator back in play the moment the load actually settles.
+    unavailable = {
+      from: "neural-hybrid",
+      to: "classical-trick-only",
+      cause: "model-load-timeout",
+      detail: "the trained model is still loading after exceeding its deadline",
+    };
+  } else if (input.useNeural && unavailable === null) {
     if (!evaluator.isReady()) hooks.onModelLoadStart?.();
     // First neural turn pays for the onnxruntime-web session; idempotent after.
     // A failure is reported, never silently downgraded — and now a load that
@@ -154,11 +172,17 @@ export async function planTurnTraced(
     // The losing promise is abandoned, not cancelled — a `fetch` with no
     // `AbortSignal` cannot be. That is deliberate rather than sloppy: the
     // evaluator caches its own result, so a load that finally lands after the
-    // deadline is picked up by the NEXT turn instead of being thrown away.
-    const raced = await Deadline.in(MODEL_LOAD_DEADLINE_MS).race(evaluator.load());
+    // deadline is picked up by a later turn instead of being thrown away.
+    const loading = evaluator.load();
+    const raced = await Deadline.in(MODEL_LOAD_DEADLINE_MS).race(loading);
     if (!raced.ok) {
       const detail = `the trained model did not finish loading within ${Math.round(raced.waitedMs)} ms`;
       console.error(`[showboat] ${detail}; this turn falls back to the physics search`);
+      stalledLoads.add(evaluator);
+      void loading.then(
+        () => stalledLoads.delete(evaluator),
+        () => stalledLoads.delete(evaluator),
+      );
       unavailable = {
         from: "neural-hybrid",
         to: "classical-trick-only",

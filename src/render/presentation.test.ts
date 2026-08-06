@@ -184,15 +184,15 @@ describe("timing derives from the trace, not from constants", () => {
 
   it("VERIFYING comes from the search's real physics time", () => {
     const t = trace({
-      timing: { totalMs: 1120, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 1120, selectionMs: 0 },
+      timing: { totalMs: 960, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 960, selectionMs: 0 },
       candidates: Array.from({ length: 16 }, (_, i) => candidate(i, { verified: true })),
     });
     const v = buildSchedule({ trace: t, sentenceWords: 8 }).segments.find(
       (s) => s.state === "VERIFYING",
     )!;
-    // 1120 ms over 16 verified candidates = 70 ms each, inside the per-item
+    // 960 ms over 16 verified candidates = 60 ms each, inside the per-item
     // bounds, so the state is exactly as long as the physics was.
-    expect(v.durationMs).toBeCloseTo(1120, 5);
+    expect(v.durationMs).toBeCloseTo(960, 5);
   });
 
   it("READY is long enough to read the sentence, and no longer than its ceiling", () => {
@@ -228,15 +228,25 @@ describe("timing derives from the trace, not from constants", () => {
       timing: { totalMs: 9000, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 9000, selectionMs: 0 },
       candidates: Array.from({ length: 45 }, (_, i) => candidate(i, { verified: true })),
     });
-    for (const turn of [1, 2, 3, 5, 6, 9, 40]) {
-      const s = buildSchedule({ trace: t, sentenceWords: 12, decay: holdScaleForTurn(turn) });
+    // Both extremes of the shape: a board where almost nothing was simulated
+    // (SELECTED at its floor) and one where everything was (SELECTED at its
+    // ceiling), against the longest sentence READY can be asked to hold.
+    const sparse = trace({
+      mode: "neural-hybrid",
+      timing: { totalMs: 9000, neuralEncodeMs: null, neuralRunMs: null, physicsMs: 9000, selectionMs: 0 },
+      candidates: Array.from({ length: 45 }, (_, i) => candidate(i, { verified: i < 2 })),
+    });
+    for (const [fixture, turn] of [t, sparse].flatMap((f) =>
+      [1, 2, 3, 5, 6, 9, 40].map((n) => [f, n] as const),
+    )) {
+      const s = buildSchedule({ trace: fixture, sentenceWords: 200, decay: holdScaleForTurn(turn) });
       const dur = (name: string) => s.segments.find((x) => x.state === name)?.durationMs ?? 0;
       const selected = dur("SELECTED");
       for (const other of ["ENUMERATING", "RANKING", "VERIFYING", "READY"]) {
         expect(selected, `turn ${turn}: SELECTED must outlast ${other}`).toBeGreaterThan(dur(other));
       }
       // Long enough to read a route on the felt, not a flash.
-      expect(selected, `turn ${turn}`).toBeGreaterThanOrEqual(900);
+      expect(selected, `turn ${turn}`).toBeGreaterThanOrEqual(1000);
       // And the whole sequence still fits its ceiling.
       expect(s.reasoningEndMs).toBeLessThanOrEqual(TIMING.REASONING_CEILING_MS + 0.001);
     }
