@@ -238,7 +238,12 @@ const decide = (
   let decision: TrickOnlyDecision;
   try {
     decision = selectTrickOnly(outcome.allStats, outcome.verifications, {
-      state,
+      // `turn: player` explicitly: the safety rung verifies its kicks through
+      // the real `applyShotRules`, which decides first-contact legality from
+      // `pre.turn`'s group. Deriving the shooter from the argument rather than
+      // from the state means a caller that plans for a player who is not to
+      // move cannot silently get the other player's legality rules.
+      state: { ...state, turn: player },
       table,
       targets,
       simulate: simulateShotWasm,
@@ -250,7 +255,7 @@ const decide = (
     if (!(e instanceof TrickOnlyInvariantError)) throw e;
     console.error(`[showboat] trick-only invariant violated: ${e.message}`);
     decision = selectTrickOnly([], [], {
-      state,
+      state: { ...state, turn: player },
       table,
       targets,
       simulate: simulateShotWasm,
