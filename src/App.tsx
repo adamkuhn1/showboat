@@ -9,8 +9,8 @@ import { drawOverlay } from "./render/overlay";
 import { buildAnimTrack, interpolateBalls, type AnimTrack } from "./render/animate";
 import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
-import { legalTargets } from "./ai/turn";
 import { getBrain } from "./ai/brain";
+import { executeAiShot } from "./ai/policy/execute";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import type { SearchResult } from "./ai/shotSearch";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
@@ -376,47 +376,24 @@ export default function App() {
       );
       setTimeout(() => {
         if (cancelled) return;
-        if (!result.best) {
-          // All search candidates were filtered. Aim at the nearest legal target
-          // with a clear cue path to avoid hitting the 8-ball or opponent balls first.
-          const cueBall = planState.balls.find((b) => b.id === CUE_ID)!;
-          const targets = legalTargets(planState, AI_PLAYER);
-          const live = planState.balls.filter((b) => !b.pocketed);
-          const byDist = live
-            .filter((b) => targets.includes(b.id))
-            .sort((a, b) =>
-              Math.hypot(a.pos.x - cueBall.pos.x, a.pos.y - cueBall.pos.y) -
-              Math.hypot(b.pos.x - cueBall.pos.x, b.pos.y - cueBall.pos.y)
-            );
-          // Prefer a target whose direct cue path clears all other balls.
-          const pathClearTo = (t: typeof byDist[0]) => {
-            const dx = t.pos.x - cueBall.pos.x;
-            const dy = t.pos.y - cueBall.pos.y;
-            const len = Math.hypot(dx, dy);
-            if (len < 1e-9) return true;
-            const nx = dx / len; const ny = dy / len;
-            for (const b of live) {
-              if (b.id === CUE_ID || b.id === t.id) continue;
-              const vx = b.pos.x - cueBall.pos.x;
-              const vy = b.pos.y - cueBall.pos.y;
-              const proj = vx * nx + vy * ny;
-              if (proj <= 0 || proj >= len) continue;
-              const perp2 = (vx - proj * nx) ** 2 + (vy - proj * ny) ** 2;
-              if (perp2 < (2 * BALL_RADIUS) ** 2) return false;
-            }
-            return true;
-          };
-          const nearest = byDist.find(pathClearTo) ?? byDist[0];
-          const phi = nearest
-            ? Math.atan2(nearest.pos.y - cueBall.pos.y, nearest.pos.x - cueBall.pos.x)
-            : Math.random() * Math.PI * 2;
-          const fallback: CueAction = { phi, power: 0.3, sideSpin: 0, topSpin: 0 };
-          const report = takeShot(planState, table, fallback, simulateShotWasm);
-          animateAndCommit(planState, fallback, report);
-          return;
-        }
-        const action = result.best.candidate.action;
-        const report = takeShot(planState, table, action, simulateShotWasm);
+        // The AI plays `result.shot` and nothing else.
+        //
+        // This used to be two branches. When `result.best` was null — every
+        // candidate filtered — the app aimed the cue straight at the nearest
+        // legal ball with a clear path, at power 0.3. That was a direct shot,
+        // produced here, bypassing the policy entirely: the second of the two
+        // direct-shot escape hatches, and the one that survived fixing the
+        // first. It is deleted.
+        //
+        // Its replacement is rungs 4 and 5 of the trick-only ladder
+        // (`ai/policy/trickOnly.ts`): a rail-first kick, verified against the
+        // real `applyShotRules`, bounded at 6 extra simulations, synchronous.
+        // The policy returns a shot whenever a legal target exists, so
+        // `shot === null` now means only "there is no legal target" — the same
+        // condition under which no shot could be taken before.
+        if (!result.shot) return;
+        const action = result.shot.action;
+        const report = executeAiShot(planState, table, result.shot, simulateShotWasm);
         animateAndCommit(planState, action, report);
       }, holdMs);
     }, 30);
