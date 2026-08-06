@@ -28,7 +28,9 @@
     "model:stage:phase2d": "node scripts/stage-production-model.mjs",
     "model:verify": "node scripts/verify-build-model.mjs",
     "eval:hybrid": "tsx eval/hybridEval.ts",
-    "eval:gate": "tsx eval/gateReport.ts"
+    "eval:gate": "tsx eval/gateReport.ts",
+    "eval:trickonly": "tsx eval/trickOnlyEval.ts",
+    "eval:trickonly-gate": "tsx eval/trickOnlyGateReport.ts"
   },
   "dependencies": {
     "@fontsource/eb-garamond": "^5.3.0",
