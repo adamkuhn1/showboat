@@ -34,6 +34,13 @@ import {
 import { shotSentence } from "./shotSentence";
 import { usePlanner } from "./planner/usePlanner";
 import type { ModelStatus, PlannedTurn, PlayedTurn } from "./planner/plan";
+import {
+  applyProgress,
+  createLiveSearch,
+  liveFrame,
+  liveState,
+  type LiveSearch,
+} from "../render/liveSearch";
 
 export type Phase = "aiming" | "searching" | "animating";
 
@@ -80,6 +87,25 @@ export interface AiTurnView {
   turnIndex: number;
   /** True while this hook owns the canvas. */
   busy: boolean;
+  /**
+   * True while a REPLAY of a finished decision is on screen, false while a
+   * search is being watched live. The panel must say which, because the two
+   * look similar and mean different things.
+   */
+  replaying: boolean;
+  /**
+   * Counts of events the search has published so far, or null when no search
+   * is being watched. Held as React state — `LiveSearch` itself is mutated in
+   * place on the frame path, so a component reading its fields directly would
+   * never re-render.
+   */
+  liveCounts: LiveSearch["counts"] | null;
+  /**
+   * The retained event stream for the turn on screen. Mutated in place, so it
+   * is a snapshot to read on demand (a replay, a debugging surface), not
+   * something to render from directly.
+   */
+  liveStream: () => LiveSearch | null;
   /**
    * Skip ahead. During the reasoning sequence it lands in READY; during ball
    * playback it runs the remaining simulation time out at once.
@@ -150,6 +176,8 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   const [modelLoading, setModelLoading] = useState(false);
   const [turnIndex, setTurnIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [replaying, setReplaying] = useState(false);
+  const [liveCounts, setLiveCounts] = useState<LiveSearch["counts"] | null>(null);
 
   // Live values the turn body reads without becoming a dependency of it.
   const useNeuralRef = useRef(useNeural);
@@ -167,6 +195,18 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   const skipRef = useRef(false);
   const rafRef = useRef(0);
+  /**
+   * The search currently being watched, and its own paint loop.
+   *
+   * Events arrive as individual worker messages, which on a busy search can be
+   * several within one display frame. Painting on each would repaint the felt
+   * more often than the screen can show it, so an event marks the observation
+   * dirty and one rAF paints whatever has accumulated. That coalescing changes
+   * nothing about WHAT is drawn — `liveFrame` renders the state the events have
+   * left behind, so a frame that folds three events in shows all three.
+   */
+  const liveRef = useRef<LiveSearch | null>(null);
+  const liveRafRef = useRef(0);
   const cancelRef = useRef(false);
   const runIdRef = useRef(0);
   /** Retained so both replays are free: no search re-runs, ever. */
@@ -192,6 +232,8 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   const stopLoop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
+    if (liveRafRef.current) cancelAnimationFrame(liveRafRef.current);
+    liveRafRef.current = 0;
     const settle = settleLoopRef.current;
     settleLoopRef.current = null;
     settle?.();
@@ -199,7 +241,18 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   // ---- the reasoning sequence ------------------------------------------
   const runSequence = useCallback(
-    (pre: GameState, planned: PlayedTurn, marks: ContactMark[], thenShoot: boolean) =>
+    (
+      pre: GameState,
+      planned: PlayedTurn,
+      marks: ContactMark[],
+      thenShoot: boolean,
+      /**
+       * `"post-search"` on a live turn — the search has just been watched
+       * happening, so only the beats that are not observations of it remain.
+       * `"full"` is the replay: the whole sequence, paced from the trace.
+       */
+      scope: "full" | "post-search",
+    ) =>
       new Promise<void>((rawResolve) => {
         // Registered so `stopLoop` can end this wait; see `settleLoopRef`.
         const resolve = () => {
@@ -213,6 +266,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           sentenceWords: sentence?.words ?? 0,
           decay: holdScaleForTurn(turnIndexRef.current),
           reducedMotion: reducedMotionRef.current,
+          scope,
         });
         const cue = pre.balls.find((b) => b.id === CUE_ID);
         const geom = { cuePos: cue ? { x: cue.pos.x, y: cue.pos.y } : { x: 0, y: 0 } };
@@ -391,6 +445,14 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       turnIndexRef.current = nextTurn;
       setTurnIndex(nextTurn);
 
+      // The board the search is reasoning about, and the cue-ball origin every
+      // candidate's cue leg is drawn from.
+      const planCue = planState.balls.find((b) => b.id === CUE_ID);
+      const liveGeom = {
+        cuePos: planCue ? { x: planCue.pos.x, y: planCue.pos.y } : { x: 0, y: 0 },
+      };
+      liveRef.current = null;
+
       let planned: PlannedTurn;
       try {
         planned = await planner.plan(planState, table, aiPlayer, useNeuralRef.current, {
@@ -398,6 +460,39 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           onModelStatus: (s) => {
             setModelLoading(false);
             onModelStatus(s);
+          },
+          // THE LIVE PATH. Each event is folded in as it lands and the felt is
+          // repainted from what the search has actually published. Nothing here
+          // advances on a timer, and nothing draws a candidate the search has
+          // not sent geometry for.
+          onProgress: (e) => {
+            if (cancelRef.current || superseded()) return;
+            const l = liveRef.current ?? createLiveSearch();
+            liveRef.current = l;
+            applyProgress(l, e);
+            setPresentation(liveState(l));
+            // A fresh object each time: the accumulator's own `counts` is
+            // mutated in place, so handing that reference to React would never
+            // register as a change.
+            setLiveCounts({ ...l.counts });
+            // `planning` is cleared by the first event: the panel's "searching…"
+            // line exists for the stretch before there is anything to show, and
+            // once routes are on the felt there is.
+            if (l.phase !== "started") setPlanning(false);
+            if (liveRafRef.current) return;
+            liveRafRef.current = requestAnimationFrame(() => {
+              liveRafRef.current = 0;
+              if (cancelRef.current || superseded()) return;
+              const current = liveRef.current;
+              if (!current) return;
+              paintRef.current({
+                state: planState,
+                frame: liveFrame(current, liveGeom),
+                marks: [],
+                simTime: null,
+                stroke: null,
+              });
+            });
           },
         });
       } catch (err) {
@@ -456,7 +551,12 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       setPlanning(false);
       setModelLoading(false);
 
-      await runSequence(planState, planned, marks, true);
+      // The live observation is over; its pending repaint must not land on top
+      // of the hold that follows.
+      if (liveRafRef.current) cancelAnimationFrame(liveRafRef.current);
+      liveRafRef.current = 0;
+
+      await runSequence(planState, planned, marks, true, "post-search");
       if (disposed || cancelRef.current) return;
 
       setPhase("animating");
@@ -502,8 +602,12 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     // actually there.
     cancelRef.current = false;
     setBusy(true);
-    void runSequence(t.pre, t.planned, t.marks, false).then(() => {
+    setReplaying(true);
+    // `"full"` — every state, paced from the completed trace. This is the
+    // replay, and the panel labels it as one.
+    void runSequence(t.pre, t.planned, t.marks, false, "full").then(() => {
       setBusy(false);
+      setReplaying(false);
       setPresentation("SETTLED");
     });
   }, [busy, runSequence]);
@@ -517,9 +621,11 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     // which is what the old fixed 0.35x was: slow motion nobody asked for and
     // nothing labelled.
     setBusy(true);
+    setReplaying(true);
     setPresentation("SHOOTING");
     void runShot(t.pre, t.planned, t.marks).then(() => {
       setBusy(false);
+      setReplaying(false);
       setPresentation("SETTLED");
     });
   }, [busy, runShot]);
@@ -533,6 +639,9 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     modelLoading,
     turnIndex,
     busy,
+    replaying,
+    liveCounts,
+    liveStream: () => liveRef.current,
     skip,
     replayDecision,
     replayShot,

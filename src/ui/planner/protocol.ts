@@ -4,6 +4,7 @@
 
 import type { GameState, PlayerId } from "../../game/state";
 import type { Table } from "../../physics/table";
+import type { SearchProgressEvent } from "../../ai/search/progress";
 import type { PlannedTurn } from "./plan";
 
 export interface PlanRequest {
@@ -28,6 +29,16 @@ export type WorkerRequest = PlanRequest | WarmRequest;
 export type PlanResponse =
   /** The model session is being created — the first neural turn pays for it. */
   | { type: "model-loading"; id: number }
+  /**
+   * One live search event, posted AS IT HAPPENS rather than collected and sent
+   * at the end. This is the message that makes the reasoning display an
+   * observation of the search instead of a reconstruction of its result.
+   *
+   * Each one also re-arms the host's silence watchdog, which is a second,
+   * unplanned benefit: a search that is working can no longer be mistaken for a
+   * worker that has died, because it is now audibly working.
+   */
+  | { type: "progress"; id: number; event: SearchProgressEvent }
   | { type: "model-status"; id: number; ok: boolean; reason: string | null; hashVerified: boolean }
   /**
    * The finished turn, exactly as `planTurnTraced` returned it — including the

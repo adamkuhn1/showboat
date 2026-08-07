@@ -49,6 +49,20 @@ export interface OverlayPanelProps {
   compare: { available: boolean; useNeural: boolean; onChange: (v: boolean) => void };
   /** Non-null only at SETTLED. Both replays are free — the trace is retained. */
   replay: { onDecision: () => void; onShot: () => void } | null;
+  /**
+   * True while a finished decision is being replayed, false while a search is
+   * being observed live.
+   *
+   * This distinction is the whole point of the state slot and it is not
+   * cosmetic: the same five labels appear in both, and a replay that did not
+   * say so would read as a search running now. It is printed, not implied.
+   */
+  replaying: boolean;
+  /**
+   * Real counters from the live event stream, or null when the panel is not
+   * watching one. Every number is a count of events the search published.
+   */
+  liveCounts: { generated: number; simulated: number; retained: number } | null;
 }
 
 export function OverlayPanel({
@@ -61,6 +75,8 @@ export function OverlayPanel({
   showDisclosure,
   compare,
   replay,
+  replaying,
+  liveCounts,
 }: OverlayPanelProps) {
   // The title names what decided *this* decision. Before there is one, it names
   // what is configured.
@@ -83,10 +99,22 @@ export function OverlayPanel({
     <aside className="overlay">
       <p className="overlay-title">{title}</p>
 
-      {/* The state slot. Only the five reasoning labels ever appear here. */}
+      {/* The state slot. Only the five reasoning labels ever appear here, and
+          it always says whether they are being observed or replayed. */}
       {label !== null && (
-        <p className="overlay-state" data-state={state}>
+        <p className="overlay-state" data-state={state} data-live={replaying ? "replay" : "live"}>
           {label}
+          <span className="overlay-live-tag">{replaying ? "replay" : "live"}</span>
+        </p>
+      )}
+
+      {/* Counts of events the search published, while it is publishing them.
+          Not a progress bar and not a percentage: the search does not know how
+          many candidates it will reach, so there is no honest denominator. */}
+      {!replaying && liveCounts !== null && liveCounts.generated > 0 && (
+        <p className="overlay-counts">
+          {liveCounts.generated} routes · {liveCounts.simulated} simulated ·{" "}
+          {liveCounts.retained} standing
         </p>
       )}
 
@@ -110,8 +138,8 @@ export function OverlayPanel({
       {showDisclosure && trace && (
         <>
           <p className="overlay-note">
-            The search finishes before this plays; what you are watching is the decision it
-            made, in the order it made it.
+            These are the search's own events, published as it runs. A route appears when it
+            has been generated and resolves when its simulation returns.
           </p>
           {/* The one distinction the felt has to get across, said once. A dashed
               route is geometry the opponent considered; the solid one is the
@@ -133,6 +161,9 @@ export function OverlayPanel({
           <button type="button" className="linkish" onClick={replay.onDecision}>
             replay the decision
           </button>
+          {/* Labelled at the point of choice as well as while it plays: a
+              replay is paced choreography over a finished trace, which is a
+              different thing from the live stream it re-tells. */}
           <button type="button" className="linkish" onClick={replay.onShot}>
             replay the shot
           </button>

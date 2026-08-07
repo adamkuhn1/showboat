@@ -21,6 +21,8 @@ import {
   TRICK_RELIABILITY_THRESHOLD,
 } from "../shotSearch";
 import { isTrickCandidate, type TrickOnlyDecision } from "../policy/trickOnly";
+import { type Candidate } from "../candidates";
+import { type ProgressCandidate } from "../search/progress";
 import {
   DECISION_TRACE_VERSION,
   type ContactEvent,
@@ -37,6 +39,31 @@ import {
 } from "./contract";
 
 const v2 = (p: { x: number; y: number }): Vec2Trace => ({ x: p.x, y: p.y });
+
+/**
+ * Candidate geometry for the LIVE progress stream, mapped here rather than in
+ * `search/progress.ts` so that the live route and the recorded route are built
+ * by one file and cannot drift into disagreeing about where a line goes. The
+ * fields are the same ones `TracedCandidate` carries, and the index is the same
+ * generation-order index, so a consumer can address a candidate identically
+ * whether it is watching the search or reading the record afterwards.
+ */
+export function progressCandidates(
+  candidates: Candidate[],
+  cueBall: Vec2Trace,
+): ProgressCandidate[] {
+  return candidates.map((c, index) => ({
+    index,
+    kind: c.kind as TracedKind,
+    eligible: isTrickCandidate(c),
+    target: c.target,
+    potId: c.potId,
+    pocket: c.pocket,
+    aimPoint: v2(c.aimPoint),
+    cuePath: [cueBall, v2(c.aimPoint)],
+    path: c.path.map(v2),
+  }));
+}
 
 const contactEvents = (events: ShotEvent[]): ContactEvent[] =>
   events

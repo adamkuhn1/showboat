@@ -377,9 +377,14 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
 /* The state slot. Exactly one of five strings ever lands here, and each names
    something that actually happened: evaluating · neural ranking · physics
    verification · selected · ready to shoot. No spinner, no counter, no bar —
-   the reveal on the felt is the progress indicator, and it is a reveal of a
-   finished set, not a simulation of work in flight. */
+   during a live search the routes resolving on the felt ARE the progress, and
+   there is no honest percentage to put here anyway (the search does not know
+   how many candidates it will reach). */
 .overlay-state {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
   margin: 0 0 0.15rem;
   font-size: 0.82rem;
   letter-spacing: 0.06em;
@@ -387,6 +392,34 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   color: var(--accent);
   filter: brightness(1.55);
   line-height: 1.4;
+}
+
+/* Which of the two things you are looking at. Deliberately always present
+   rather than shown only for the replay: an unmarked state reads as live, and
+   the replay would then be the one case that depends on the visitor noticing
+   an absence. */
+.overlay-live-tag {
+  flex: none;
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  filter: none;
+  opacity: 0.85;
+}
+.overlay-state[data-live="replay"] .overlay-live-tag {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* Counts of events published so far. Not a progress indicator: none of these
+   is a fraction of a known total, and they only ever go up. */
+.overlay-counts {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The one state that is genuinely in flight while it is shown. */
