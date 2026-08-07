@@ -8,7 +8,7 @@
     "build": "vite build && node scripts/verify-build-model.mjs",
     "preview": "vite preview --port 5175 --strictPort",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "test": "node scripts/wasm-provenance.mjs && vitest run",
     "test:wasm": "cargo test --manifest-path physics-core/Cargo.toml",
     "build:wasm": "wasm-pack build physics-core --target web --out-dir ../src/wasm --out-name showboat_physics && rm -f src/wasm/.gitignore src/wasm/package.json",
     "ranker:gen-dataset": "tsx training/ranker/gen_dataset.ts",
@@ -29,7 +29,9 @@
     "eval:hybrid": "tsx eval/hybridEval.ts",
     "eval:gate": "tsx eval/gateReport.ts",
     "eval:trickonly": "tsx eval/trickOnlyEval.ts",
-    "eval:trickonly-gate": "tsx eval/trickOnlyGateReport.ts"
+    "eval:trickonly-gate": "tsx eval/trickOnlyGateReport.ts",
+    "wasm:provenance": "node scripts/wasm-provenance.mjs",
+    "wasm:provenance:update": "node scripts/wasm-provenance.mjs --update"
   },
   "dependencies": {
     "@fontsource/eb-garamond": "^5.3.0",

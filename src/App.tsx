@@ -86,14 +86,6 @@ function postToShell(type: string) {
  */
 const EMBEDDED = typeof window !== "undefined" && window.parent !== window;
 
-/** Run `fn` when the browser is next idle, or soon, in engines without it. */
-function idle(fn: () => void): void {
-  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
-    .requestIdleCallback;
-  if (typeof ric === "function") ric(fn);
-  else window.setTimeout(fn, 1200);
-}
-
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -316,12 +308,30 @@ export default function App() {
   // this thread. Deliberately inside the app, not the shell: the portfolio
   // never mounts this iframe until the visitor presses "Play a rack", so a
   // visitor who scrolls past the section downloads none of it.
-  useEffect(() => {
-    if (!modelAvailable) return;
-    idle(() => ai.warmModel());
-    // `ai.warmModel` is stable; re-running on every render would re-post it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelAvailable]);
+  /**
+   * Build the ranker session when the visitor first touches the game.
+   *
+   * This used to warm on `requestIdleCallback`, described as paying for the
+   * download "while the human is lining up a break". Measured against the
+   * production build (`qa/warm-cost.mjs`), the `warm` message was posted **81 ms
+   * after navigation on a page nobody had touched** — the page is idle
+   * immediately after load, so "warm on idle" was warm on launch with extra
+   * words, and a visitor who opened Showboat and left transferred the whole
+   * 13.4 MB runtime for nothing.
+   *
+   * First interaction costs that visitor nothing and costs a player nothing
+   * either: the trigger is their aim or their break, and their own break shot
+   * then animates for several seconds before the opponent's first turn needs
+   * the model. The `preflight()` at startup is unaffected — it is a 177 KB
+   * artifact and a hash check, pulls no runtime, and is what the comparison
+   * toggle's availability is decided by.
+   */
+  const warmedRef = useRef(false);
+  const warmOnFirstInteraction = useCallback(() => {
+    if (warmedRef.current || !modelAvailable) return;
+    warmedRef.current = true;
+    ai.warmModel();
+  }, [modelAvailable, ai]);
 
   // The opponent's turn owns the canvas while it runs; this is the idle paint.
   useEffect(() => {
@@ -379,6 +389,9 @@ export default function App() {
   // mouse than the hover-then-leave-the-canvas lock it replaces, which needed
   // a line of instructions underneath the table to explain it.
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Any touch of the felt counts, including one that only skips a replay:
+    // the visitor is engaging with the game, which is the signal.
+    warmOnFirstInteraction();
     // Pointer-down anywhere on the felt skips whatever is being shown: the
     // opponent's reasoning, the opponent's shot, or your own shot rolling out.
     // None of the three can be corrupted by it — every one is a replay of
@@ -434,6 +447,9 @@ export default function App() {
   };
 
   const shoot = useCallback(() => {
+    // The keyboard and the Shoot button reach the game without ever touching
+    // the canvas, so the warm has to hang off this too.
+    warmOnFirstInteraction();
     if (phase !== "aiming" || state.winner !== null || ai.busy) return;
     if (state.turn === AI_PLAYER) return;
     if (state.ballInHand !== false) {
