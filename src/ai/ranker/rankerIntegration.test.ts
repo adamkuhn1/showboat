@@ -32,6 +32,24 @@ const PHYSICS_WASM_PATH = join(__dirname, "../../wasm/showboat_physics_bg.wasm")
 
 const table = makeTable();
 
+/**
+ * `defaultConfig`, with the seeding clock off.
+ *
+ * Second instance of the flake this sprint fixed in `overlayTruthfulness`.
+ * `defaultConfig` already sets `searchTimeoutMs: Infinity` for a documented
+ * reason — a wall-clock guard makes a test depend on how loaded the machine is
+ * rather than on the physics budget — but it leaves `seedTimeoutMs` at its
+ * 2,000 ms default, and the seeding loop is exactly what this test measures.
+ * Observed failing under CPU contention (a headless-Chrome QA run on the other
+ * cores): the clock truncated seeding, fewer candidates got values, and
+ * "seeded values must differ across candidates" is not true of a search that
+ * was cut off. Passes in isolation, which is what makes it a trap.
+ *
+ * Live play is unaffected: `withinDeadline` (ai/brain.ts) folds the turn's real
+ * remaining time in with `Math.min`, so `Infinity` never reaches a played turn.
+ */
+const deterministic = { ...defaultConfig, seedTimeoutMs: Number.POSITIVE_INFINITY };
+
 /** A fixed, hand-placed mid-game-like board with several viable candidate kinds. */
 function fixtureBoard(): Ball[] {
   return [
@@ -84,7 +102,7 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
     // unmodified "no-model fallback" test below.
     const seedOnlyBudget = candidates.length;
     const withScores = searchBaseline(balls, table, targets, {
-      ...defaultConfig,
+      ...deterministic,
       simulations: seedOnlyBudget,
       netSeedScores: scores,
     });
@@ -93,7 +111,7 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
     // this phase's fix.
     const meanScore = scores.reduce((a, b) => a + b, 0) / scores.length;
     const withFlatScalar = searchBaseline(balls, table, targets, {
-      ...defaultConfig,
+      ...deterministic,
       simulations: seedOnlyBudget,
       netSeedValue: meanScore,
     });
@@ -120,7 +138,7 @@ describe("Phase 2A: trained ranker changes candidate ordering (deterministic fix
   it("no-model fallback (classical search) still works unchanged", () => {
     const balls = fixtureBoard();
     const targets = balls.filter((b) => b.id !== CUE_ID).map((b) => b.id);
-    const result = searchBaseline(balls, table, targets, defaultConfig);
+    const result = searchBaseline(balls, table, targets, deterministic);
     expect(result.best).not.toBeNull();
     expect(result.simulations).toBeGreaterThan(0);
   });

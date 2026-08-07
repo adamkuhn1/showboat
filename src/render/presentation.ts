@@ -376,9 +376,15 @@ export interface MeasuredLeg {
  * The executed motion, split into the channels the overlay draws.
  *
  * `object` is the ball that dropped where there was one, otherwise the ball the
- * cue struck first — both read off the event log, never off the plan. `others`
- * is every remaining ball that moved, which is how a combination shows its
- * middle ball instead of implying the cue reached the pocket on its own.
+ * cue struck first — both read off the event log, never off the plan.
+ *
+ * `others` is the balls the event log says were PART OF THE SHOT — a
+ * combination's middle ball, the ball the cue struck first when a different one
+ * dropped — and not merely every ball that moved. Drawn against a five-ball
+ * cascade, "every ball that moved" is five polylines and seventeen contacts on
+ * one table, and the two that explain the shot are lost in the three that were
+ * just in the way. The bystanders are still in the trace, and the visitor still
+ * watches them move; they do not get a line.
  */
 export interface MeasuredRoute {
   cue: MeasuredLeg | null;
@@ -404,7 +410,7 @@ export function measuredRoute(m: ExecutedMotion): MeasuredRoute {
   return {
     cue: cue ? legOf(cue) : null,
     object: object ? legOf(object) : null,
-    others: objects.filter((t) => t !== object).map(legOf),
+    others: objects.filter((t) => t !== object && t.roles.length > 0).map(legOf),
     durationSec: m.durationSec,
   };
 }
