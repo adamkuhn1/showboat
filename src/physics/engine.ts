@@ -1,4 +1,4 @@
-import { type Ball, Motion, classifyMotion, cloneBall } from "./ball";
+import { type Ball, Motion, classifyMotion } from "./ball";
 import { type Table } from "./table";
 import { advanceBall, timeToPhaseChange } from "./motion";
 import { timeToBallBall, timeToCushion, timeToPocket } from "./predict";
@@ -238,15 +238,3 @@ export const simulateShot = (balls: Ball[], table: Table): SimResult => {
   };
 };
 
-// Convenience: simulate on a copy, leaving the input untouched (used by search /
-// candidate evaluation where we must not disturb the real world state).
-export const simulateShotCopy = (balls: Ball[], table: Table): SimResult => {
-  const copy = balls.map(cloneBall);
-  return simulateShot(copy, table);
-};
-
-export const isSettled = (balls: Ball[]): boolean => {
-  return balls.every(
-    (b) => b.pocketed || Math.hypot(b.vel.x, b.vel.y) < STOP_SPEED,
-  );
-};
