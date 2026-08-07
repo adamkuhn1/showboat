@@ -1,6 +1,7 @@
 {
   "_": "Hashes of the Rust sources and the committed WASM at the moment they were last known to agree. See scripts/wasm-provenance.mjs.",
   "rustInputs": {
+    "physics-core/Cargo.lock": "cb148314cada4733768f5a4118a3a5ffe2fc7f587b7d5bd66805923180e45581",
     "physics-core/Cargo.toml": "41068ecee673eeac00b48abae65ee1d7edbf438fb4c8e0dfb5a1577281d894c9",
     "physics-core/src/ball.rs": "de7fadceb6f5b9c9b94627e7e12a9d5927844665f00182302c3aa08482c1919a",
     "physics-core/src/collisions.rs": "33d98ee23f3daf2b8513a995080827e193ac307d6b950dcbde3bfb6b95705ec1",
