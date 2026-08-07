@@ -8,7 +8,7 @@
 // property (same simulation time, same ball states, whatever the speed) and
 // pins the physics constants so a future pacing change cannot quietly move one.
 //
-// WHY 0.6x, AND WHY IT DOES NOT APPLY TO THE WHOLE SHOT
+// WHY THE COAST TO REST IS CAPPED
 //
 // First playback ran at a flat 1.0x. Measured over 399 real simulations across
 // four boards: a shot runs 5.39 simulation seconds at the median (p90 6.74),
@@ -16,25 +16,47 @@
 // 3.72, max 5.90) is balls coasting to a stop with nothing left to happen —
 // **37% of the median shot, after everything interesting is over**.
 //
-// A flat multiplier is the wrong instrument for that shape. At a flat 0.6x the
-// median shot becomes a nine-second animation, and three of those nine seconds
-// are watching a ball roll to rest. So the chosen speed governs the part with
-// contacts in it, and the settle afterwards is capped at `SETTLE_MAX_SEC` of
-// screen time — never played SLOWER than the chosen speed, only faster.
+// So the settle is capped at `SETTLE_MAX_SEC` of screen time — never played
+// SLOWER than the chosen speed, only faster. That rule is unchanged and lives
+// in `settleRate` below; `ui/pacing.ts` calls it rather than restating it.
 //
-// At the 0.6x default that puts the median shot at 3.04/0.6 + 1.0 = 6.1 s
-// against 5.4 s before: the part you have to follow is 1.7x longer, the part
-// you do not is up to 3.7x shorter, and the whole thing is 13% longer rather
-// than 67% longer. 0.35x stays available as explicit slow motion, and 1.0x
-// stays because some visitors want the game to just move.
+// WHY 0.5x, AND HOW IT WAS CHOSEN
+//
+// The previous default was 0.6x against a FLAT multiplier, and Adam's report on
+// it was that the balls were still too fast to understand and the route was
+// hard to reconcile with the motion. Two things changed in response: the rate
+// is now a curve that spends its slowness on the contacts (`ui/pacing.ts`), and
+// this number was re-derived rather than inherited.
+//
+// The metric is how far a ball moves across the screen between two displayed
+// frames, because that is what smooth pursuit of a small object can and cannot
+// follow. The ball is 23.7 logical pixels across at the shipped view. Measured
+// by `qa/speed-sweep.ts` over 61 real simulations, walking each shot frame by
+// frame through the real pacing curve at 60 Hz:
+//
+//   speed   mean screen s   px/frame p90   at contacts p90   frames > 1 ball
+//   0.35x           11.02            9.0               9.6              0.1%
+//   0.5x             7.98           12.7              13.7              1.3%
+//   0.6x             6.85           15.0              16.3              2.3%
+//   1x               5.53           19.9              23.0              5.7%
+//
+// 0.6x moves 0.69 ball-widths per frame at the p90 contact — which is the
+// complaint, in numbers. 0.35x fixes it and costs 11 seconds a shot, which is
+// not a game anybody finishes a rack of. 0.5x lands at 0.58 ball-widths for
+// about a second more per shot than 0.6x, and combined with the contact curve
+// the moments that matter now play at 0.225x against the old default's flat
+// 0.6x — 2.7x slower where the shot actually happens.
+//
+// 0.35x stays as the explicitly slower replay and 1.0x stays because some
+// visitors want the game to just move. 0.6x is retired: the curve superseded it.
 
 import { useCallback, useState } from "react";
 
 /** The offered speeds, slowest first. Three is a choice, not a slider. */
-export const PLAYBACK_SPEEDS = [0.35, 0.6, 1] as const;
+export const PLAYBACK_SPEEDS = [0.35, 0.5, 1] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
-export const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 0.6;
+export const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 0.5;
 
 /**
  * Session storage, deliberately: the choice should survive a new rack and a

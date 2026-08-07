@@ -35,6 +35,7 @@ import {
   savePlaybackSpeed,
   settleRate,
 } from "./playbackSpeed";
+import { buildPacing, screenSeconds, CONTACT_RATE } from "./pacing";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -172,14 +173,34 @@ describe("playback speed is presentation only", () => {
       .filter((p) => /\b(speedRef|playbackSpeed|PlaybackSpeed|PLAYBACK_SPEED)/.test(codeOf(p)))
       .map((p) => relative(SRC, p))
       .sort();
-    // The module, the two hosts that own an animation loop, and the hook seam
-    // that carries the value between them. Nothing in `ai/`, `physics/` or
-    // `game/`.
-    expect(readers).toEqual(["App.tsx", "ui/playbackSpeed.ts", "ui/useAiTurn.ts"]);
+    // The module, the rate schedule built from it, the two hosts that own an
+    // animation loop, and the hook seam that carries the value between them.
+    // Nothing in `ai/`, `physics/` or `game/`.
+    expect(readers).toEqual([
+      "App.tsx",
+      "ui/pacing.ts",
+      "ui/playbackSpeed.ts",
+      "ui/useAiTurn.ts",
+    ]);
     for (const r of readers) {
       expect(r.startsWith("ai/"), `${r} reads the presentation speed`).toBe(false);
       expect(r.startsWith("physics/"), `${r} reads the presentation speed`).toBe(false);
       expect(r.startsWith("game/"), `${r} reads the presentation speed`).toBe(false);
+    }
+  });
+
+  it("the rate schedule cannot reach the simulation", () => {
+    // `pacing.ts` joined the list above, so it needs the same guarantee the
+    // rest of the presentation layer has: it reparameterises time and can
+    // touch nothing that decides an outcome. Checked at the import boundary,
+    // which is where a reach would have to start.
+    const src = readFileSync(join(SRC, "ui/pacing.ts"), "utf8");
+    const imports = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
+    expect(imports.length).toBeGreaterThan(0);
+    for (const i of imports) {
+      expect(i.includes("/ai/") || i.includes("../ai"), `pacing imports ${i}`).toBe(false);
+      expect(i.includes("/physics/") || i.includes("../physics"), `pacing imports ${i}`).toBe(false);
+      expect(i.includes("/game/") || i.includes("../game"), `pacing imports ${i}`).toBe(false);
     }
   });
 
@@ -193,12 +214,13 @@ describe("playback speed is presentation only", () => {
       expect(uses.length, `${name} does not read the speed`).toBeGreaterThan(0);
       for (const m of src.matchAll(/[^\n]*speedRef\.current[^\n]*/g)) {
         const line = m[0].trim();
-        // Three legal shapes and no others: storing the live value into the
-        // ref, and the two halves of the rate the loop integrates.
+        // Two legal shapes and no others: storing the live value into the ref,
+        // and handing it to `buildPacing` as the `speed` field. The rate itself
+        // is now a schedule rather than a ternary, but the constraint is the
+        // same one — the speed may become a playback rate and nothing else.
         const ok =
           /^speedRef\.current = playbackSpeed;$/.test(line) ||
-          /^simTime < contactEnd \? speedRef\.current : settleRate\(tailSec, speedRef\.current\);$/.test(line) ||
-          /^const rate = simTime < contactEnd \? speedRef\.current : settleRate\(tailSec, speedRef\.current\);$/.test(line);
+          /^speed: speedRef\.current,$/.test(line);
         expect(ok, `${name}: unexpected use of the speed: ${line}`).toBe(true);
       }
       // And the integration itself is a wall-clock delta times that rate.
@@ -225,19 +247,31 @@ describe("playback speed is presentation only", () => {
     expect(settleRate(0, 0.6)).toBe(0.6);
   });
 
-  it("the two-phase rate lands the median shot where the module claims", () => {
-    // The numbers in `playbackSpeed.ts`'s header, recomputed. If the cap or the
-    // default moves, the comment stops being true and this fails.
+  it("the default is slower where the shot happens than the flat default it replaced", () => {
+    // The claim in `playbackSpeed.ts`'s header, recomputed against the real
+    // curve. The old default was a FLAT 0.6x, so at a contact it ran at 0.6.
+    // The new one runs at `DEFAULT * CONTACT_RATE` there.
+    const RETIRED_FLAT_DEFAULT = 0.6;
     const medianTotal = 5.39;
     const medianContactEnd = 3.04;
-    const tail = medianTotal - medianContactEnd;
-    const screen =
-      medianContactEnd / DEFAULT_PLAYBACK_SPEED + tail / settleRate(tail, DEFAULT_PLAYBACK_SPEED);
-    expect(screen).toBeGreaterThan(5.9);
-    expect(screen).toBeLessThan(6.3);
-    // Longer than the old flat 1.0x, but not by the 67% a flat 0.6x would cost.
-    expect(screen / medianTotal).toBeLessThan(1.2);
-    expect(medianContactEnd / DEFAULT_PLAYBACK_SPEED / medianContactEnd).toBeCloseTo(1 / 0.6, 6);
+    // A median-shaped shot: a few contacts, the last at 3.04 s.
+    const contacts = [0.35, 1.4, 2.2, medianContactEnd];
+    const p = buildPacing({
+      contactTimes: contacts,
+      durationSec: medianTotal,
+      speed: DEFAULT_PLAYBACK_SPEED,
+    });
+
+    const atContact = p.rateAt(medianContactEnd - 1e-6);
+    expect(atContact).toBeCloseTo(DEFAULT_PLAYBACK_SPEED * CONTACT_RATE, 6);
+    // 2.7x slower than the retired default, where it counts.
+    expect(RETIRED_FLAT_DEFAULT / atContact).toBeGreaterThan(2.5);
+
+    // And the whole shot has not become something nobody watches twice: the
+    // time comes back out of the open felt and the capped coast to rest.
+    const screen = screenSeconds(p, medianTotal);
+    expect(screen).toBeGreaterThan(medianTotal * 0.9);
+    expect(screen).toBeLessThan(medianTotal * 1.7);
   });
 
   it("the last contact is read off the event log, and a shot with none has no slow part", () => {
@@ -310,7 +344,7 @@ describe("playback speed is presentation only", () => {
 
 describe("the speed control itself", () => {
   it("offers a short list, slowest first, with a labelled default in range", () => {
-    expect([...PLAYBACK_SPEEDS]).toEqual([0.35, 0.6, 1]);
+    expect([...PLAYBACK_SPEEDS]).toEqual([0.35, 0.5, 1]);
     expect(PLAYBACK_SPEEDS).toContain(DEFAULT_PLAYBACK_SPEED);
     // The brief's window for a first-play default that can be followed without
     // turning every shot into an event.

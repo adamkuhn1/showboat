@@ -10,19 +10,42 @@ import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
-import { interpolateBalls, lastContactSec, type AnimTrack } from "./render/animate";
-import {
-  PLAYBACK_SPEEDS,
-  PLAYBACK_SPEED_LABEL,
-  settleRate,
-  usePlaybackSpeed,
-} from "./ui/playbackSpeed";
+import { contactTimes, interpolateBalls, type AnimTrack } from "./render/animate";
+import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
+import { buildPacing } from "./ui/pacing";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
 
 /** Fine-aim nudge, in radians. A fingertip covers ~26 mm of felt at embed scale. */
 const NUDGE = (0.25 * Math.PI) / 180;
+/** Coarse aim step for the keyboard. */
+const STEP = (2 * Math.PI) / 180;
+/** Keyboard power step. */
+const POWER_STEP = 0.05;
+
+// --- Direct cue interaction -----------------------------------------------
+//
+// Press behind the cue ball and pull away from where you want to shoot, as if
+// drawing the cue back: the direction is set by where you pull FROM, and the
+// distance you pull sets the power. Release to strike.
+//
+// This replaces a 5 px-tall power slider and two 0.25-degree nudge buttons,
+// which is a form for describing a shot rather than a way of taking one. Both
+// alternatives survive: the slider is still there as the pointer-free power
+// control, and the keyboard drives aim and power directly (see the key handler)
+// so the game is fully playable without a drag gesture at all.
+
+/** Pull distance, in metres of felt, below which nothing happens. */
+const PULL_DEAD_M = 0.03;
+/** Pull distance at which power reaches 1. Roughly a third of the table. */
+const PULL_FULL_M = 0.42;
+
+/** Map a pull distance in metres onto the cue action's power range. */
+const powerFromPull = (metres: number): number => {
+  const t = (metres - PULL_DEAD_M) / (PULL_FULL_M - PULL_DEAD_M);
+  return Math.max(0.05, Math.min(1, 0.05 + t * 0.95));
+};
 
 // Convert a pointer event's CSS-pixel coordinates into the canvas's intrinsic
 // pixel space. `.table { max-width: 100% }` (index.css) lets the canvas render
@@ -167,7 +190,17 @@ export default function App() {
       // shot now carries its real SHOOTING frame, which is what draws the
       // measured route under the moving balls. The player's own shot passes no
       // frame and no marks, because the reasoning overlay is the opponent's.
-      if (scene.frame) drawPresentation(ctx, scene.frame, view, scene.marks, scene.simTime);
+      if (scene.frame) {
+        // The route's head is pinned to the ball's ACTUAL position this frame —
+        // the same array `render` just drew — rather than to a position
+        // interpolated along the thinned route. See `legCutAt` for the drift
+        // that made this necessary.
+        const ballAt = (id: number) => {
+          const b = scene.state.balls.find((x) => x.id === id);
+          return b && !b.pocketed ? { x: b.pos.x, y: b.pos.y } : null;
+        };
+        drawPresentation(ctx, scene.frame, view, scene.marks, scene.simTime, ballAt);
+      }
       if (scene.stroke) {
         const cue = scene.state.balls.find((b) => b.id === CUE_ID);
         if (cue && !cue.pocketed) {
@@ -304,6 +337,9 @@ export default function App() {
 
   // ---- human input ------------------------------------------------------
   const draggingRef = useRef(false);
+  /** Where the current drag started, and whether it has moved enough to strike. */
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragMovedRef = useRef(false);
   /** Set by space/tap while the player's own shot is rolling. */
   const humanSkipRef = useRef(false);
   /** Identifies the rack a human roll belongs to; see the loop in `shoot`. */
@@ -314,12 +350,26 @@ export default function App() {
   speedRef.current = playbackSpeed;
   const yourTurn = phase === "aiming" && state.turn !== AI_PLAYER && !ai.busy;
 
-  const aimAt = (px: number, py: number) => {
+  /**
+   * Set aim and power from one pointer position, pull-back style.
+   *
+   * The cue ball travels AWAY from the pointer, so the gesture is the stroke:
+   * you place the butt of the cue and draw it back. Distance from the cue ball
+   * is the draw length and therefore the power.
+   */
+  const cueFrom = (px: number, py: number) => {
     const cue = state.balls.find((b) => b.id === CUE_ID);
     if (!cue || cue.pocketed) return;
-    const cx = view.offsetX + cue.pos.x * view.scale;
-    const cy = view.offsetY - cue.pos.y * view.scale;
-    setAim(Math.atan2(-(py - cy), px - cx));
+    // Pointer in world metres, so the pull maps onto the felt rather than onto
+    // whatever size the canvas happens to be rendered at.
+    const wx = (px - view.offsetX) / view.scale;
+    const wy = -(py - view.offsetY) / view.scale;
+    const dx = cue.pos.x - wx;
+    const dy = cue.pos.y - wy;
+    const pull = Math.hypot(dx, dy);
+    if (pull < PULL_DEAD_M) return; // inside the ball: no direction to read
+    setAim(Math.atan2(dy, dx));
+    setPower(powerFromPull(pull));
   };
 
   // Drag to aim, on Pointer Events: one code path for mouse, pen and touch.
@@ -355,13 +405,17 @@ export default function App() {
     // Capture so a drag that leaves the canvas keeps tracking.
     e.currentTarget.setPointerCapture(e.pointerId);
     draggingRef.current = true;
-    aimAt(x, y);
+    dragMovedRef.current = false;
+    dragStartRef.current = { x, y };
+    cueFrom(x, y);
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!draggingRef.current || !yourTurn) return;
     const { x, y } = getCanvasPoint(e);
-    aimAt(x, y);
+    const s = dragStartRef.current;
+    if (s && Math.hypot(x - s.x, y - s.y) > 4) dragMovedRef.current = true;
+    cueFrom(x, y);
   };
 
   const endDrag = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -370,6 +424,13 @@ export default function App() {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
+    // Release strikes — that is what makes it a stroke rather than a form. A
+    // press that never moved does not: a stray tap on the felt should line the
+    // shot up, not take it, and that is the one way this gesture could cost
+    // someone a game they were not ready to lose.
+    if (dragMovedRef.current) shootRef.current();
+    dragMovedRef.current = false;
+    dragStartRef.current = null;
   };
 
   const shoot = useCallback(() => {
@@ -399,10 +460,8 @@ export default function App() {
       waypoints: waypoints.map((wp) => ({ simTime: wp.time, balls: wp.balls })),
       duration: report.sim.duration,
     };
-    // Same pacing rule the opponent's shots use: the chosen speed governs the
-    // stretch with contacts in it, the coast to rest afterwards is capped.
-    const contactEnd = lastContactSec(report.sim);
-    const tailSec = Math.max(0, track.duration - contactEnd);
+    // Exactly the pacing the opponent's shots use, off this shot's own events.
+    const contacts = contactTimes(report.sim);
 
     humanSkipRef.current = false;
     let simTime = 0;
@@ -416,8 +475,11 @@ export default function App() {
     const token = ++humanShotTokenRef.current;
     const tick = (now: number) => {
       if (humanShotTokenRef.current !== token) return;
-      const rate =
-        simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+      const rate = buildPacing({
+        contactTimes: contacts,
+        durationSec: track.duration,
+        speed: speedRef.current,
+      }).rateAt(simTime);
       simTime += ((now - last) / 1000) * rate;
       last = now;
       if (humanSkipRef.current) simTime = track.duration;
@@ -453,6 +515,23 @@ export default function App() {
         if (aiRef.current.busy) aiRef.current.skip();
         else if (phaseRef.current === "animating") humanSkipRef.current = true;
         else shootRef.current();
+      }
+      // The pointer-free way to take the same shot. Aim on the horizontal keys
+      // (Shift for the 0.25-degree step the nudge buttons used to give), power
+      // on the vertical ones. Held keys repeat, which is why `e.repeat` is not
+      // filtered here — a fine aim wants to be draggable by key too.
+      const yours = phaseRef.current === "aiming" && !aiRef.current.busy;
+      if (yours && (e.code === "ArrowLeft" || e.code === "ArrowRight")) {
+        e.preventDefault();
+        const d = (e.shiftKey ? NUDGE : STEP) * (e.code === "ArrowLeft" ? 1 : -1);
+        setAim((a) => a + d);
+        return;
+      }
+      if (yours && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
+        e.preventDefault();
+        const d = POWER_STEP * (e.code === "ArrowUp" ? 1 : -1);
+        setPower((p) => Math.max(0.05, Math.min(1, p + d)));
+        return;
       }
       if (e.code === "Escape" && !e.repeat) {
         // The shell's focused embed route tells the visitor Escape leaves.
@@ -579,6 +658,9 @@ export default function App() {
 
       <div className="controls">
         <div className="primary-row">
+          {/* The pointer-free power control. Direct cue interaction on the felt
+              is the primary way in; this mirrors it, and remains the way to set
+              power without a drag gesture. */}
           <label className="power">
             Power <span>{Math.round(power * 100)}%</span>
             <input
@@ -622,15 +704,10 @@ export default function App() {
           ))}
         </div>
 
-        {/* Fine aim: a fingertip is ~26 mm of felt at the embedded scale, which
-            cannot resolve a cut shot on its own. */}
+        {/* Spin. Fine aim moved onto the arrow keys, where a fingertip's ~26 mm
+            of felt is no longer the limiting resolution — Shift gives the same
+            0.25 degrees the two buttons here used to. */}
         <div className="fine">
-          <button className="nudge" onClick={() => setAim((a) => a - NUDGE)} disabled={!yourTurn}>
-            −0.25°
-          </button>
-          <button className="nudge" onClick={() => setAim((a) => a + NUDGE)} disabled={!yourTurn}>
-            +0.25°
-          </button>
           <label>
             English <span>{side > 0 ? `+${side.toFixed(2)}` : side.toFixed(2)}</span>
             <input

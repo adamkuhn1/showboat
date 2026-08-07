@@ -424,6 +424,57 @@ export interface MeasuredRoute {
   durationSec: number;
 }
 
+/**
+ * Which of a measured leg's points are behind simulation time `t`, and a
+ * fallback head position for the partial segment.
+ *
+ * THE HEAD IS A FALLBACK, AND THE REASON MATTERS.
+ *
+ * `points` is the THINNED route: straight runs have their intermediate
+ * waypoints removed, within a declared tolerance, because the shape does not
+ * need them. Position along such a run is emphatically NOT linear in time — the
+ * ball is decelerating the whole way — so interpolating linearly between two
+ * retained points gives a head that is nowhere near the ball.
+ *
+ * That was not a theoretical objection. Measured on real shots by
+ * `routeSync.test.ts`, the line's head ran up to **109 logical pixels** from the
+ * cue ball it was supposed to be attached to, about an eighth of the table, on
+ * a long straight run into a pocket. It is a large part of what made the route
+ * hard to reconcile with the motion.
+ *
+ * So during playback the caller passes the ball's own interpolated position and
+ * the line ends exactly there — see `drawPresentation`'s `ballAt`. This
+ * fallback is used only when there is no ball to ask: the pre-stroke draw,
+ * where the whole route is shown at once, and a potted ball, which is no longer
+ * on the felt.
+ *
+ * Null when the leg has not started by `t` — there is nothing to draw yet.
+ */
+export function legCutAt(
+  leg: MeasuredLeg,
+  t: number,
+): { upTo: number; head: Vec2Trace } | null {
+  const pts = leg.points;
+  const times = leg.timesSec;
+  if (pts.length < 2) return null;
+  if (t <= times[0]) return null;
+  for (let i = 1; i < pts.length; i++) {
+    if (times[i] > t) {
+      const span = times[i] - times[i - 1];
+      const f = span <= 0 ? 1 : (t - times[i - 1]) / span;
+      return {
+        upTo: i - 1,
+        head: {
+          x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f,
+          y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f,
+        },
+      };
+    }
+  }
+  // Past the end: the whole leg is drawn.
+  return { upTo: pts.length - 1, head: pts[pts.length - 1] };
+}
+
 const legOf = (t: ExecutedMotion["trajectories"][number]): MeasuredLeg => ({
   ballId: t.ballId,
   points: t.points,

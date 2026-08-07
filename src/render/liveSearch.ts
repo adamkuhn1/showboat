@@ -87,8 +87,23 @@ export interface LiveSearch {
   selectedKind: string | null;
   selectedRung: string | null;
   simulatingIndex: number | null;
-  /** The candidate the search most recently finished with. Carries the caption. */
-  lastResolvedIndex: number | null;
+  /**
+   * The candidate whose rejection reason is captioned on the felt, and the
+   * event time at which it took the caption.
+   *
+   * A caption needs a minimum dwell to be readable, and the search does not
+   * provide one: measured in Chrome against a real dev build, consecutive
+   * simulation results arrive 12-126 ms apart (median ~77 ms over two turns).
+   * Captioning the newest rejection unconditionally would strobe.
+   *
+   * The dwell is applied to the CAPTION only. Routes still resolve at the rate
+   * the search resolves them, nothing is delayed, and the search is not slowed
+   * — the only thing held back is which of several real reasons is currently
+   * spelled out. `captionAtMs` comes from the events' own `atMs`, so this is
+   * driven by the search's clock rather than by a timer of the renderer's.
+   */
+  captionIndex: number | null;
+  captionAtMs: number;
   /** Real counters, from real events. Never a denominator for a percentage. */
   counts: { generated: number; simulated: number; retained: number; rejected: number };
   completed: {
@@ -125,13 +140,28 @@ export function createLiveSearch(): LiveSearch {
     selectedKind: null,
     selectedRung: null,
     simulatingIndex: null,
-    lastResolvedIndex: null,
+    captionIndex: null,
+    captionAtMs: -Infinity,
     counts: { generated: 0, simulated: 0, retained: 0, rejected: 0 },
     completed: null,
     events: [],
     outOfOrder: 0,
   };
 }
+
+/**
+ * Minimum time a rejection caption holds the felt before another may take it.
+ *
+ * 420 ms, from the measured arrival rate rather than from taste: consecutive
+ * simulation results land 12-126 ms apart in a real browser, so without a dwell
+ * a caption is legible only when the search happens to be slow. Two or three
+ * words at a glance need roughly this long, and it is short enough that a
+ * ~1.9 s search still spells out four or five distinct reasons.
+ *
+ * This is a display rate limit on ONE line of text. It delays nothing, hides no
+ * route, and every caption it does show is a real reason for a real route.
+ */
+export const CAPTION_DWELL_MS = 420;
 
 const blank = (candidate: ProgressCandidate): LiveCandidate => ({
   candidate,
@@ -232,8 +262,13 @@ export function applyProgress(live: LiveSearch, e: SearchProgressEvent): LiveSea
       // `direct-excluded-by-policy` is published for every direct in one burst
       // before any physics runs, and captioning the last of those would put a
       // reason on the felt for a route nobody was looking at.
-      if (e.reason !== "direct-excluded-by-policy" && e.reason !== "pruned-by-prior") {
-        live.lastResolvedIndex = e.index;
+      if (
+        e.reason !== "direct-excluded-by-policy" &&
+        e.reason !== "pruned-by-prior" &&
+        e.atMs - live.captionAtMs >= CAPTION_DWELL_MS
+      ) {
+        live.captionIndex = e.index;
+        live.captionAtMs = e.atMs;
       }
       break;
     }
@@ -250,8 +285,11 @@ export function applyProgress(live: LiveSearch, e: SearchProgressEvent): LiveSea
         c.strength = e.strength;
         c.visits = e.visits;
         c.resolvedSeq = e.seq;
-        live.lastResolvedIndex = e.index;
       }
+      // Deliberately does NOT take the caption. The caption spells out why a
+      // route LOST; a survivor has no reason to spell out, and letting it hold
+      // the slot only meant the next real rejection had to wait out a dwell it
+      // had not earned.
       break;
     }
 
@@ -274,7 +312,7 @@ export function applyProgress(live: LiveSearch, e: SearchProgressEvent): LiveSea
         }
       }
       live.simulatingIndex = null;
-      live.lastResolvedIndex = null;
+      live.captionIndex = null;
       advance("selected");
       break;
     }
@@ -386,7 +424,7 @@ export function liveFrame(live: LiveSearch, geom: FrameGeometry): PresentationFr
       role: c.role,
       reason: c.reason,
       resolving: c.simulating,
-      justResolved: c.candidate.index === live.lastResolvedIndex && c.reason !== null,
+      justResolved: c.candidate.index === live.captionIndex && c.reason !== null,
     });
   }
 

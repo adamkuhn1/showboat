@@ -15,6 +15,7 @@ import { type Vec2 } from "../physics/vec";
 import { type ViewTransform } from "./renderer";
 import { BALL_RADIUS } from "../physics/constants";
 import {
+  legCutAt,
   REJECTION_TEXT,
   type MeasuredLeg,
   type PresentationFrame,
@@ -96,28 +97,29 @@ function strokeMeasured(
   leg: MeasuredLeg,
   v: ViewTransform,
   t: number | null,
+  /**
+   * Where the ball actually is right now, when there is one to ask. The line
+   * ends here rather than at a position interpolated along the thinned route —
+   * see `legCutAt`, and the 109-pixel drift that made this necessary.
+   */
+  ballPos: { x: number; y: number } | null = null,
 ): void {
   const pts = leg.points;
   if (pts.length < 2) return;
-  const times = leg.timesSec;
-  if (t !== null && t <= times[0]) return;
+
+  const cut = t === null ? { upTo: pts.length - 1, head: pts[pts.length - 1] } : legCutAt(leg, t);
+  if (cut === null) return;
+  const head = t === null ? cut.head : (ballPos ?? cut.head);
 
   ctx.beginPath();
   const [x0, y0] = toPx(pts[0], v);
   ctx.moveTo(x0, y0);
-  for (let i = 1; i < pts.length; i++) {
-    if (t !== null && times[i] > t) {
-      const span = times[i] - times[i - 1];
-      const f = span <= 0 ? 1 : (t - times[i - 1]) / span;
-      const [ax, ay] = toPx(pts[i - 1], v);
-      const [bx, by] = toPx(pts[i], v);
-      ctx.lineTo(ax + (bx - ax) * f, ay + (by - ay) * f);
-      ctx.stroke();
-      return;
-    }
+  for (let i = 1; i <= cut.upTo; i++) {
     const [x, y] = toPx(pts[i], v);
     ctx.lineTo(x, y);
   }
+  const [hx, hy] = toPx(head, v);
+  ctx.lineTo(hx, hy);
   ctx.stroke();
 }
 
@@ -131,6 +133,7 @@ function drawMeasured(
   r: RouteRender,
   v: ViewTransform,
   simTime: number | null,
+  ballAt: BallLocator,
 ): void {
   const m = r.measured;
   if (!m) return;
@@ -142,29 +145,40 @@ function drawMeasured(
   if (m.cue) {
     ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.55})`;
     ctx.lineWidth = 1 + r.weight * 1.4;
-    strokeMeasured(ctx, m.cue, v, simTime);
+    strokeMeasured(ctx, m.cue, v, simTime, ballAt(m.cue.ballId));
   }
   for (const other of m.others) {
     ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.6})`;
     ctx.lineWidth = 1 + r.weight * 1.8;
-    strokeMeasured(ctx, other, v, simTime);
+    strokeMeasured(ctx, other, v, simTime, ballAt(other.ballId));
   }
   if (m.object) {
     ctx.strokeStyle = `rgba(${rgb}, ${r.alpha})`;
     ctx.lineWidth = 1 + r.weight * 2.6;
-    strokeMeasured(ctx, m.object, v, simTime);
+    strokeMeasured(ctx, m.object, v, simTime, ballAt(m.object.ballId));
   }
 }
+
+/**
+ * Where a ball is on the felt this frame, or null if it is not on the felt.
+ *
+ * The host supplies this from the very balls it is about to draw, so the route
+ * and the ball cannot disagree: they are the same position.
+ */
+export type BallLocator = (ballId: number) => { x: number; y: number } | null;
+
+const NO_BALLS: BallLocator = () => null;
 
 function drawRoute(
   ctx: CanvasRenderingContext2D,
   r: RouteRender,
   v: ViewTransform,
   simTime: number | null,
+  ballAt: BallLocator,
 ): void {
   if (r.alpha <= 0.01) return;
   if (r.source === "simulated") {
-    drawMeasured(ctx, r, v, simTime);
+    drawMeasured(ctx, r, v, simTime, ballAt);
     return;
   }
   const rgb = ROLE_STROKE[r.role];
@@ -305,11 +319,12 @@ export function drawPresentation(
   v: ViewTransform,
   marks: ContactMark[] = [],
   simTime: number | null = null,
+  ballAt: BallLocator = NO_BALLS,
 ): void {
   ctx.save();
   // Weakest first, so the live routes sit on top of the dead ones.
   const ordered = [...frame.routes].sort((a, b) => a.alpha - b.alpha);
-  for (const r of ordered) drawRoute(ctx, r, v, simTime);
+  for (const r of ordered) drawRoute(ctx, r, v, simTime, ballAt);
 
   // One caption at a time. During VERIFYING it belongs to the candidate the
   // physics just finished with, so each elimination reads as it happens;

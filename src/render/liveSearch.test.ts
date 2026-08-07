@@ -21,7 +21,13 @@ import { initPhysics } from "../physics/wasm-bridge";
 import { defaultConfig } from "../ai/shotSearch";
 import { classicalTrickOnlyBrain } from "../ai/brain";
 import { createProgressSink, type SearchProgressEvent } from "../ai/search/progress";
-import { applyProgress, createLiveSearch, liveFrame, liveState } from "./liveSearch";
+import {
+  applyProgress,
+  CAPTION_DWELL_MS,
+  createLiveSearch,
+  liveFrame,
+  liveState,
+} from "./liveSearch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -214,6 +220,34 @@ describe("the fold reports only what the search published", () => {
     expect(seen.has("RANKING")).toBe(false);
     expect(seen.has("VERIFYING")).toBe(true);
     expect(live.modelId).toBeNull();
+  });
+
+  it("the rejection caption is rate limited, and only ever holds a real reason", () => {
+    const live = createLiveSearch();
+    const captions: { index: number; atMs: number }[] = [];
+    for (const e of stream) {
+      const before = live.captionIndex;
+      applyProgress(live, e);
+      if (live.captionIndex !== null && live.captionIndex !== before) {
+        captions.push({ index: live.captionIndex, atMs: live.captionAtMs });
+      }
+    }
+    // Never faster than the dwell.
+    for (let i = 1; i < captions.length; i++) {
+      expect(captions[i].atMs - captions[i - 1].atMs).toBeGreaterThanOrEqual(CAPTION_DWELL_MS);
+    }
+    // And every one of them names a candidate the search really rejected, with
+    // a reason it really gave — a rate limit may drop a caption, never invent one.
+    const rejected = new Map(
+      stream
+        .filter((e) => e.kind === "candidate-rejected")
+        .map((e) => [(e as { index: number }).index, (e as { reason: string }).reason]),
+    );
+    for (const c of captions) {
+      expect(rejected.has(c.index)).toBe(true);
+      expect(rejected.get(c.index)).not.toBe("direct-excluded-by-policy");
+      expect(rejected.get(c.index)).not.toBe("pruned-by-prior");
+    }
   });
 
   it("the phase never moves backwards, even though rejections arrive after selection", () => {
