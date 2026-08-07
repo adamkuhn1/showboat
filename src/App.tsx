@@ -556,7 +556,7 @@ export default function App() {
             width it pushed `.layout` over its wrap breakpoint, which reflowed
             this panel below the table and buried the Shoot button below the
             visible frame. See index.css's `.board` comment. */}
-        {(ai.trace !== null || ai.planning) && (
+        {(ai.trace !== null || ai.planning || ai.liveCounts !== null) && (
           <OverlayPanel
             trace={ai.trace}
             state={ai.presentation}
@@ -565,6 +565,8 @@ export default function App() {
             badge={useNeural ? modelBadge : { mode: "classical" }}
             showSkipHint={ai.turnIndex >= 2}
             showDisclosure={ai.turnIndex === 1}
+            replaying={ai.replaying}
+            liveCounts={ai.liveCounts}
             compare={{ available: modelAvailable, useNeural, onChange: setUseNeural }}
             replay={
               ai.presentation === "SETTLED" && !ai.busy

@@ -9,12 +9,22 @@
 //
 // WHAT IS REAL AND WHAT IS PRESENTATION — read this before changing anything.
 //
-// The search completes before the presentation begins. Every route, every
-// rejection reason, every contact and every number below is read off the trace
-// the opponent actually decided with; nothing is synthesised. What the
-// presentation adds is *pacing*: the order and the speed at which an already-
-// finished decision is revealed. That is disclosed in the panel and in the
-// README, and it is the only liberty taken.
+// This module paces a COMPLETED decision. Every route, every rejection reason,
+// every contact and every number below is read off the trace the opponent
+// actually decided with; nothing is synthesised. What it adds is *pacing*: the
+// order and the speed at which an already-finished decision is revealed.
+//
+// That makes it a REPLAY, and it is now labelled as one. The live reasoning a
+// visitor watches during a turn is not built here — it is `render/liveSearch.ts`
+// folding the search's own event stream (`ai/search/progress.ts`) as the events
+// arrive, which is an observation rather than a re-telling. The two are kept
+// apart on purpose, and the panel says which one is on screen.
+//
+// A live turn still uses this file for the beats that come AFTER the search:
+// `scope: "post-search"` builds SELECTED and READY only. Those are not
+// observations of the search, they are the chosen plan held long enough to
+// read, and they are the only part of the old choreography that survives on the
+// live path.
 //
 // The two places pacing is derived from measured work rather than chosen:
 //   - VERIFYING's length is the search's real physics time
@@ -180,6 +190,22 @@ export interface ScheduleInput {
   decay?: number;
   /** Collapse the choreography; the ball motion is content and is untouched. */
   reducedMotion?: boolean;
+  /**
+   * How much of the sequence to build.
+   *
+   * `"full"` is every state, and it is now the REPLAY: a completed decision
+   * paced out from the beginning, which is what `replayDecision` shows and what
+   * the panel labels as a replay.
+   *
+   * `"post-search"` is SELECTED and READY only. It is what a live turn uses,
+   * because ENUMERATING, RANKING and VERIFYING have just been watched happening
+   * — driven by `render/liveSearch.ts` off the search's own events — and
+   * replaying them immediately afterwards would show the visitor the same three
+   * states twice, the second time as choreography. What genuinely remains after
+   * a search finishes is the two beats that are not observations of it: the
+   * chosen plan held long enough to read, and the sentence describing it.
+   */
+  scope?: "full" | "post-search";
 }
 
 /** Candidates that really were handed to the physics simulator. */
@@ -215,12 +241,17 @@ export function buildSchedule(input: ScheduleInput): PresentationSchedule {
   const selectedIndex = trace.selected?.candidateIndex ?? null;
   const losers = verified.filter((c) => c.index !== selectedIndex).length;
 
+  const postSearch = input.scope === "post-search";
+
   const natural = {
-    ENUMERATING: clamp(G * TIMING.ENUM_PER_CANDIDATE_MS, TIMING.ENUM_MIN_MS, TIMING.ENUM_MAX_MS),
+    ENUMERATING: postSearch
+      ? 0
+      : clamp(G * TIMING.ENUM_PER_CANDIDATE_MS, TIMING.ENUM_MIN_MS, TIMING.ENUM_MAX_MS),
     // Absent, not greyed, when no model ran. The visitor sees a structurally
     // shorter sequence, which is the most honest rendering of the toggle.
-    RANKING: trace.mode === "neural-hybrid" && trace.fallback === null ? TIMING.RANK_MS : 0,
-    VERIFYING: verifyMs(trace, V),
+    RANKING:
+      !postSearch && trace.mode === "neural-hybrid" && trace.fallback === null ? TIMING.RANK_MS : 0,
+    VERIFYING: postSearch ? 0 : verifyMs(trace, V),
     SELECTED: clamp(
       TIMING.SELECT_BASE_MS + losers * TIMING.SELECT_PER_LOSER_MS,
       TIMING.SELECT_MIN_MS,

@@ -44,6 +44,10 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       },
       {
         onModelLoadStart: () => post({ type: "model-loading", id: req.id }),
+        // Posted from inside the running search, one message per event. The
+        // worker thread is the one doing the work, so this is the only place
+        // the events can be observed at the instant they occur.
+        onProgress: (event) => post({ type: "progress", id: req.id, event }),
         onModelStatus: (s) =>
           post({
             type: "model-status",

@@ -4,10 +4,13 @@ import type { Table } from "../../physics/table";
 import type { WarmRequest } from "./protocol";
 import { planTurnTraced, type ModelStatus, type PlannedTurn } from "./plan";
 import { planViaWorker } from "./workerPlan";
+import type { SearchProgressEvent } from "../../ai/search/progress";
 
 export interface PlanCallbacks {
   onModelLoading?: () => void;
   onModelStatus?: (s: ModelStatus) => void;
+  /** One live search event, as the search publishes it. */
+  onProgress?: (e: SearchProgressEvent) => void;
 }
 
 export interface Planner {
@@ -82,7 +85,11 @@ export function usePlanner(): Planner {
       if (!worker) {
         return planTurnTraced(
           { state, table, player, useNeural },
-          { onModelLoadStart: cb?.onModelLoading, onModelStatus: cb?.onModelStatus },
+          {
+            onModelLoadStart: cb?.onModelLoading,
+            onModelStatus: cb?.onModelStatus,
+            onProgress: cb?.onProgress,
+          },
         );
       }
       // The request, its watchdog and the main-thread rescue all live in
@@ -98,6 +105,7 @@ export function usePlanner(): Planner {
         modelDir: modelDirUrl(),
         onModelLoading: cb?.onModelLoading,
         onModelStatus: cb?.onModelStatus,
+        onProgress: cb?.onProgress,
         // A worker declared dead must not be reused; the next turn builds a
         // fresh one through `ensureWorker`.
         onWorkerDeclaredDead: () => {
