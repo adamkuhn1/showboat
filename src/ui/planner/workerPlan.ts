@@ -9,6 +9,7 @@ import type { Table } from "../../physics/table";
 import type { PlanRequest, PlanResponse } from "./protocol";
 import { planTurnTraced, type ModelStatus, type PlannedTurn } from "./plan";
 import { WORKER_SILENCE_MS } from "../../ai/deadline";
+import type { SearchProgressEvent } from "../../ai/search/progress";
 
 /** The subset of `Worker` this function uses. Lets a test supply a stub. */
 export interface PlanChannel {
@@ -28,6 +29,8 @@ export interface WorkerPlanInput {
   modelDir: string;
   onModelLoading?: () => void;
   onModelStatus?: (s: ModelStatus) => void;
+  /** One live search event, forwarded as the worker posts it. */
+  onProgress?: (e: SearchProgressEvent) => void;
   /**
    * Called when the watchdog fires, before the main-thread rescue plan starts,
    * so the host can drop its reference to a worker it must not reuse.
@@ -112,7 +115,10 @@ export function planViaWorker(input: WorkerPlanInput): Promise<PlannedTurn> {
               detail: `the planning worker stopped responding for ${silenceMs} ms`,
             },
           },
-          { onModelStatus: input.onModelStatus },
+          // The rescue search runs on the main thread, so its events all land
+          // in one blocking burst rather than spread over the search. That is
+          // what actually happens, and the host renders it as what it is.
+          { onModelStatus: input.onModelStatus, onProgress: input.onProgress },
         ),
       );
     };
@@ -126,6 +132,7 @@ export function planViaWorker(input: WorkerPlanInput): Promise<PlannedTurn> {
       const msg = e.data;
       if (!msg || msg.id !== id || settled) return;
       arm();
+      if (msg.type === "progress") return input.onProgress?.(msg.event);
       if (msg.type === "model-loading") return input.onModelLoading?.();
       if (msg.type === "model-status") {
         return input.onModelStatus?.({

@@ -9,12 +9,22 @@
 //
 // WHAT IS REAL AND WHAT IS PRESENTATION — read this before changing anything.
 //
-// The search completes before the presentation begins. Every route, every
-// rejection reason, every contact and every number below is read off the trace
-// the opponent actually decided with; nothing is synthesised. What the
-// presentation adds is *pacing*: the order and the speed at which an already-
-// finished decision is revealed. That is disclosed in the panel and in the
-// README, and it is the only liberty taken.
+// This module paces a COMPLETED decision. Every route, every rejection reason,
+// every contact and every number below is read off the trace the opponent
+// actually decided with; nothing is synthesised. What it adds is *pacing*: the
+// order and the speed at which an already-finished decision is revealed.
+//
+// That makes it a REPLAY, and it is now labelled as one. The live reasoning a
+// visitor watches during a turn is not built here — it is `render/liveSearch.ts`
+// folding the search's own event stream (`ai/search/progress.ts`) as the events
+// arrive, which is an observation rather than a re-telling. The two are kept
+// apart on purpose, and the panel says which one is on screen.
+//
+// A live turn still uses this file for the beats that come AFTER the search:
+// `scope: "post-search"` builds SELECTED and READY only. Those are not
+// observations of the search, they are the chosen plan held long enough to
+// read, and they are the only part of the old choreography that survives on the
+// live path.
 //
 // The two places pacing is derived from measured work rather than chosen:
 //   - VERIFYING's length is the search's real physics time
@@ -180,6 +190,22 @@ export interface ScheduleInput {
   decay?: number;
   /** Collapse the choreography; the ball motion is content and is untouched. */
   reducedMotion?: boolean;
+  /**
+   * How much of the sequence to build.
+   *
+   * `"full"` is every state, and it is now the REPLAY: a completed decision
+   * paced out from the beginning, which is what `replayDecision` shows and what
+   * the panel labels as a replay.
+   *
+   * `"post-search"` is SELECTED and READY only. It is what a live turn uses,
+   * because ENUMERATING, RANKING and VERIFYING have just been watched happening
+   * — driven by `render/liveSearch.ts` off the search's own events — and
+   * replaying them immediately afterwards would show the visitor the same three
+   * states twice, the second time as choreography. What genuinely remains after
+   * a search finishes is the two beats that are not observations of it: the
+   * chosen plan held long enough to read, and the sentence describing it.
+   */
+  scope?: "full" | "post-search";
 }
 
 /** Candidates that really were handed to the physics simulator. */
@@ -215,12 +241,17 @@ export function buildSchedule(input: ScheduleInput): PresentationSchedule {
   const selectedIndex = trace.selected?.candidateIndex ?? null;
   const losers = verified.filter((c) => c.index !== selectedIndex).length;
 
+  const postSearch = input.scope === "post-search";
+
   const natural = {
-    ENUMERATING: clamp(G * TIMING.ENUM_PER_CANDIDATE_MS, TIMING.ENUM_MIN_MS, TIMING.ENUM_MAX_MS),
+    ENUMERATING: postSearch
+      ? 0
+      : clamp(G * TIMING.ENUM_PER_CANDIDATE_MS, TIMING.ENUM_MIN_MS, TIMING.ENUM_MAX_MS),
     // Absent, not greyed, when no model ran. The visitor sees a structurally
     // shorter sequence, which is the most honest rendering of the toggle.
-    RANKING: trace.mode === "neural-hybrid" && trace.fallback === null ? TIMING.RANK_MS : 0,
-    VERIFYING: verifyMs(trace, V),
+    RANKING:
+      !postSearch && trace.mode === "neural-hybrid" && trace.fallback === null ? TIMING.RANK_MS : 0,
+    VERIFYING: postSearch ? 0 : verifyMs(trace, V),
     SELECTED: clamp(
       TIMING.SELECT_BASE_MS + losers * TIMING.SELECT_PER_LOSER_MS,
       TIMING.SELECT_MIN_MS,
@@ -391,6 +422,57 @@ export interface MeasuredRoute {
   object: MeasuredLeg | null;
   others: MeasuredLeg[];
   durationSec: number;
+}
+
+/**
+ * Which of a measured leg's points are behind simulation time `t`, and a
+ * fallback head position for the partial segment.
+ *
+ * THE HEAD IS A FALLBACK, AND THE REASON MATTERS.
+ *
+ * `points` is the THINNED route: straight runs have their intermediate
+ * waypoints removed, within a declared tolerance, because the shape does not
+ * need them. Position along such a run is emphatically NOT linear in time — the
+ * ball is decelerating the whole way — so interpolating linearly between two
+ * retained points gives a head that is nowhere near the ball.
+ *
+ * That was not a theoretical objection. Measured on real shots by
+ * `routeSync.test.ts`, the line's head ran up to **109 logical pixels** from the
+ * cue ball it was supposed to be attached to, about an eighth of the table, on
+ * a long straight run into a pocket. It is a large part of what made the route
+ * hard to reconcile with the motion.
+ *
+ * So during playback the caller passes the ball's own interpolated position and
+ * the line ends exactly there — see `drawPresentation`'s `ballAt`. This
+ * fallback is used only when there is no ball to ask: the pre-stroke draw,
+ * where the whole route is shown at once, and a potted ball, which is no longer
+ * on the felt.
+ *
+ * Null when the leg has not started by `t` — there is nothing to draw yet.
+ */
+export function legCutAt(
+  leg: MeasuredLeg,
+  t: number,
+): { upTo: number; head: Vec2Trace } | null {
+  const pts = leg.points;
+  const times = leg.timesSec;
+  if (pts.length < 2) return null;
+  if (t <= times[0]) return null;
+  for (let i = 1; i < pts.length; i++) {
+    if (times[i] > t) {
+      const span = times[i] - times[i - 1];
+      const f = span <= 0 ? 1 : (t - times[i - 1]) / span;
+      return {
+        upTo: i - 1,
+        head: {
+          x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f,
+          y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f,
+        },
+      };
+    }
+  }
+  // Past the end: the whole leg is drawn.
+  return { upTo: pts.length - 1, head: pts[pts.length - 1] };
 }
 
 const legOf = (t: ExecutedMotion["trajectories"][number]): MeasuredLeg => ({

@@ -5,6 +5,7 @@ import { type ShotEvent, type SimResult } from "../physics/engine";
 import { type Candidate, type CandidateKind, generateCandidates } from "./candidates";
 import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics/wasm-bridge";
 import { railsBeforePot } from "./trace";
+import { NO_PROGRESS, type SearchProgressSink } from "./search/progress";
 
 /**
  * A legal pot requires: the cue's first contact matches the candidate's
@@ -260,6 +261,19 @@ export interface SearchConfig {
    * rejection reason.
    */
   eligible?: (c: Candidate) => boolean;
+  /**
+   * Live observer of this search, called as each step actually happens. See
+   * `search/progress.ts`. Defaults to `NO_PROGRESS`, whose methods are empty —
+   * the evaluation harness and the unit suite run with no observer, so their
+   * timings stay comparable to a search that has never heard of this field.
+   *
+   * The sink publishes only PHYSICS-stage verdicts, because those are the only
+   * ones this function makes. `below-reliability-threshold` and
+   * `lower-utility-than-selected` are selection decisions and are published by
+   * `brain.ts` from the finished trace, so the live stream cannot disagree with
+   * the record about why a route lost.
+   */
+  progress?: SearchProgressSink;
 }
 
 /**
@@ -470,6 +484,7 @@ export const searchCandidates = (
 ): SearchOutcome => {
   const prior = config.prior;
   const usePrior = prior !== undefined && prior.scores.length === candidates.length;
+  const progress = config.progress ?? NO_PROGRESS;
   const baseTrace = (): DecisionTrace => ({
     mode: usePrior ? "neural-hybrid" : "classical",
     candidatesGenerated: candidates.length,
@@ -589,6 +604,13 @@ export const searchCandidates = (
     // budget runs short mid-seeding it runs short on the candidates the model
     // rated lowest.
     order = ranked.filter((ci) => kept.has(ci));
+
+    // Published as it is decided, not reconstructed afterwards: these are the
+    // candidates the model dropped before any physics ran, which is a real
+    // elimination with a real cause.
+    const pruned = ranked.filter((ci) => !kept.has(ci));
+    progress.priorPruned(pruned, keep, reservePromotions);
+    for (const ci of pruned) progress.rejected(ci, "pruned-by-prior");
   }
 
   let seed = config.seed >>> 0;
@@ -641,6 +663,10 @@ export const searchCandidates = (
     if (sims + 1 > BUDGET) break; // can't even afford the seeding shot sim
     const s = stats[ci];
     const copy = workBalls.map(cloneBall);
+    // Announced BEFORE the call, so an observer sees the candidate go into the
+    // simulator rather than learning about it once the answer is already known.
+    // This is the ordering `validateProgressStream` checks.
+    progress.simulating(ci);
     const sim = simulateShotWasm(copy, s.candidate.action);
     sims += 1;
     s.verified = true;
@@ -650,7 +676,7 @@ export const searchCandidates = (
     // cannot claim physics that did not run" a mechanical property rather
     // than a convention.
     const scratchedHere = sim.pocketed.includes(0);
-    verifications[ci] = {
+    const v: CandidateVerification = {
       index: ci,
       firstContact: sim.firstContact,
       legalFirstContact: sim.firstContact === s.candidate.target,
@@ -660,6 +686,26 @@ export const searchCandidates = (
       railsBeforePot: railsBeforePot(sim),
       events: sim.events,
     };
+    verifications[ci] = v;
+    // The simulation has returned, so its result may now be published — and
+    // only the result it actually produced.
+    progress.verified(ci, {
+      firstContact: v.firstContact,
+      legalFirstContact: v.legalFirstContact,
+      scratched: v.scratched,
+      legalPot: v.legalPot,
+      pocketed: v.pocketed,
+      railsBeforePot: v.railsBeforePot,
+    });
+    // The physics-stage verdicts, in the same order `trace/build.ts` applies
+    // them, so a live rejection and the recorded one are the same string.
+    if (scratchedHere) {
+      progress.rejected(ci, "scratched-in-simulation");
+    } else if (!v.legalFirstContact) {
+      progress.rejected(ci, "illegal-first-contact");
+    } else if (!v.legalPot) {
+      progress.rejected(ci, "did-not-pot");
+    }
     // Cue ball id is always 0. A scratch is a foul regardless of what else was
     // pocketed — skip the candidate entirely so it can't win UCB selection.
     if (scratchedHere) {
@@ -683,13 +729,19 @@ export const searchCandidates = (
       // old flat whole-board scalar (parked policy/value net) as a fallback.
       // No additional physics cost beyond the simulateShotWasm call above —
       // the net score itself is not a physics rollout.
-      const v = useNetScores ? netScores![ci] : config.netSeedValue!;
-      s.value = v;
-      s.strength = toStrength(v);
+      const seedValue = useNetScores ? netScores![ci] : config.netSeedValue!;
+      s.value = seedValue;
+      s.strength = toStrength(seedValue);
       s.visits = 1;
     } else {
-      if (sims + config.rolloutsPerEval > BUDGET) continue; // leave unseeded (visits=0); can't afford it
-      const v = rolloutValueWasm(
+      if (sims + config.rolloutsPerEval > BUDGET) {
+        // Verified and legal, but there was no budget left to value it. It
+        // keeps `visits: 0`, so it cannot be selected; the policy stage will
+        // reject it on the strength of 0 it actually has.
+        progress.retained(ci, s.strength, s.visits);
+        continue;
+      }
+      const rolled = rolloutValueWasm(
         workBalls,
         s.candidate.action,
         targets,
@@ -699,9 +751,20 @@ export const searchCandidates = (
       );
       sims += config.rolloutsPerEval;
       s.visits = 1;
-      s.value = v;
-      s.strength = toStrength(v);
+      s.value = rolled;
+      s.strength = toStrength(rolled);
     }
+    // Survived physics. `strength` is the search's own bounded transform of the
+    // rollout value — the same number the trace carries, not a display copy.
+    progress.retained(ci, s.strength, s.visits);
+  }
+
+  // Everything the search intended to reach and did not. The distinction is
+  // real and is the search's own: `seedTimedOut` says the clock stopped the
+  // seeding loop, otherwise the physics budget ran out.
+  const reached = new Set(verifiedIndices);
+  for (const ci of order) {
+    if (!reached.has(ci)) progress.rejected(ci, seedTimedOut ? "seed-timeout" : "budget-exhausted");
   }
 
   const seeded = stats.filter(s => s.visits > 0);
@@ -726,6 +789,12 @@ export const searchCandidates = (
     pick.value = (pick.value * pick.visits + v) / (pick.visits + 1);
     pick.visits += 1;
     pick.strength = toStrength(pick.value);
+    // The bandit spending more budget on a candidate is a real event, and the
+    // numbers published are the updated ones, so an observer sees the value
+    // move rather than only where it came to rest. `stats` is index-aligned
+    // with `candidates` and `seeded` holds references into it, so the position
+    // of `pick` in `stats` IS the candidate's trace index.
+    progress.retained(stats.indexOf(pick), pick.strength, pick.visits);
   }
 
   const sorted = [...stats]
@@ -748,6 +817,12 @@ export const searchCandidates = (
     consideredIndices: order,
     physicsMs: performance.now() - seedStart,
   };
+  // `search-completed` is deliberately NOT emitted here. The selection runs
+  // after this function returns and publishes two more rejection reasons and
+  // the chosen shot, so a completion event here would be followed by further
+  // events — which is exactly what `validateProgressStream` forbids, and what
+  // it caught when this was emitted from this line. `brain.ts` emits it once
+  // the decision is genuinely finished.
   return { stats: sorted, allStats: stats, verifications, simulations: sims, trace };
 };
 

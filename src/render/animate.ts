@@ -185,6 +185,19 @@ export const buildAnimTrack = (balls: Ball[], table: Table): AnimTrack => {
  * Zero when the shot recorded no contact at all, which makes the whole thing
  * settle: a shot that touched nothing has no part worth slowing down for.
  */
+/**
+ * Simulation times of every real contact in a shot, in order.
+ *
+ * The same three event kinds `lastContactSec` counts and the same log the
+ * contact marks and the route vertices are drawn from — so the moments the
+ * playback slows down for are exactly the moments the felt marks.
+ */
+export const contactTimes = (sim: SimResult): number[] =>
+  sim.events
+    .filter((e) => e.kind === "ball-ball" || e.kind === "ball-cushion" || e.kind === "pocket")
+    .map((e) => e.time)
+    .sort((a, b) => a - b);
+
 export const lastContactSec = (sim: SimResult): number => {
   let t = 0;
   for (const e of sim.events) {

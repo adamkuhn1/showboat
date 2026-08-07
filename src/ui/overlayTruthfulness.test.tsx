@@ -87,6 +87,11 @@ const panel = (trace: DecisionTraceV1 | null, over: Partial<Parameters<typeof Ov
         showDisclosure={false}
         compare={idleCompare}
         replay={null}
+        // Default to the LIVE reading, so every existing assertion below runs
+        // against the surface a visitor actually sees during a turn. The
+        // replay reading is asserted explicitly by its own case.
+        replaying={false}
+        liveCounts={null}
         {...over}
       />,
     ),

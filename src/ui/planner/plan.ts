@@ -21,6 +21,7 @@ import { NeuralCandidateEvaluator, neuralEvaluator } from "../../ai/neural/evalu
 import type { DecisionTraceV1, FallbackTrace } from "../../ai/trace/contract";
 import { extractExecutedMotion, withExecutedMotion } from "../../ai/trace/executed";
 import { Deadline, DECISION_DEADLINE_MS, MODEL_LOAD_DEADLINE_MS } from "../../ai/deadline";
+import { createProgressSink, NO_PROGRESS, type SearchProgressEvent } from "../../ai/search/progress";
 
 export interface PlanInput {
   state: GameState;
@@ -95,6 +96,12 @@ export interface PlanHooks {
   /** Fired before the (possibly slow) first model load, so the host can say so. */
   onModelLoadStart?: () => void;
   onModelStatus?: (s: ModelStatus) => void;
+  /**
+   * Called once per live search event, from inside the running search. Omit it
+   * and the decision runs with `NO_PROGRESS` — no payload is built and nothing
+   * is published, which is what the evaluation harness and the unit suite do.
+   */
+  onProgress?: (e: SearchProgressEvent) => void;
 }
 
 /**
@@ -229,6 +236,7 @@ export async function planTurnTraced(
     input.player,
     undefined,
     Deadline.in(DECISION_DEADLINE_MS),
+    hooks.onProgress ? createProgressSink(hooks.onProgress) : NO_PROGRESS,
   );
   const trace = result.decision;
 
