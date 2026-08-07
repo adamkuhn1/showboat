@@ -18,9 +18,10 @@ import type { ShotReport } from "../game/game";
 import { placeCueBall } from "../game/game";
 import { CUE_ID } from "../game/rack";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
-import { interpolateBalls, lastContactSec, type AnimTrack } from "../render/animate";
+import { contactTimes, interpolateBalls, type AnimTrack } from "../render/animate";
 import { contactMarks, contactMarksFromExecuted, type ContactMark } from "../render/annotate";
-import { settleRate, type PlaybackSpeed } from "./playbackSpeed";
+import { type PlaybackSpeed } from "./playbackSpeed";
+import { buildPacing } from "./pacing";
 import {
   buildSchedule,
   frameAt,
@@ -358,13 +359,14 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           geom,
         );
 
-        // The presentation speed governs the stretch with contacts in it; the
-        // coast to rest afterwards is capped. See `ui/playbackSpeed.ts` for the
-        // measurements behind that — 37% of a median shot happens after the
-        // last contact, and spending the slow motion on it is spending it on
-        // nothing.
-        const contactEnd = lastContactSec(sim);
-        const tailSec = Math.max(0, track.duration - contactEnd);
+        // The rate is a function of simulation time, built from this shot's own
+        // event log: slow around every real contact, faster across open felt,
+        // and the coast to rest still capped. See `ui/pacing.ts`.
+        //
+        // Rebuilt per frame because the visitor can change the presentation
+        // speed mid-shot; the plan is cheap (a sort of a few dozen numbers) and
+        // rebuilding it is what makes a speed change take effect immediately.
+        const contacts = contactTimes(sim);
 
         skipRef.current = false;
         let simTime = 0;
@@ -374,8 +376,11 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           // Integrated, not recomputed from a start stamp, so a speed change
           // mid-shot bends the rest of the curve instead of teleporting the
           // balls to where the new speed says they should already be.
-          const rate =
-            simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+          const rate = buildPacing({
+            contactTimes: contacts,
+            durationSec: track.duration,
+            speed: speedRef.current,
+          }).rateAt(simTime);
           simTime += ((now - last) / 1000) * rate;
           last = now;
           // Skipping runs the remaining simulation time out in one frame. The
