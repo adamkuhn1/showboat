@@ -14,6 +14,36 @@
 type Ort = typeof import("onnxruntime-web/wasm");
 type InferenceSession = import("onnxruntime-web/wasm").InferenceSession;
 
+/**
+ * Which onnxruntime-web build to load, and why there are two.
+ *
+ * The browser gets `onnxruntime-web/wasm`: the WASM-execution-provider-only
+ * build. It is 73 KB of JS against 405 KB, and it pulls
+ * `ort-wasm-simd-threaded.wasm` (13.5 MB) instead of the JSEP runtime
+ * (26.8 MB) — 13.7 MB of WebGPU/WebNN support that this app can never reach,
+ * because the only session it creates asks for `executionProviders: ["wasm"]`.
+ *
+ * That subpath does not run under Node: it has no `node` export condition, and
+ * both of its variants hand the ESM loader a `blob:` URL for the runtime glue,
+ * which Node refuses (ERR_UNSUPPORTED_ESM_URL_SCHEME). Verified directly, with
+ * a `file:`-capable fetch shim in place and with the extern-wasm condition
+ * selected. So Node — the vitest suite and the `eval/` harnesses, which run
+ * real inference through this exact module — takes the package's own `node`
+ * entry instead. That is the build it has always used: `.`'s `node` condition
+ * resolves to `ort.node.min.mjs`, so nothing about the test story changes here.
+ *
+ * The specifier is computed and `@vite-ignore`d so the bundler cannot see it:
+ * a statically analysable `import("onnxruntime-web")` here would pull the full
+ * 405 KB entry back into the browser build and undo the whole point.
+ */
+const ORT_NODE_ENTRY = "onnxruntime-web";
+const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+
+const importOrt = async (): Promise<Ort> =>
+  isNode
+    ? ((await import(/* @vite-ignore */ ORT_NODE_ENTRY)) as unknown as Ort)
+    : await import("onnxruntime-web/wasm");
+
 // Board-observation layout, kept in one place so training and inference agree:
 // normalized (x,y) for the 16 balls + a pocketed flag each = 48 floats. Read by
 // `ranker/encode.ts`, which asserts its own board block matches `OBS_DIM`.
@@ -130,7 +160,7 @@ export const tryLoadRankerModel = async (url: string, opts: RankerLoadOptions = 
         }
       }
 
-      rankerOrt = rankerOrt ?? (await import("onnxruntime-web/wasm"));
+      rankerOrt = rankerOrt ?? (await importOrt());
       const candidateSession = await rankerOrt.InferenceSession.create(buf, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
