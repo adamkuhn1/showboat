@@ -113,6 +113,10 @@ function trace(over: Partial<DecisionTraceV1> = {}): DecisionTraceV1 {
       reliabilityThreshold: 0.5,
       qualifyingTricks: 1,
       safetyQuality: null,
+      // A search-only trace: the shot has not been executed, so there is no
+      // measured motion and the overlay must keep drawing the plan, labelled
+      // as one. `executedMotion.test.ts` covers the case where there is.
+      executed: null,
     },
     fallback: null,
     ...over,
@@ -305,6 +309,7 @@ describe("what gets drawn", () => {
       reliabilityThreshold: 0.5,
       qualifyingTricks: 2,
       safetyQuality: null,
+      executed: null,
     },
   });
   const schedule = buildSchedule({ trace: t, sentenceWords: 10 });
@@ -391,6 +396,7 @@ describe("what gets drawn", () => {
         reliabilityThreshold: 0.5,
         qualifyingTricks: 0,
         safetyQuality: "foul-free",
+        executed: null,
       },
     });
     const s = buildSchedule({ trace: safety, sentenceWords: 6 });

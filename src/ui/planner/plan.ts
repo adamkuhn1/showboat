@@ -19,6 +19,7 @@ import { getBrain } from "../../ai/brain";
 import { executeAiShot } from "../../ai/policy/execute";
 import { NeuralCandidateEvaluator, neuralEvaluator } from "../../ai/neural/evaluator";
 import type { DecisionTraceV1, FallbackTrace } from "../../ai/trace/contract";
+import { extractExecutedMotion, withExecutedMotion } from "../../ai/trace/executed";
 import { Deadline, DECISION_DEADLINE_MS, MODEL_LOAD_DEADLINE_MS } from "../../ai/deadline";
 
 export interface PlanInput {
@@ -239,5 +240,10 @@ export async function planTurnTraced(
   if (result.shot === null) return { kind: "no-legal-shot", trace };
 
   const report = executeAiShot(input.state, input.table, result.shot, simulateShotWasm);
-  return { kind: "shot", trace, action: result.shot.action, report };
+  // The executed motion joins the trace HERE, and only here: this is the first
+  // moment it exists. Everything downstream — the overlay, the contact marks,
+  // the animation — then reads one object, so the route on the felt and the
+  // outcome in the game state cannot come from two different simulations.
+  const published = withExecutedMotion(trace, extractExecutedMotion(report.sim));
+  return { kind: "shot", trace: published, action: result.shot.action, report };
 }

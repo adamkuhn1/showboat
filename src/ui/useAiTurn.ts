@@ -19,7 +19,8 @@ import { placeCueBall } from "../game/game";
 import { CUE_ID } from "../game/rack";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
 import { interpolateBalls, type AnimTrack } from "../render/animate";
-import { contactMarks, type ContactMark } from "../render/annotate";
+import { contactMarks, contactMarksFromExecuted, type ContactMark } from "../render/annotate";
+import type { PlaybackSpeed } from "./playbackSpeed";
 import {
   buildSchedule,
   frameAt,
@@ -55,6 +56,8 @@ export interface UseAiTurnArgs {
   phase: Phase;
   useNeural: boolean;
   reducedMotion: boolean;
+  /** Presentation only: the multiplier from wall-clock onto simulation time. */
+  playbackSpeed: PlaybackSpeed;
   paintScene: (scene: Scene) => void;
   setState: (s: GameState) => void;
   setPhase: (p: Phase) => void;
@@ -77,6 +80,15 @@ export interface AiTurnView {
   turnIndex: number;
   /** True while this hook owns the canvas. */
   busy: boolean;
+  /**
+   * Skip ahead. During the reasoning sequence it lands in READY; during ball
+   * playback it runs the remaining simulation time out at once.
+   *
+   * Neither can corrupt anything: the decision, the shot and the resulting game
+   * state are all fixed before the first frame is painted, and `commit` runs off
+   * `planned.report` either way. Skipping changes how much of an already-decided
+   * turn you watch, and nothing else.
+   */
   skip: () => void;
   replayDecision: () => void;
   replayShot: () => void;
@@ -113,11 +125,6 @@ export function nextTurnAction(a: {
   return "plan";
 }
 
-/** Real-time playback: the WASM waypoints at true simulation seconds. */
-const ANIM_SPEED = 1.0;
-/** Slow motion is offered only on an explicit rewatch, never on first play. */
-const REPLAY_SPEED = 0.35;
-
 export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   const {
     state,
@@ -126,6 +133,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     active,
     useNeural,
     reducedMotion,
+    playbackSpeed,
     paintScene,
     setState,
     setPhase,
@@ -148,6 +156,11 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   useNeuralRef.current = useNeural;
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
+  // Read per frame, so changing the speed mid-shot takes effect immediately
+  // without the ball jumping: `runShot` integrates dt * speed rather than
+  // recomputing elapsed * speed from the start.
+  const speedRef = useRef(playbackSpeed);
+  speedRef.current = playbackSpeed;
   const paintRef = useRef(paintScene);
   paintRef.current = paintScene;
   const turnIndexRef = useRef(0);
@@ -234,7 +247,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   // ---- shot playback ----------------------------------------------------
   const runShot = useCallback(
-    (pre: GameState, planned: PlayedTurn, marks: ContactMark[], speed: number) =>
+    (pre: GameState, planned: PlayedTurn, marks: ContactMark[]) =>
       new Promise<void>((resolve) => {
         const sim = planned.report.sim;
         const track: AnimTrack = {
@@ -243,14 +256,41 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
         };
         if (track.waypoints.length === 0) return resolve();
 
-        const start = performance.now();
+        // The route drawn under the moving balls is the measured motion of THIS
+        // simulation, read from the trace. `frameAt` past the end of the
+        // schedule is the SHOOTING frame; building it once keeps the paint loop
+        // free of decision logic.
+        const cue = pre.balls.find((b) => b.id === CUE_ID);
+        const geom = { cuePos: cue ? { x: cue.pos.x, y: cue.pos.y } : { x: 0, y: 0 } };
+        const shootSchedule = buildSchedule({
+          trace: planned.trace,
+          sentenceWords: 0,
+          reducedMotion: true,
+        });
+        const frame = frameAt(
+          planned.trace,
+          shootSchedule,
+          shootSchedule.strokeEndMs + 1,
+          geom,
+        );
+
+        skipRef.current = false;
+        let simTime = 0;
+        let last = performance.now();
         const tick = (now: number) => {
           if (cancelRef.current) return resolve();
-          const simTime = ((now - start) / 1000) * speed;
+          // Integrated, not recomputed from a start stamp, so a speed change
+          // mid-shot bends the rest of the curve instead of teleporting the
+          // balls to where the new speed says they should already be.
+          simTime += ((now - last) / 1000) * speedRef.current;
+          last = now;
+          // Skipping runs the remaining simulation time out in one frame. The
+          // outcome is `planned.report` regardless — see `skip`.
+          if (skipRef.current) simTime = track.duration;
           const balls = interpolateBalls(track, simTime);
           paintRef.current({
             state: { ...pre, balls },
-            frame: null,
+            frame,
             marks,
             simTime,
             stroke: null,
@@ -360,7 +400,17 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       // Capped at 8: a break chains 20+ events and the marks would bury the
       // table. The cap drops the LATEST events, so what is shown is always a
       // true prefix of what happened.
-      const marks = contactMarks(planned.report.sim, 8);
+      //
+      // Taken from the published trace, not from the raw `SimResult`, so each
+      // mark sits on a vertex of the route drawn beside it by construction.
+      // `report.sim` is the fallback for the one case the extractor refuses:
+      // a simulation that captured no waypoints, where it yields nothing and
+      // `contactMarks` yields nothing either.
+      const executed = planned.trace.selected?.executed ?? null;
+      const marks =
+        executed === null
+          ? contactMarks(planned.report.sim, 8)
+          : contactMarksFromExecuted(executed, 8);
       lastTurnRef.current = { pre: planState, planned, marks };
       setTrace(planned.trace);
       setPlanning(false);
@@ -370,7 +420,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       if (disposed || cancelRef.current) return;
 
       setPhase("animating");
-      await runShot(planState, planned, marks, ANIM_SPEED);
+      await runShot(planState, planned, marks);
       if (disposed || cancelRef.current) return;
 
       setPresentation("SETTLED");
@@ -422,9 +472,13 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     const t = lastTurnRef.current;
     if (!t || busy) return;
     cancelRef.current = false;
+    // A rewatch runs at whatever presentation speed the visitor has chosen —
+    // the same one first play used. There is no separate hidden replay rate,
+    // which is what the old fixed 0.35x was: slow motion nobody asked for and
+    // nothing labelled.
     setBusy(true);
     setPresentation("SHOOTING");
-    void runShot(t.pre, t.planned, t.marks, REPLAY_SPEED).then(() => {
+    void runShot(t.pre, t.planned, t.marks).then(() => {
       setBusy(false);
       setPresentation("SETTLED");
     });

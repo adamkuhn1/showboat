@@ -190,6 +190,11 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
             action: { ...shot.action },
             cuePath: shot.cuePath.map(v2),
             path: shot.path.map(v2),
+            // The shot has not been played yet — `decide()` runs before
+            // `executeAiShot`. `ui/planner/plan.ts` publishes the measured
+            // motion onto the trace the moment there is one, through
+            // `withExecutedMotion`. Null here is the truth, not a placeholder.
+            executed: null,
             utility: decision.utility,
             reliabilityThreshold: TRICK_RELIABILITY_THRESHOLD,
             qualifyingTricks: decision.qualifyingTricks,
