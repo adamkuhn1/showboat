@@ -162,16 +162,12 @@ export default function App() {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
       render(ctx, scene.state, table, view);
+      // One branch. Ball playback used to arrive here with `frame: null` and a
+      // synthetic marks-only frame was assembled on the spot; the opponent's
+      // shot now carries its real SHOOTING frame, which is what draws the
+      // measured route under the moving balls. The player's own shot passes no
+      // frame and no marks, because the reasoning overlay is the opponent's.
       if (scene.frame) drawPresentation(ctx, scene.frame, view, scene.marks, scene.simTime);
-      else if (scene.marks.length > 0 && scene.simTime !== null) {
-        drawPresentation(
-          ctx,
-          { state: "SHOOTING", label: null, progress: 1, routes: [], showContacts: true, strokeProgress: null },
-          view,
-          scene.marks,
-          scene.simTime,
-        );
-      }
       if (scene.stroke) {
         const cue = scene.state.balls.find((b) => b.id === CUE_ID);
         if (cue && !cue.pocketed) {

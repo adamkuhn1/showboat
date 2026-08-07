@@ -194,7 +194,9 @@ async function main() {
         durationSec: +f.motion.durationSec.toFixed(3),
         balls: f.motion.trajectories.length,
         points: f.motion.trajectories.reduce((n,t)=>n+t.points.length,0),
-        rawPoints: f.sim.waypoints.length * f.motion.trajectories.length,
+        rawPoints: f.motion.trajectories.reduce((n,t)=>n + f.sim.waypoints.filter(w=>{
+          const b = w.balls.find(x=>x.id===t.ballId); return !!b && !b.pocketed;
+        }).length, 0),
         contacts: f.motion.contactSequence.length,
         marks: marks.length,
         maxDeviationMm: +(f.motion.maxDeviationM * 1000).toFixed(4),
