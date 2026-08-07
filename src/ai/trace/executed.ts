@@ -16,7 +16,12 @@
 // This module derives (3) from the run that produces it, and publishes it on
 // the trace so a renderer can draw the route the balls actually take instead of
 // the route the generator hoped for. `contract.ts` grew `ExecutedMotion` for
-// it, which is why `DECISION_TRACE_VERSION` moved to /2.
+// it, which is why the contract's version moved to /2.
+//
+// Note what this file does NOT do: it never mints a trace. `withExecutedMotion`
+// takes one and returns a copy — the version stamp comes from the trace it was
+// handed, and `trickOnlySourceGuard.test.ts` holds the line that only
+// `ai/trace/build.ts` may produce one in the first place.
 //
 // RULES
 //
@@ -37,7 +42,7 @@
 
 import { CUE_ID } from "../../game/rack";
 import type { ShotEvent, SimResult, SimWaypoint } from "../../physics/engine";
-import { waypointIndexNearest } from "../../physics/waypoints";
+import { ballPositionAdvancedTo, waypointIndexNearest } from "../../physics/waypoints";
 import type {
   ContactEvent,
   DecisionTraceV1,
@@ -224,6 +229,26 @@ export function extractExecutedMotion(sim: SimResult): ExecutedMotion | null {
       rawPts.push(at(i));
       rawTimes.push(wps[i].time);
     }
+
+    // A pot needs one derived point, and only this one. Waypoints are up to
+    // 50 ms apart, so the last RECORDED position of a ball dropping at speed
+    // can be 0.2 m — 80 logical pixels — short of the pocket, and a route that
+    // stops there says the ball stopped short of a pocket it went into. The
+    // point appended is `ballPositionAdvancedTo`: the simulator's own analytic
+    // motion, from a recorded state, to the time it emitted the capture at, and
+    // the identical computation the animation uses to place the ball between
+    // waypoints. Read its comment before changing this.
+    const capture = sim.events.find((e) => e.kind === "pocket" && e.balls[0] === id);
+    let endsAtCapture = false;
+    if (capture) {
+      const atCapture = ballPositionAdvancedTo(sim, id, capture.time);
+      if (atCapture && capture.time > rawTimes[rawTimes.length - 1]) {
+        rawPts.push({ x: atCapture.x, y: atCapture.y });
+        rawTimes.push(capture.time);
+        endsAtCapture = true;
+      }
+    }
+
     const local = (wpIndex: number) =>
       Math.max(0, Math.min(rawPts.length - 1, wpIndex - startIdx));
 
@@ -235,7 +260,11 @@ export function extractExecutedMotion(sim: SimResult): ExecutedMotion | null {
     for (const e of sim.events) {
       if (!MARKED_KINDS.has(e.kind)) continue;
       if (!e.balls.includes(id)) continue;
-      rawBreaks.push({ at: local(waypointIndexNearest(wps, e.time)), ev: e });
+      const isCapture = endsAtCapture && e === capture;
+      rawBreaks.push({
+        at: isCapture ? rawPts.length - 1 : local(waypointIndexNearest(wps, e.time)),
+        ev: e,
+      });
     }
 
     // Simplify each run between consecutive breaks on its own, so a break point
@@ -275,6 +304,7 @@ export function extractExecutedMotion(sim: SimResult): ExecutedMotion | null {
       startSec: timesSec[0],
       endSec: timesSec[timesSec.length - 1],
       pocketed: sim.pocketed.includes(id),
+      endsAtCapture,
       _startSec: timesSec[0],
     });
   }
@@ -292,6 +322,7 @@ export function extractExecutedMotion(sim: SimResult): ExecutedMotion | null {
     startSec: d.startSec,
     endSec: d.endSec,
     pocketed: d.pocketed,
+    endsAtCapture: d.endsAtCapture,
   }));
 
   return {

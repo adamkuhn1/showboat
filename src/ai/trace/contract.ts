@@ -214,10 +214,8 @@ export interface ExecutedTrajectory {
    * are thinned within `ExecutedMotion.simplifyToleranceM`; no point is moved,
    * invented, or interpolated, and no vertex at a `break` is ever dropped.
    *
-   * A potted ball's route ENDS at its last measured position — at the pocket
-   * lip, not in the pocket. The simulator stops recording a position for a ball
-   * once it is captured, and drawing on to the pocket centre would be geometry
-   * nothing measured.
+   * Exactly one point in this array can be a derived position, and only on a
+   * potted ball: see `endsAtCapture`.
    */
   points: Vec2Trace[];
   /** `timesSec[i]` is the simulation time of `points[i]`. Same length as `points`. */
@@ -226,6 +224,22 @@ export interface ExecutedTrajectory {
   startSec: number;
   endSec: number;
   pocketed: boolean;
+  /**
+   * True when the FINAL point is the position at the pocket-capture instant,
+   * advanced analytically from the last recorded state, rather than a recorded
+   * waypoint. Every other point in `points`, on every trajectory, is a position
+   * the simulation wrote down.
+   *
+   * The reason it is not simply the last recorded position: waypoints are up to
+   * 50 ms apart, so a ball dropping at speed can have its last RECORDED
+   * position 0.2 m from the pocket, and a line ending there claims the ball
+   * stopped short of a pocket it went into. The derivation is the simulator's
+   * own motion model over an interval the engine guarantees holds no phase
+   * change — the identical computation the animation uses to place the ball
+   * between waypoints, so the line ends exactly where the ball is when it
+   * disappears. `physics/waypoints.ts` carries the full argument.
+   */
+  endsAtCapture: boolean;
 }
 
 /**

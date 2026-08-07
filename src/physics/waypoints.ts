@@ -12,7 +12,9 @@
 // here interpolates: an interpolated contact position is a guess about where a
 // ball was, and the simulation already recorded where it was.
 
+import { cloneBall } from "./ball";
 import type { SimResult, SimWaypoint } from "./engine";
+import { advanceBall } from "./motion";
 import type { Vec2 } from "./vec";
 
 /**
@@ -69,4 +71,42 @@ export function lastMeasuredPosition(sim: SimResult, ballId: number): Vec2 | nul
     if (b && !b.pocketed) return { x: b.pos.x, y: b.pos.y };
   }
   return null;
+}
+
+/**
+ * Where `ballId` was at `t`, advanced from the last state recorded before it.
+ *
+ * This is the one derived position in the whole pipeline, and it exists because
+ * refusing to derive it would be the less truthful choice. Waypoints land at
+ * most one `LOOKAHEAD` (50 ms) apart; a ball entering a pocket at 4 m/s covers
+ * 0.2 m in that window, so the last RECORDED position before a capture can sit
+ * 80 logical pixels short of the pocket. A route ending there says the ball
+ * stopped short of a pocket it demonstrably went into.
+ *
+ * What it computes is not a guess: it is `advanceBall` — the simulator's own
+ * analytic motion model — run over an interval the engine guarantees contains
+ * no phase transition, from a state the simulation recorded, to a time the
+ * simulation emitted an event at. It is the identical computation
+ * `render/animate.ts`'s `interpolateBalls` performs to place the ball on screen
+ * between waypoints, which is what makes the end of the drawn line the exact
+ * place the animated ball is when it disappears. Any other choice puts the line
+ * and the ball in two different places.
+ *
+ * Null if the ball has no recorded state at or before `t`.
+ */
+export function ballPositionAdvancedTo(sim: SimResult, ballId: number, t: number): Vec2 | null {
+  const wps = sim.waypoints;
+  if (!wps || wps.length === 0) return null;
+  let found: { time: number; ball: SimWaypoint["balls"][number] } | null = null;
+  for (let i = 0; i < wps.length; i++) {
+    if (wps[i].time > t) break;
+    const b = wps[i].balls.find((x) => x.id === ballId);
+    if (b && !b.pocketed) found = { time: wps[i].time, ball: b };
+  }
+  if (!found) return null;
+  const dt = t - found.time;
+  if (dt <= 0) return { x: found.ball.pos.x, y: found.ball.pos.y };
+  const copy = cloneBall(found.ball);
+  advanceBall(copy, dt);
+  return { x: copy.pos.x, y: copy.pos.y };
 }

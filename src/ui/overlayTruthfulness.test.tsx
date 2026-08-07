@@ -92,7 +92,31 @@ const panel = (trace: DecisionTraceV1 | null, over: Partial<Parameters<typeof Ov
     ),
   );
 
-const config: SearchConfig = { ...defaultConfig, simulations: 40, seed: 99 };
+/**
+ * The fixture's search budget.
+ *
+ * `seedTimeoutMs: Infinity` is the fix for this file's long-standing flake
+ * (~1 run in 3-5). `defaultConfig` already sets `searchTimeoutMs: Infinity` for
+ * a documented reason — a wall-clock guard makes a test depend on how loaded
+ * the machine is rather than on the physics budget — but it leaves
+ * `seedTimeoutMs` at its 2,000 ms default, and the seeding loop is the one this
+ * fixture spends its time in. Two full searches run here: `brain.plan()` in
+ * `beforeAll`, and `traceFor()` inside "the fixture is the live decision". When
+ * the machine was busy enough for the clock to truncate one and not the other,
+ * the two traces genuinely differed — the observed failure was one candidate
+ * reading `seed-timeout` where the other read `budget-exhausted`, which is a
+ * correct report of two different searches, not a bad assertion.
+ *
+ * `contract.test.ts` already pins both clocks for the same reason. Live play is
+ * unaffected: `withinDeadline` (ai/brain.ts) folds the turn's real remaining
+ * time in with `Math.min`, so `Infinity` never reaches a played turn.
+ */
+const config: SearchConfig = {
+  ...defaultConfig,
+  simulations: 40,
+  seed: 99,
+  seedTimeoutMs: Number.POSITIVE_INFINITY,
+};
 
 /**
  * Search, select and publish — the same three calls `ai/brain.ts`'s `decide`
