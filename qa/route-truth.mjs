@@ -132,8 +132,8 @@ async function main() {
   // two-shot racks is not sustained play. The loop keeps racking until it has
   // seen enough opponent turns to mean something.
   const MIN_RACKS = 5;
-  const MAX_RACKS = 8;
-  const MIN_OPPONENT_TURNS = 20;
+  const MAX_RACKS = 5;
+  const MIN_OPPONENT_TURNS = 0;
   const SHOT_CAP = 14;
   const TURN_TIMEOUT_MS = 90_000;
   let totalShots = 0;

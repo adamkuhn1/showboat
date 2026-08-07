@@ -39,13 +39,33 @@ const PLAY_ONE = `(async () => {
     tick();
   });
   const btn = () => [...document.querySelectorAll('.buttons button')][0];
+  const idle = () => btn() && !/Rolling|Opponent/.test(btn().textContent);
+  const canvas = () => document.querySelector('canvas.table');
+  const aimAndShoot = (i) => {
+    const c = canvas(), r = c.getBoundingClientRect();
+    const a = (i * 53 % 360) * Math.PI / 180;
+    const x = r.left + r.width / 2 + Math.cos(a) * 180;
+    const y = r.top + r.height / 2 - Math.sin(a) * 90;
+    const o = { bubbles: true, clientX: x, clientY: y, pointerId: 1, isPrimary: true };
+    c.dispatchEvent(new PointerEvent('pointerdown', o));
+    c.dispatchEvent(new PointerEvent('pointermove', o));
+    c.dispatchEvent(new PointerEvent('pointerup', o));
+    if (btn() && !btn().disabled) { btn().click(); return true; }
+    return false;
+  };
+
   await wait(() => btn() && !btn().disabled, 30000);
-  // Break, then let the turn pass to the opponent.
-  btn().click();
-  await wait(() => /opponent/.test(document.querySelector('.turn').textContent), 40000);
-  const appeared = await wait(() => !!document.querySelector('.overlay'), 40000);
-  // Let the opponent finish.
-  await wait(() => btn() && !/Rolling|Opponent/.test(btn().textContent), 90000);
+  // Keep shooting until the turn actually passes to the opponent and it plans.
+  // A break that keeps the table is the common case and is not the thing under
+  // test here.
+  let appeared = false;
+  for (let i = 0; i < 10 && !appeared; i++) {
+    aimAndShoot(i);
+    await wait(() => !idle(), 5000);
+    await wait(idle, 90000);
+    appeared = !!document.querySelector('.overlay');
+    if (appeared) await wait(idle, 90000);
+  }
   const a = document.querySelector('.overlay');
   return {
     panelAppeared: appeared,
@@ -86,11 +106,19 @@ async function main() {
   // Control: nothing blocked.
   const ok = await scenario("00-healthy", async () => {});
 
-  // 1. The artifact 404s. The evaluator's preflight fails and the opponent
-  //    stays on the physics search, labelled.
+  // 1. The artifact cannot be fetched. `Network.setBlockedURLs` is NOT enough
+  //    and the first version of this file was wrong to use it: it applies to
+  //    the page target, and the ranker is loaded by the planning WORKER, so the
+  //    page's preflight failed while the worker loaded the model perfectly
+  //    happily and the run proved nothing. `Fetch` interception does reach the
+  //    worker — scenario 2 below demonstrates that by name in the panel text.
   const absent = await scenario("01-model-absent", async (page) => {
-    await page.send("Network.enable");
-    await page.send("Network.setBlockedURLs", { urls: ["*model/ranker*"] });
+    await page.send("Fetch.enable", {
+      patterns: [{ urlPattern: "*model/ranker*", requestStage: "Request" }],
+    });
+    page.on("Fetch.requestPaused", (p) => {
+      void page.send("Fetch.failRequest", { requestId: p.requestId, errorReason: "Failed" });
+    });
   });
 
   // 2. The artifact request never answers. This is the one that used to wedge
@@ -107,9 +135,20 @@ async function main() {
     ["healthy run took a turn", ok.turnAdvanced || ok.panelAppeared],
     ["model-absent still took a turn", absent.turnAdvanced || absent.panelAppeared],
     ["model-absent labelled classical", absent.title === "Physics search"],
-    ["model-absent gave a reason", !!absent.warn],
+    // The reason must name the MODEL, not a board that happened to offer no
+    // candidates. Without this the run passes on a snookered table while the
+    // model is loading fine — which is how the first version of this file was
+    // fooled.
+    [
+      "model-absent blamed the model, not the board",
+      /model|ranker|artifact|load/i.test(absent.warn ?? ""),
+    ],
     ["stalled load still took a turn", stalled.turnAdvanced || stalled.panelAppeared],
     ["stalled load labelled classical", stalled.title === "Physics search"],
+    [
+      "stalled load named the deadline",
+      /deadline|loading/i.test(stalled.warn ?? ""),
+    ],
   ];
   for (const [what, pass] of verdicts) say(`${pass ? "PASS" : "FAIL"}  ${what}`);
 
