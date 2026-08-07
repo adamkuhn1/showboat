@@ -643,12 +643,16 @@ export function frameAt(
       for (const c of cands) {
         const r = base(c);
         if (c.index === selectedIndex) {
+          // The winner locks — and from this beat on it is the MEASURED route,
+          // not the plan. Pushed here rather than falling through, because it
+          // is the one route in the frame that is not candidate geometry.
           r.role = "selected";
           r.weight = 1;
           r.alpha = 1;
           routes.push(withMeasured(r));
           continue;
-        } else if (c.physics !== null) {
+        }
+        if (c.physics !== null) {
           r.role = "rejected";
           r.reason = c.rejection;
           r.weight = 0.25;

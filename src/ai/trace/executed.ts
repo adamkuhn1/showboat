@@ -205,9 +205,14 @@ export function extractExecutedMotion(sim: SimResult): ExecutedMotion | null {
     if (first < 0) continue;
     let last = first;
     for (let i = first; i < track.length; i++) if (track[i] !== null) last = i;
-    // Any gap inside the range would mean a ball vanished and came back, which
-    // the simulator cannot produce; refuse to bridge one rather than draw over it.
-    for (let i = first; i <= last; i++) if (track[i] === null) return null;
+    // A gap inside the range would mean a ball vanished and came back, which
+    // the simulator cannot produce (a capture is final). If one ever appears,
+    // this ball is dropped rather than bridged: a straight line across a gap is
+    // exactly the invented geometry this module exists to refuse. The other
+    // balls' records are independent and stay.
+    let gap = false;
+    for (let i = first; i <= last; i++) if (track[i] === null) gap = true;
+    if (gap) continue;
 
     const at = (i: number): Vec2Trace => track[i] as Vec2Trace;
 

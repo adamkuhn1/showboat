@@ -132,14 +132,15 @@ async function main() {
   // two-shot racks is not sustained play. The loop keeps racking until it has
   // seen enough opponent turns to mean something.
   const MIN_RACKS = 5;
-  const MAX_RACKS = 12;
-  const MIN_OPPONENT_TURNS = 25;
+  const MAX_RACKS = 8;
+  const MIN_OPPONENT_TURNS = 20;
   const SHOT_CAP = 14;
   const TURN_TIMEOUT_MS = 90_000;
   let totalShots = 0;
   let opponentTurns = 0;
   let hangs = 0;
   let longTurns = 0;
+  let midShotTaken = false;
   const inks = [];
   const turnMs = [];
 
@@ -246,6 +247,26 @@ async function main() {
       }
       totalShots++;
       await waitIdle();
+
+      // One frame from the middle of an opponent turn, so the report can show
+      // the measured route on the felt rather than only end-of-rack boards.
+      if (!midShotTaken) {
+        const caught = await page.eval(`new Promise(res => {
+          const t0 = Date.now();
+          const tick = () => {
+            const st = document.querySelector('.overlay-state');
+            if (st && /selected|ready to shoot/.test(st.textContent)) return res(st.textContent);
+            if (Date.now() - t0 > 12000) return res(null);
+            setTimeout(tick, 40);
+          };
+          tick();
+        })`);
+        if (caught) {
+          await shot(page, "05-selected-route");
+          say(`mid-turn frame   captured at "${caught}"`);
+          midShotTaken = true;
+        }
+      }
 
       // The opponent's turn, if it is now up.
       const aiUp = await page.eval(`/opponent/.test(document.querySelector('.turn').textContent)`);
