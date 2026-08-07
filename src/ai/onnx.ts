@@ -11,8 +11,8 @@
 // of it is the observation encoder below, which the ranker's feature builder
 // genuinely uses.
 
-type Ort = typeof import("onnxruntime-web");
-type InferenceSession = import("onnxruntime-web").InferenceSession;
+type Ort = typeof import("onnxruntime-web/wasm");
+type InferenceSession = import("onnxruntime-web/wasm").InferenceSession;
 
 // Board-observation layout, kept in one place so training and inference agree:
 // normalized (x,y) for the 16 balls + a pocketed flag each = 48 floats. Read by
@@ -130,7 +130,7 @@ export const tryLoadRankerModel = async (url: string, opts: RankerLoadOptions = 
         }
       }
 
-      rankerOrt = rankerOrt ?? (await import("onnxruntime-web"));
+      rankerOrt = rankerOrt ?? (await import("onnxruntime-web/wasm"));
       const candidateSession = await rankerOrt.InferenceSession.create(buf, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
@@ -197,7 +197,7 @@ export const evaluateCandidateRows = async (
 ): Promise<Float32Array | null> => {
   if (!hasRankerModel() || !rankerSession || !rankerOrt) return null;
   const input = new rankerOrt.Tensor("float32", rows, [count, dim]);
-  const feeds: Record<string, import("onnxruntime-web").Tensor> = {};
+  const feeds: Record<string, import("onnxruntime-web/wasm").Tensor> = {};
   feeds[rankerSession.inputNames[0]] = input;
   const out = await rankerSession.run(feeds);
   return out[rankerSession.outputNames[0]].data as Float32Array;
