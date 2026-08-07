@@ -135,7 +135,11 @@ function matches(topology: Topology, s: Shape): boolean {
     case "multi-cushion":
       return s.potted !== null && s.potBallCushions >= 3;
     case "combo":
-      return s.potted !== null && s.combo;
+      // A PURE combination: cue -> ball -> ball -> pocket, no cushion in the
+      // potted ball's route. Split from `rail-combo` deliberately, because a
+      // rail-combo also satisfies "is a combo" and the two would otherwise
+      // resolve to the same shot and claim two categories of coverage for one.
+      return s.potted !== null && s.combo && s.potBallCushions === 0;
     case "rail-combo":
       return s.potted !== null && s.combo && s.potBallCushions >= 1;
     case "safety-kick":

@@ -18,9 +18,9 @@ import type { ShotReport } from "../game/game";
 import { placeCueBall } from "../game/game";
 import { CUE_ID } from "../game/rack";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
-import { interpolateBalls, type AnimTrack } from "../render/animate";
+import { interpolateBalls, lastContactSec, type AnimTrack } from "../render/animate";
 import { contactMarks, contactMarksFromExecuted, type ContactMark } from "../render/annotate";
-import type { PlaybackSpeed } from "./playbackSpeed";
+import { settleRate, type PlaybackSpeed } from "./playbackSpeed";
 import {
   buildSchedule,
   frameAt,
@@ -274,6 +274,14 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           geom,
         );
 
+        // The presentation speed governs the stretch with contacts in it; the
+        // coast to rest afterwards is capped. See `ui/playbackSpeed.ts` for the
+        // measurements behind that — 37% of a median shot happens after the
+        // last contact, and spending the slow motion on it is spending it on
+        // nothing.
+        const contactEnd = lastContactSec(sim);
+        const tailSec = Math.max(0, track.duration - contactEnd);
+
         skipRef.current = false;
         let simTime = 0;
         let last = performance.now();
@@ -282,7 +290,9 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           // Integrated, not recomputed from a start stamp, so a speed change
           // mid-shot bends the rest of the curve instead of teleporting the
           // balls to where the new speed says they should already be.
-          simTime += ((now - last) / 1000) * speedRef.current;
+          const rate =
+            simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+          simTime += ((now - last) / 1000) * rate;
           last = now;
           // Skipping runs the remaining simulation time out in one frame. The
           // outcome is `planned.report` regardless — see `skip`.
