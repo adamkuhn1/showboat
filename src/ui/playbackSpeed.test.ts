@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { initPhysics, simulateShotWasm } from "../physics/wasm-bridge";
 import { makeBall, type Ball } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
-import { interpolateBalls, type AnimTrack } from "../render/animate";
+import { interpolateBalls, lastContactSec, type AnimTrack } from "../render/animate";
 import type { SimResult } from "../physics/engine";
 import * as C from "../physics/constants";
 import {
@@ -30,8 +30,10 @@ import {
   PLAYBACK_SPEEDS,
   PLAYBACK_SPEED_KEY,
   PLAYBACK_SPEED_LABEL,
+  SETTLE_MAX_SEC,
   loadPlaybackSpeed,
   savePlaybackSpeed,
+  settleRate,
 } from "./playbackSpeed";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -190,15 +192,63 @@ describe("playback speed is presentation only", () => {
       const uses = src.match(/speedRef\.current/g) ?? [];
       expect(uses.length, `${name} does not read the speed`).toBeGreaterThan(0);
       for (const m of src.matchAll(/[^\n]*speedRef\.current[^\n]*/g)) {
-        const line = m[0];
-        // Assignment of the live value into the ref is fine; every other use
-        // must be the `dt * speed` term of the loop.
-        if (/speedRef\.current = /.test(line)) continue;
-        expect(line, `${name}: unexpected use of the speed: ${line.trim()}`).toMatch(
-          /\(\(now - last\) \/ 1000\) \* speedRef\.current/,
-        );
+        const line = m[0].trim();
+        // Three legal shapes and no others: storing the live value into the
+        // ref, and the two halves of the rate the loop integrates.
+        const ok =
+          /^speedRef\.current = playbackSpeed;$/.test(line) ||
+          /^simTime < contactEnd \? speedRef\.current : settleRate\(tailSec, speedRef\.current\);$/.test(line) ||
+          /^const rate = simTime < contactEnd \? speedRef\.current : settleRate\(tailSec, speedRef\.current\);$/.test(line);
+        expect(ok, `${name}: unexpected use of the speed: ${line}`).toBe(true);
+      }
+      // And the integration itself is a wall-clock delta times that rate.
+      expect(src).toContain("simTime += ((now - last) / 1000) * rate;");
+    }
+  });
+
+  it("the settle is capped and never slower than the speed asked for", () => {
+    // 37% of a median shot is coasting after the last contact. The chosen speed
+    // governs the part with contacts in it; this is the rest.
+    for (const speed of PLAYBACK_SPEEDS) {
+      for (const tail of [0, 0.2, 0.9, 1.99, 3.72, 5.9]) {
+        const r = settleRate(tail, speed);
+        // Asking for slow motion must never make the coast faster than asked
+        // when the coast is already short.
+        expect(r, `speed ${speed}, tail ${tail}`).toBeGreaterThanOrEqual(speed);
+        // And a long coast always fits inside the cap.
+        const screenSec = tail === 0 ? 0 : tail / r;
+        expect(screenSec, `speed ${speed}, tail ${tail}`).toBeLessThanOrEqual(SETTLE_MAX_SEC + 1e-9);
       }
     }
+    // A shot with no contact at all has nothing to slow down for and settles
+    // whole at the chosen speed.
+    expect(settleRate(0, 0.6)).toBe(0.6);
+  });
+
+  it("the two-phase rate lands the median shot where the module claims", () => {
+    // The numbers in `playbackSpeed.ts`'s header, recomputed. If the cap or the
+    // default moves, the comment stops being true and this fails.
+    const medianTotal = 5.39;
+    const medianContactEnd = 3.04;
+    const tail = medianTotal - medianContactEnd;
+    const screen =
+      medianContactEnd / DEFAULT_PLAYBACK_SPEED + tail / settleRate(tail, DEFAULT_PLAYBACK_SPEED);
+    expect(screen).toBeGreaterThan(5.9);
+    expect(screen).toBeLessThan(6.3);
+    // Longer than the old flat 1.0x, but not by the 67% a flat 0.6x would cost.
+    expect(screen / medianTotal).toBeLessThan(1.2);
+    expect(medianContactEnd / DEFAULT_PLAYBACK_SPEED / medianContactEnd).toBeCloseTo(1 / 0.6, 6);
+  });
+
+  it("the last contact is read off the event log, and a shot with none has no slow part", () => {
+    expect(lastContactSec(sim)).toBeGreaterThan(0);
+    const marked = sim.events.filter((e) =>
+      ["ball-ball", "ball-cushion", "pocket"].includes(e.kind),
+    );
+    expect(lastContactSec(sim)).toBe(marked[marked.length - 1].time);
+    expect(lastContactSec({ ...sim, events: [] })).toBe(0);
+    // `stop` is not a contact.
+    expect(lastContactSec({ ...sim, events: [{ time: 9, kind: "stop", balls: [] }] })).toBe(0);
   });
 
   it("no simulation, action or rule is reachable from the speed module", () => {

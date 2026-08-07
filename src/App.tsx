@@ -10,8 +10,13 @@ import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
-import { interpolateBalls, type AnimTrack } from "./render/animate";
-import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
+import { interpolateBalls, lastContactSec, type AnimTrack } from "./render/animate";
+import {
+  PLAYBACK_SPEEDS,
+  PLAYBACK_SPEED_LABEL,
+  settleRate,
+  usePlaybackSpeed,
+} from "./ui/playbackSpeed";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -396,11 +401,18 @@ export default function App() {
       waypoints: waypoints.map((wp) => ({ simTime: wp.time, balls: wp.balls })),
       duration: report.sim.duration,
     };
+    // Same pacing rule the opponent's shots use: the chosen speed governs the
+    // stretch with contacts in it, the coast to rest afterwards is capped.
+    const contactEnd = lastContactSec(report.sim);
+    const tailSec = Math.max(0, track.duration - contactEnd);
+
     humanSkipRef.current = false;
     let simTime = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      simTime += ((now - last) / 1000) * speedRef.current;
+      const rate =
+        simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+      simTime += ((now - last) / 1000) * rate;
       last = now;
       if (humanSkipRef.current) simTime = track.duration;
       const ctx = canvasRef.current?.getContext("2d");

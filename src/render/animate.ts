@@ -1,4 +1,5 @@
 import { type Ball, Motion, classifyMotion, cloneBall } from "../physics/ball";
+import { type SimResult } from "../physics/engine";
 import { type Table } from "../physics/table";
 import { advanceBall, timeToPhaseChange } from "../physics/motion";
 import { timeToBallBall, timeToCushion, timeToPocket } from "../physics/predict";
@@ -174,6 +175,26 @@ export const buildAnimTrack = (balls: Ball[], table: Table): AnimTrack => {
  * O(log n) binary search over waypoints + O(balls) for the advance.
  * Produces smooth, physically accurate motion with no real-time stepping.
  */
+/**
+ * When the last thing worth watching happened, in simulation seconds.
+ *
+ * Everything after it is balls coasting to rest — measured at 1.99 s of a 5.39 s
+ * median shot, so it is not a rounding detail. Playback uses this to decide
+ * where the presentation speed stops applying (`ui/playbackSpeed.ts`).
+ *
+ * Zero when the shot recorded no contact at all, which makes the whole thing
+ * settle: a shot that touched nothing has no part worth slowing down for.
+ */
+export const lastContactSec = (sim: SimResult): number => {
+  let t = 0;
+  for (const e of sim.events) {
+    if (e.kind === "ball-ball" || e.kind === "ball-cushion" || e.kind === "pocket") {
+      if (e.time > t) t = e.time;
+    }
+  }
+  return t;
+};
+
 export const interpolateBalls = (track: AnimTrack, simTime: number): Ball[] => {
   const clampedT = Math.min(simTime, track.duration);
 
