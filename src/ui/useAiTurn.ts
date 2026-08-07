@@ -174,15 +174,39 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     null,
   );
 
+  /**
+   * Settles whichever rAF-driven loop is currently awaited.
+   *
+   * Both loops below resolve themselves on `cancelRef`, but only from inside
+   * `tick` — so cancelling the frame they are waiting on means `tick` never
+   * runs again and the promise never settles. The turn body then parks
+   * forever on its `await`, `setBusy(false)` is never reached, and every
+   * control stays disabled with no error anywhere: pressing "New rack" during
+   * the opponent's turn wedged the page until reload.
+   *
+   * Holding the resolver here is what lets `stopLoop` end the wait rather than
+   * merely stopping the animation.
+   */
+  const settleLoopRef = useRef<null | (() => void)>(null);
+
   const stopLoop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
+    const settle = settleLoopRef.current;
+    settleLoopRef.current = null;
+    settle?.();
   }, []);
 
   // ---- the reasoning sequence ------------------------------------------
   const runSequence = useCallback(
     (pre: GameState, planned: PlayedTurn, marks: ContactMark[], thenShoot: boolean) =>
-      new Promise<void>((resolve) => {
+      new Promise<void>((rawResolve) => {
+        // Registered so `stopLoop` can end this wait; see `settleLoopRef`.
+        const resolve = () => {
+          settleLoopRef.current = null;
+          rawResolve();
+        };
+        settleLoopRef.current = resolve;
         const sentence = shotSentence(planned.trace);
         let schedule: PresentationSchedule = buildSchedule({
           trace: planned.trace,
@@ -248,7 +272,13 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   // ---- shot playback ----------------------------------------------------
   const runShot = useCallback(
     (pre: GameState, planned: PlayedTurn, marks: ContactMark[]) =>
-      new Promise<void>((resolve) => {
+      new Promise<void>((rawResolve) => {
+        // Registered so `stopLoop` can end this wait; see `settleLoopRef`.
+        const resolve = () => {
+          settleLoopRef.current = null;
+          rawResolve();
+        };
+        settleLoopRef.current = resolve;
         const sim = planned.report.sim;
         const track: AnimTrack = {
           waypoints: (sim.waypoints ?? []).map((wp) => ({ simTime: wp.time, balls: wp.balls })),
