@@ -143,6 +143,10 @@ export default function App() {
   // Last scene handed to `paintScene`, so a backing-store resize can repaint
   // exactly what was on screen. Assigning canvas.width wipes the surface.
   const lastSceneRef = useRef<Scene | null>(null);
+  // Live game state for the resize handler, which is registered once and would
+  // otherwise close over the state as it stood on mount.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   /** The one place anything reaches the canvas. */
   const paintScene = useCallback(
@@ -193,7 +197,22 @@ export default function App() {
       canvas.width = w;
       canvas.height = h;
       canvas.getContext("2d")?.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (lastSceneRef.current) paintScene(lastSceneRef.current);
+      // Repaint whatever was on screen. Before the opponent's first turn
+      // `lastSceneRef` is still null — `useAiTurn` is what fills it — and an
+      // early `if (…) paint` here left the table BLANK after a resize that
+      // also changed the ratio (a second display, or browser zoom), until the
+      // next React render happened to repaint it. Measured 88.9% inked -> 0%.
+      // The resting board is always paintable, so fall back to it rather than
+      // skipping the repaint.
+      paintScene(
+        lastSceneRef.current ?? {
+          state: stateRef.current,
+          frame: null,
+          marks: [],
+          simTime: null,
+          stroke: null,
+        },
+      );
     };
     applyResolution();
     window.addEventListener("resize", applyResolution);
