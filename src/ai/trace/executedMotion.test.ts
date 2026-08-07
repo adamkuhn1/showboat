@@ -31,6 +31,7 @@ import type { ShotEvent, SimResult } from "../../physics/engine";
 import { initPhysics, simulateShotWasm } from "../../physics/wasm-bridge";
 import { generateCandidates } from "../candidates";
 import { computeView } from "../../render/renderer";
+import { measuredRoute } from "../../render/presentation";
 import { BALL_RADIUS } from "../../physics/constants";
 import {
   extractExecutedMotion,
@@ -533,6 +534,49 @@ describe("executed motion: extraction from real simulations", () => {
       expect(out.selected!.executed).toBe(motion);
       // The version is carried, never issued.
       expect(out.version).toBe(trace.version);
+    });
+  });
+
+  describe("what the overlay picks out of the motion", () => {
+    it("draws the cue, the ball that drops, and the balls in between — not bystanders", () => {
+      for (const topology of TOPOLOGIES) {
+        const { motion } = fixtures.get(topology)!;
+        const r = measuredRoute(motion);
+        if (r.cue) expect(r.cue.ballId).toBe(CUE_ID);
+
+        if (r.object) {
+          const traj = motion.trajectories.find((t) => t.ballId === r.object!.ballId)!;
+          const potted = motion.trajectories.filter(
+            (t) => t.roles.includes("potted") && t.ballId !== CUE_ID,
+          );
+          // The ball that dropped, when one did; otherwise the one the cue hit.
+          if (potted.length > 0) expect(traj.roles).toContain("potted");
+          else expect(traj.roles.length === 0 || traj.roles.includes("first-contact")).toBe(true);
+        }
+
+        // Every drawn extra leg is a ball the EVENT LOG gave a role to.
+        for (const leg of r.others) {
+          const traj = motion.trajectories.find((t) => t.ballId === leg.ballId)!;
+          expect(traj.roles.length, `ball ${leg.ballId} drawn with no role`).toBeGreaterThan(0);
+          expect(leg.ballId).not.toBe(CUE_ID);
+          expect(leg.ballId).not.toBe(r.object?.ballId);
+        }
+      }
+    });
+
+    it("the bystander filter is not vacuous — the combo fixture has one to drop", () => {
+      // Without a case that actually exercises it, the rule above would pass on
+      // a fixture set where every moving ball happened to have a role.
+      const { motion } = fixtures.get("combo")!;
+      const roleless = motion.trajectories.filter(
+        (t) => t.roles.length === 0 && t.ballId !== CUE_ID,
+      );
+      expect(roleless.length, "no role-less mover in the combo fixture").toBeGreaterThan(0);
+      const drawn = new Set(measuredRoute(motion).others.map((l) => l.ballId));
+      for (const t of roleless) expect(drawn.has(t.ballId)).toBe(false);
+      // And it is still in the published data — omitted from the drawing, not
+      // dropped from the record.
+      expect(motion.trajectories.some((t) => t.ballId === roleless[0].ballId)).toBe(true);
     });
   });
 

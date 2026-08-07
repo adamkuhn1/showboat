@@ -219,6 +219,21 @@ describe("isLegalPot: first-contact and pot-target legality", () => {
 
 const table = makeTable();
 
+/**
+ * `defaultConfig` with the seeding clock off.
+ *
+ * `defaultConfig` pins `searchTimeoutMs: Infinity` so a real search in a test
+ * depends on the physics budget rather than on how loaded the machine is. It
+ * leaves `seedTimeoutMs` at its 2,000 ms default, which is the same hazard one
+ * layer down — and it is not hypothetical: this sprint reproduced it twice,
+ * once in `overlayTruthfulness` and once in `rankerIntegration`, both only
+ * under CPU contention and both passing in isolation.
+ *
+ * Live play is unaffected: `withinDeadline` (ai/brain.ts) folds the turn's real
+ * remaining time in with `Math.min`, so `Infinity` never reaches a played turn.
+ */
+const unclocked = { ...defaultConfig, seedTimeoutMs: Number.POSITIVE_INFINITY };
+
 beforeAll(async () => {
   const wasmPath = join(__dirname, "../wasm/showboat_physics_bg.wasm");
   await initPhysics(readFileSync(wasmPath));
@@ -239,7 +254,7 @@ describe("fixture: scratch-prone candidate is rejected", () => {
     const direct = candidates.find((c) => c.kind === "direct");
     expect(direct).toBeDefined();
 
-    const result = searchBaseline(balls, table, [1], defaultConfig);
+    const result = searchBaseline(balls, table, [1], unclocked);
     // The scratching candidate must not survive seeding (visits stay 0 and
     // it's filtered out of `stats`), and must never be chosen as best.
     const scratcher = result.stats.find(
@@ -266,7 +281,7 @@ describe("fixture: strict simulation budget is never exceeded", () => {
   it.each([0, 1, 2, 8, 30, 60, 200])(
     "simulations budget %i is never exceeded regardless of seeding/refinement path",
     (simulations) => {
-      const result = searchBaseline(balls, table, targets, { ...defaultConfig, simulations });
+      const result = searchBaseline(balls, table, targets, { ...unclocked, simulations });
       expect(result.simulations).toBeLessThanOrEqual(simulations);
     },
   );
@@ -275,7 +290,7 @@ describe("fixture: strict simulation budget is never exceeded", () => {
     const candidates = generateCandidates(balls, table, targets);
     const netSeedScores = candidates.map((_, i) => (i % 2 === 0 ? 0.8 : 0.2));
     const result = searchBaseline(balls, table, targets, {
-      ...defaultConfig,
+      ...unclocked,
       simulations: 10,
       netSeedScores,
     });
@@ -283,7 +298,7 @@ describe("fixture: strict simulation budget is never exceeded", () => {
   });
 
   it("no-model fallback still spends close to the full budget when candidates are plentiful", () => {
-    const result = searchBaseline(balls, table, targets, { ...defaultConfig, simulations: 60 });
+    const result = searchBaseline(balls, table, targets, { ...unclocked, simulations: 60 });
     expect(result.simulations).toBeGreaterThan(0);
     expect(result.simulations).toBeLessThanOrEqual(60);
   });

@@ -32,7 +32,25 @@ const table = makeTable();
 
 const BUDGET = 60;
 const KEEP_TOP = 8;
-const config: SearchConfig = { ...defaultConfig, simulations: BUDGET, seed: 20260805 };
+/**
+ * The seeding clock, off.
+ *
+ * `defaultConfig` pins `searchTimeoutMs: Infinity` so a real search in a test
+ * depends on the physics budget rather than on how loaded the machine is. It
+ * leaves `seedTimeoutMs` at its 2,000 ms default, which is the same hazard one
+ * layer down — and it is not hypothetical: this sprint reproduced it twice,
+ * once in `overlayTruthfulness` and once in `rankerIntegration`, both only
+ * under CPU contention and both passing in isolation.
+ *
+ * Live play is unaffected: `withinDeadline` (ai/brain.ts) folds the turn's real
+ * remaining time in with `Math.min`, so `Infinity` never reaches a played turn.
+ */
+const config: SearchConfig = {
+  ...defaultConfig,
+  simulations: BUDGET,
+  seed: 20260805,
+  seedTimeoutMs: Number.POSITIVE_INFINITY,
+};
 
 // A layout that generates both direct and non-direct candidates in quantity,
 // so pruning genuinely has to choose between kinds.
