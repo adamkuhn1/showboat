@@ -258,11 +258,25 @@ export const pickSafety = (
   }
 
   if (legalContact) {
-    return {
-      kick: { ...legalContact, action: { ...legalContact.action, power: MIN_KICK_POWER } },
-      quality: "legal-contact-only",
-      simsSpent,
-    };
+    // Played at the power it was VERIFIED at, not at MIN_KICK_POWER.
+    //
+    // This branch previously overwrote `power` after the fact. The kick was
+    // established as legal-contact by a real simulation at
+    // `kickPower(length, table.length)` — 0.3 to 0.7 — and then played at 0.3,
+    // so the action played was not the action verified, while the trace still
+    // published `safetyQuality: "legal-contact-only"`, whose contract reads
+    // "fouled, but the cue did strike a legal target".
+    //
+    // Power is exactly the variable that makes the substitution material: the
+    // mirror construction assumes a perfectly elastic cushion and the error
+    // grows with impact speed (see the note above `kickPower`). A kick verified
+    // at 0.45 and played at 0.30 reaches the cushion slower and rebounds at a
+    // different angle, so it can miss the ball the verification says it struck.
+    //
+    // The `unverified` branch below keeps MIN_KICK_POWER, and that is correct
+    // there: nothing was established, so the softest shot is the least-damage
+    // choice, and the label says so.
+    return { kick: legalContact, quality: "legal-contact-only", simsSpent };
   }
   return {
     kick: { ...kicks[0], action: { ...kicks[0].action, power: MIN_KICK_POWER } },
