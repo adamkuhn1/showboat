@@ -306,6 +306,8 @@ export default function App() {
   const draggingRef = useRef(false);
   /** Set by space/tap while the player's own shot is rolling. */
   const humanSkipRef = useRef(false);
+  /** Identifies the rack a human roll belongs to; see the loop in `shoot`. */
+  const humanShotTokenRef = useRef(0);
   // The shot loop reads the speed per frame, so changing it mid-roll takes
   // effect without the balls jumping.
   const speedRef = useRef(playbackSpeed);
@@ -405,7 +407,15 @@ export default function App() {
     humanSkipRef.current = false;
     let simTime = 0;
     let last = performance.now();
+    // The roll is owned by the rack it was taken on. Without this, "New rack"
+    // mid-roll left the loop running against the old report: it kept animating
+    // and then called `commit(report)`, replacing the fresh rack with the
+    // previous board four seconds after the visitor asked for a new one, ball
+    // credited. Bumping the token on reset makes the abandoned loop stop
+    // painting and, crucially, never commit.
+    const token = ++humanShotTokenRef.current;
     const tick = (now: number) => {
+      if (humanShotTokenRef.current !== token) return;
       const rate =
         simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
       simTime += ((now - last) / 1000) * rate;
@@ -476,6 +486,11 @@ export default function App() {
   }, []);
 
   const reset = () => {
+    // Abandon any roll still in flight so it cannot commit over the new rack,
+    // and end the opponent's turn cleanly rather than leaving its loop parked
+    // on an await that never settles.
+    humanShotTokenRef.current += 1;
+    ai.skip();
     game.current = makeGame();
     setState(game.current.state);
     setPhase("aiming");
