@@ -16,6 +16,7 @@ import { type ViewTransform } from "./renderer";
 import { BALL_RADIUS } from "../physics/constants";
 import {
   REJECTION_TEXT,
+  type MeasuredLeg,
   type PresentationFrame,
   type RouteRender,
   type RouteRole,
@@ -81,8 +82,91 @@ function strokePartial(
   ctx.stroke();
 }
 
-function drawRoute(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransform): void {
+/**
+ * Stroke a measured leg up to simulation time `t`.
+ *
+ * The cut lands where the ball actually was at `t`, because every point carries
+ * its own simulation time — the final partial segment is interpolated between
+ * two recorded positions rather than eyeballed by arc length. `t === null`
+ * draws the whole leg, which is the pre-stroke case: the route is known in full
+ * before the cue moves, and pretending otherwise would be theatre.
+ */
+function strokeMeasured(
+  ctx: CanvasRenderingContext2D,
+  leg: MeasuredLeg,
+  v: ViewTransform,
+  t: number | null,
+): void {
+  const pts = leg.points;
+  if (pts.length < 2) return;
+  const times = leg.timesSec;
+  if (t !== null && t <= times[0]) return;
+
+  ctx.beginPath();
+  const [x0, y0] = toPx(pts[0], v);
+  ctx.moveTo(x0, y0);
+  for (let i = 1; i < pts.length; i++) {
+    if (t !== null && times[i] > t) {
+      const span = times[i] - times[i - 1];
+      const f = span <= 0 ? 1 : (t - times[i - 1]) / span;
+      const [ax, ay] = toPx(pts[i - 1], v);
+      const [bx, by] = toPx(pts[i], v);
+      ctx.lineTo(ax + (bx - ax) * f, ay + (by - ay) * f);
+      ctx.stroke();
+      return;
+    }
+    const [x, y] = toPx(pts[i], v);
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+/**
+ * The measured route of the shot being played: the cue ball, the ball that
+ * drops, and any ball in between. Solid, because it is not a plan — dashes on
+ * this canvas mean "intended".
+ */
+function drawMeasured(
+  ctx: CanvasRenderingContext2D,
+  r: RouteRender,
+  v: ViewTransform,
+  simTime: number | null,
+): void {
+  const m = r.measured;
+  if (!m) return;
+  const rgb = ROLE_STROKE[r.role];
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.setLineDash([]);
+
+  if (m.cue) {
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.55})`;
+    ctx.lineWidth = 1 + r.weight * 1.4;
+    strokeMeasured(ctx, m.cue, v, simTime);
+  }
+  for (const other of m.others) {
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha * 0.6})`;
+    ctx.lineWidth = 1 + r.weight * 1.8;
+    strokeMeasured(ctx, other, v, simTime);
+  }
+  if (m.object) {
+    ctx.strokeStyle = `rgba(${rgb}, ${r.alpha})`;
+    ctx.lineWidth = 1 + r.weight * 2.6;
+    strokeMeasured(ctx, m.object, v, simTime);
+  }
+}
+
+function drawRoute(
+  ctx: CanvasRenderingContext2D,
+  r: RouteRender,
+  v: ViewTransform,
+  simTime: number | null,
+): void {
   if (r.alpha <= 0.01) return;
+  if (r.source === "simulated") {
+    drawMeasured(ctx, r, v, simTime);
+    return;
+  }
   const rgb = ROLE_STROKE[r.role];
   const objectPts = r.objectLeg.map((p) => toPx(p, v));
 
@@ -154,10 +238,19 @@ function drawReason(ctx: CanvasRenderingContext2D, r: RouteRender, v: ViewTransf
   ctx.fillText(text, x + 4, y + 1);
 }
 
+/** How long a contact stays emphasised after it happens, in simulation seconds. */
+const MARK_FLASH_SEC = 0.25;
+
 /**
  * Cushion contacts and combination order from the executed simulation.
- * `simTime` fades a mark once the ball has actually passed it during playback;
- * pass `null` before the shot, when every mark is still ahead.
+ *
+ * Two readings, and they are different claims:
+ *   - `simTime === null` — before the cue moves. Every mark is drawn: this is
+ *     the whole verified route, contacts included, and it is known in full.
+ *   - a number — during playback. A contact appears when it OCCURS and not
+ *     before. It used to be the other way round: every mark was bright from the
+ *     first frame and dimmed once the ball passed it, so the table showed the
+ *     end of the shot while the balls were still on their way to it.
  */
 export function drawContactMarks(
   ctx: CanvasRenderingContext2D,
@@ -167,8 +260,13 @@ export function drawContactMarks(
   alpha = 1,
 ): void {
   for (const m of marks) {
-    const passed = simTime !== null && simTime >= m.timeSec;
-    const a = (passed ? 0.25 : 0.9) * alpha;
+    let a: number;
+    if (simTime === null) {
+      a = 0.9 * alpha;
+    } else {
+      if (simTime < m.timeSec) continue;
+      a = (simTime - m.timeSec < MARK_FLASH_SEC ? 0.95 : 0.55) * alpha;
+    }
     if (a <= 0.02) continue;
     const [x, y] = toPx(m.at, v);
     const r = m.kind === "cushion" ? 5 : 4;
@@ -211,7 +309,7 @@ export function drawPresentation(
   ctx.save();
   // Weakest first, so the live routes sit on top of the dead ones.
   const ordered = [...frame.routes].sort((a, b) => a.alpha - b.alpha);
-  for (const r of ordered) drawRoute(ctx, r, v);
+  for (const r of ordered) drawRoute(ctx, r, v, simTime);
 
   // One caption at a time. During VERIFYING it belongs to the candidate the
   // physics just finished with, so each elimination reads as it happens;

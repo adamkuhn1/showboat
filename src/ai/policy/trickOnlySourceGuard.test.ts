@@ -93,6 +93,19 @@ describe("the AI has exactly one path to a played shot", () => {
     expect(stampers).toEqual(["ai/trace/build.ts", "ai/trace/contract.ts"]);
   });
 
+  it("only `ai/trace/executed.ts` can produce an executed-motion route", () => {
+    // The /2 counterpart of the rule above. `SelectedShotTrace.executed` is
+    // what the overlay now draws as the shot being played, so a second
+    // producer of it is how a *synthesised* route gets on the felt wearing the
+    // authority of a measurement. One derivation, from one simulation, with
+    // exactly one caller: the planner, immediately after `executeAiShot`.
+    const producers = productionFiles(SRC)
+      .filter((p) => readFileSync(p, "utf8").includes("extractExecutedMotion"))
+      .map((p) => relative(SRC, p))
+      .sort();
+    expect(producers).toEqual(["ai/trace/executed.ts", "ui/planner/plan.ts"]);
+  });
+
   it("the live path never imports the legacy mixed policy", () => {
     for (const name of [
       "ai/brain.ts",
