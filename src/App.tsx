@@ -10,7 +10,8 @@ import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
-import { isReasoning } from "./render/presentation";
+import { interpolateBalls, type AnimTrack } from "./render/animate";
+import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -106,6 +107,7 @@ export default function App() {
   const [modelAvailable, setModelAvailable] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const [playbackSpeed, setPlaybackSpeed] = usePlaybackSpeed();
 
   const table = game.current.table;
   const view = computeView(CANVAS_W, CANVAS_H, table);
@@ -257,6 +259,7 @@ export default function App() {
     phase,
     useNeural,
     reducedMotion,
+    playbackSpeed,
     paintScene,
     setState,
     setPhase,
@@ -300,6 +303,12 @@ export default function App() {
 
   // ---- human input ------------------------------------------------------
   const draggingRef = useRef(false);
+  /** Set by space/tap while the player's own shot is rolling. */
+  const humanSkipRef = useRef(false);
+  // The shot loop reads the speed per frame, so changing it mid-roll takes
+  // effect without the balls jumping.
+  const speedRef = useRef(playbackSpeed);
+  speedRef.current = playbackSpeed;
   const yourTurn = phase === "aiming" && state.turn !== AI_PLAYER && !ai.busy;
 
   const aimAt = (px: number, py: number) => {
@@ -317,9 +326,16 @@ export default function App() {
   // mouse than the hover-then-leave-the-canvas lock it replaces, which needed
   // a line of instructions underneath the table to explain it.
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // Pointer-down anywhere on the felt skips the opponent's reasoning.
-    if (ai.busy && isReasoning(ai.presentation)) {
+    // Pointer-down anywhere on the felt skips whatever is being shown: the
+    // opponent's reasoning, the opponent's shot, or your own shot rolling out.
+    // None of the three can be corrupted by it — every one is a replay of
+    // something already decided and already simulated.
+    if (ai.busy) {
       ai.skip();
+      return;
+    }
+    if (phase === "animating") {
+      humanSkipRef.current = true;
       return;
     }
     if (!yourTurn) return;
@@ -363,39 +379,61 @@ export default function App() {
     const action: CueAction = { phi: aim, power, sideSpin: side, topSpin: top };
     const report = takeShot(state, table, action, simulateShotWasm);
     setPhase("animating");
-    // The human's shot is replayed by the same waypoint machinery the
-    // opponent's is, through the idle paint below.
-    const track = report.sim.waypoints ?? [];
-    if (track.length === 0) {
+
+    // The human's shot is replayed by exactly the machinery the opponent's is:
+    // the same `AnimTrack`, the same `interpolateBalls`, the same presentation
+    // speed, the same skip. It was not before — it snapped to the nearest
+    // earlier waypoint, which quantises every ball to the ~50 ms simulation
+    // event grid and shows as a visible stutter that the opponent's shots do
+    // not have. There is no reason for the player's own shot to be the
+    // lower-fidelity one.
+    const waypoints = report.sim.waypoints ?? [];
+    if (waypoints.length === 0) {
       commit(report);
       return;
     }
-    const start = performance.now();
-    const ctx = canvasRef.current?.getContext("2d");
+    const track: AnimTrack = {
+      waypoints: waypoints.map((wp) => ({ simTime: wp.time, balls: wp.balls })),
+      duration: report.sim.duration,
+    };
+    humanSkipRef.current = false;
+    let simTime = 0;
+    let last = performance.now();
     const tick = (now: number) => {
-      const simTime = (now - start) / 1000;
+      simTime += ((now - last) / 1000) * speedRef.current;
+      last = now;
+      if (humanSkipRef.current) simTime = track.duration;
+      const ctx = canvasRef.current?.getContext("2d");
       if (ctx) {
-        const wp = track.reduce((acc, w) => (w.time <= simTime ? w : acc), track[0]);
-        render(ctx, { ...state, balls: wp.balls }, table, view);
+        paintScene({
+          state: { ...state, balls: interpolateBalls(track, simTime) },
+          frame: null,
+          marks: [],
+          simTime: null,
+          stroke: null,
+        });
       }
-      if (simTime < report.sim.duration) requestAnimationFrame(tick);
+      if (simTime < track.duration) requestAnimationFrame(tick);
       else commit(report);
     };
     requestAnimationFrame(tick);
-  }, [phase, state, ai.busy, aim, power, side, top, table, view, commit]);
+  }, [phase, state, ai.busy, aim, power, side, top, table, paintScene, commit]);
 
   const shootRef = useRef(shoot);
   shootRef.current = shoot;
   const aiRef = useRef(ai);
   aiRef.current = ai;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
-        // During the opponent's reasoning, space skips ahead rather than
-        // firing a shoot that is disabled anyway.
-        if (aiRef.current.busy && isReasoning(aiRef.current.presentation)) aiRef.current.skip();
+        // While anything is playing back, space skips ahead rather than firing
+        // a shoot that is disabled anyway.
+        if (aiRef.current.busy) aiRef.current.skip();
+        else if (phaseRef.current === "animating") humanSkipRef.current = true;
         else shootRef.current();
       }
       if (e.code === "Escape" && !e.repeat) {
@@ -536,6 +574,27 @@ export default function App() {
               New rack
             </button>
           </div>
+        </div>
+
+        {/* Playback rate. Deliberately labelled as a property of the screen and
+            not of the game: the shot is simulated once, at full physical
+            fidelity, before any of it is drawn, and this only decides how fast
+            that recording is played back. It sits with the controls rather than
+            in the reasoning panel because it governs your own shots too, and
+            the panel does not exist until the opponent has had a turn. */}
+        <div className="speed" role="group" aria-label={PLAYBACK_SPEED_LABEL}>
+          <span className="speed-label">{PLAYBACK_SPEED_LABEL}</span>
+          {PLAYBACK_SPEEDS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`speed-btn${s === playbackSpeed ? " is-on" : ""}`}
+              aria-pressed={s === playbackSpeed}
+              onClick={() => setPlaybackSpeed(s)}
+            >
+              {s}&times;
+            </button>
+          ))}
         </div>
 
         {/* Fine aim: a fingertip is ~26 mm of felt at the embedded scale, which

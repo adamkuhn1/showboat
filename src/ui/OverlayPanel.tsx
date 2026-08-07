@@ -108,10 +108,20 @@ export function OverlayPanel({
       {decided && rung && <p className="overlay-line overlay-reason">{rung}</p>}
 
       {showDisclosure && trace && (
-        <p className="overlay-note">
-          The search finishes before this plays; what you are watching is the decision it
-          made, in the order it made it.
-        </p>
+        <>
+          <p className="overlay-note">
+            The search finishes before this plays; what you are watching is the decision it
+            made, in the order it made it.
+          </p>
+          {/* The one distinction the felt has to get across, said once. A dashed
+              route is geometry the opponent considered; the solid one is the
+              route the simulation produces, so it is the shot you are about to
+              see rather than a drawing of the shot it meant to take. */}
+          <p className="overlay-note">
+            Dashed routes are shots it weighed. The solid one is the path its simulation
+            produces — the same run the score comes from.
+          </p>
+        </>
       )}
 
       {showSkipHint && isReasoning(state) && (

@@ -20,8 +20,25 @@
 //     ran on that candidate — `contract.test.ts` checks each such index against
 //     the search's own `verifiedIndices`.
 //  4. **Version-stamped**, so a future change is detectable rather than silent.
+//
+// THREE THINGS THIS CONTRACT KEEPS APART, AND WHY
+//
+// A shot has three descriptions and they are not interchangeable:
+//
+//   - the **candidate plan**: `TracedCandidate.cuePath` / `.path` and
+//     `SelectedShotTrace.cuePath` / `.path`. Mirror geometry from the candidate
+//     generator. An intention, computed before any physics ran;
+//   - the **physics verification**: `TracedCandidate.physics`. What a real
+//     simulation of that candidate did — legality, pot, rails, the event log;
+//   - the **executed motion**: `SelectedShotTrace.executed`. The authoritative
+//     run whose outcome is committed to the game state, as measured geometry.
+//
+// /1 published only the first two, so the only geometry a renderer could draw
+// was the plan — and the overlay drew it as though it were the shot being
+// played. /2 adds the third. A renderer may draw a plan as a plan; it may not
+// draw a plan as the route the balls take.
 
-export const DECISION_TRACE_VERSION = "showboat-decision-trace/1" as const;
+export const DECISION_TRACE_VERSION = "showboat-decision-trace/2" as const;
 
 /**
  * The four shot kinds Showboat is allowed to play. This is the product
@@ -160,6 +177,80 @@ export interface TracedCandidate {
   rejection: RejectionReason | null;
 }
 
+/** What interrupted a stretch of a ball's measured motion. Each is a real event. */
+export type TrajectoryBreakKind = "ball-contact" | "cushion" | "pocket";
+
+export interface TrajectoryBreak {
+  /** Index into the trajectory's `points`. */
+  at: number;
+  kind: TrajectoryBreakKind;
+  timeSec: number;
+  /** The other ball, for `ball-contact`. Null otherwise. */
+  withBall: number | null;
+  /** Cushion side, for `cushion`. Null otherwise. */
+  cushion: string | null;
+  /** Pocket id, for `pocket`. Null otherwise. */
+  pocket: string | null;
+}
+
+/**
+ * What a ball DID in the executed shot, read off the event log.
+ *
+ * Never the candidate's intent. A shot planned as a combination that struck the
+ * wrong ball has to read as what happened, so `first-contact` is the ball the
+ * cue really hit and `combination` is a ball really set moving by another
+ * object ball. A ball can hold several of these at once.
+ */
+export type TrajectoryRole = "cue" | "first-contact" | "combination" | "potted";
+
+/** One ball's measured route through one executed simulation. */
+export interface ExecutedTrajectory {
+  ballId: number;
+  roles: TrajectoryRole[];
+  /** Position among the balls that moved, ordered by when each started. */
+  order: number;
+  /**
+   * Recorded positions, in simulation-time order, at least two. Straight runs
+   * are thinned within `ExecutedMotion.simplifyToleranceM`; no point is moved,
+   * invented, or interpolated, and no vertex at a `break` is ever dropped.
+   *
+   * A potted ball's route ENDS at its last measured position — at the pocket
+   * lip, not in the pocket. The simulator stops recording a position for a ball
+   * once it is captured, and drawing on to the pocket centre would be geometry
+   * nothing measured.
+   */
+  points: Vec2Trace[];
+  /** `timesSec[i]` is the simulation time of `points[i]`. Same length as `points`. */
+  timesSec: number[];
+  breaks: TrajectoryBreak[];
+  startSec: number;
+  endSec: number;
+  pocketed: boolean;
+}
+
+/**
+ * The motion the authoritative simulation actually produced.
+ *
+ * This is the run whose result is committed to the game state and whose
+ * waypoints the animation replays — so a route drawn from here is the route the
+ * balls take, not a route they were meant to take.
+ */
+export interface ExecutedMotion {
+  /** Simulated seconds the shot took. */
+  durationSec: number;
+  /** Every ball that moved, in order of first motion. Cue ball first. */
+  trajectories: ExecutedTrajectory[];
+  /** The simulator's own contact log for this run, in emission order. */
+  contactSequence: ContactEvent[];
+  /** The straight-line thinning bound that was applied, in metres. */
+  simplifyToleranceM: number;
+  /**
+   * The largest deviation the thinning actually introduced, in metres —
+   * measured while simplifying, not asserted. Always <= the tolerance.
+   */
+  maxDeviationM: number;
+}
+
 export interface SelectedShotTrace {
   /**
    * Index into `DecisionTraceV1.candidates` — i.e. generation order. Null only
@@ -171,10 +262,26 @@ export interface SelectedShotTrace {
   kind: TrickKind | "safety-kick";
   rung: SelectionRung;
   action: CueActionTrace;
-  /** Cue-ball route, from the cue ball's real position. At least two points. */
+  /**
+   * INTENDED cue-ball route, from the cue ball's real position. At least two
+   * points. This is plan geometry — see `executed` for what the cue ball did.
+   */
   cuePath: Vec2Trace[];
-  /** Object-ball route. Empty for a safety kick, which plans no pot. */
+  /** INTENDED object-ball route. Empty for a safety kick, which plans no pot. */
   path: Vec2Trace[];
+  /**
+   * What the table actually did, from the authoritative simulation.
+   *
+   * Null in two cases and no others: the trace was published by the search,
+   * which finishes BEFORE the shot is executed (so a trace read straight off
+   * `brain.plan` carries null here, and `ui/planner/plan.ts` fills it in once
+   * the shot has been run); or that simulation captured no waypoints, which is
+   * true of the TS reference engine and of every search rollout.
+   *
+   * When it is null there is nothing measured to draw and a renderer must draw
+   * nothing — `cuePath`/`path` are not a stand-in for it.
+   */
+  executed: ExecutedMotion | null;
   /** `strength + STYLE_WEIGHT * styleScore`, or null for a safety kick. */
   utility: number | null;
   /** The bar a trick must clear on rung 1. A physics-derived threshold. */

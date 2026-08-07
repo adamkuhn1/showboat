@@ -235,6 +235,47 @@ h1::after {
 
 .primary-row .power { flex: 1 1 220px; max-width: 320px; }
 
+/* Presentation speed. Sits above the fine-aim row and below the primary one:
+   it is not a gameplay control, so it must not read like one, and it is not
+   decoration either, so it stays legible rather than being tucked away. */
+.speed {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  opacity: 0.82;
+}
+
+.speed-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-right: 0.3rem;
+}
+
+.speed-btn {
+  padding: 0.22rem 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.speed-btn:hover:not(:disabled) {
+  border-color: var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
+.speed-btn.is-on {
+  color: var(--text);
+  border-color: var(--text);
+  font-weight: 600;
+}
+
 .fine {
   display: flex;
   gap: 0.9rem;

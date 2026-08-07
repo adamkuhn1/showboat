@@ -335,6 +335,54 @@ describe("the shape is pinned by an exhaustive literal", () => {
         reliabilityThreshold: 0.5,
         qualifyingTricks: 2,
         safetyQuality: null,
+        // The /2 addition: the measured motion of the run that is played, as
+        // distinct from the `cuePath`/`path` above, which are intentions.
+        executed: {
+          durationSec: 0.9,
+          trajectories: [
+            {
+              ballId: 0,
+              roles: ["cue"],
+              order: 0,
+              points: [{ x: -0.5, y: 0 }, { x: 0.04, y: 0.14 }],
+              timesSec: [0, 0.12],
+              breaks: [
+                {
+                  at: 1,
+                  kind: "ball-contact",
+                  timeSec: 0.12,
+                  withBall: 1,
+                  cushion: null,
+                  pocket: null,
+                },
+              ],
+              startSec: 0,
+              endSec: 0.12,
+              pocketed: false,
+            },
+            {
+              ballId: 1,
+              roles: ["first-contact", "potted"],
+              order: 1,
+              points: [{ x: 0.06, y: 0.16 }, { x: 0.41, y: -0.31 }, { x: -0.86, y: -0.43 }],
+              timesSec: [0.12, 0.31, 0.62],
+              breaks: [
+                { at: 1, kind: "cushion", timeSec: 0.31, withBall: null, cushion: "bottom", pocket: null },
+                { at: 2, kind: "pocket", timeSec: 0.62, withBall: null, cushion: null, pocket: "bl" },
+              ],
+              startSec: 0.12,
+              endSec: 0.62,
+              pocketed: true,
+            },
+          ],
+          contactSequence: [
+            { kind: "ball-ball", timeSec: 0.12, balls: [0, 1], cushion: null, pocket: null },
+            { kind: "ball-cushion", timeSec: 0.31, balls: [1], cushion: "bottom", pocket: null },
+            { kind: "pocket", timeSec: 0.62, balls: [1], cushion: null, pocket: "bl" },
+          ],
+          simplifyToleranceM: 1.208e-3,
+          maxDeviationM: 4.1e-4,
+        },
       },
       fallback: null,
     };

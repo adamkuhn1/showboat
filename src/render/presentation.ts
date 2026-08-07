@@ -21,7 +21,14 @@
 //     (`timing.physicsMs`), divided across the candidates that really were
 //     simulated (`physics !== null`). It is an average, so it makes no claim
 //     about any individual candidate's cost — see VERIFY_* below.
-//   - SHOOTING is the authoritative simulation replayed at 1.0x.
+//   - SHOOTING is the authoritative simulation replayed. Its rate is a
+//     presentation choice the visitor controls (`ui/playbackSpeed.ts`) and is
+//     labelled as one; it reparameterises time and changes nothing else.
+//
+// The routes the felt shows come in two kinds and are never conflated. Until
+// SELECTED they are candidate PLANS — mirror geometry, dashed. From SELECTED on
+// the shot being played is drawn from `selected.executed`, the measured motion
+// of the run whose outcome is committed, and is solid. See `RouteSource`.
 //
 // The three hold states (ENUMERATING, SELECTED, READY — and RANKING) are
 // reveals of a finished set. They must never render a progress bar, a spinner,
@@ -30,6 +37,7 @@
 
 import type {
   DecisionTraceV1,
+  ExecutedMotion,
   RejectionReason,
   TracedCandidate,
   TracedKind,
@@ -348,13 +356,73 @@ export type RouteRole =
   /** The shot about to be played. */
   | "selected";
 
+/**
+ * Where a drawn route's geometry came from. The distinction the overlay used to
+ * lose: a `plan` is what the candidate generator hoped for, a `simulated` route
+ * is what the authoritative run measured. They are drawn differently (dashed
+ * versus solid) and described differently, and one is never presented as the
+ * other.
+ */
+export type RouteSource = "plan" | "simulated";
+
+/** One ball's measured route, with the simulation time of every point. */
+export interface MeasuredLeg {
+  ballId: number;
+  points: Vec2Trace[];
+  timesSec: number[];
+}
+
+/**
+ * The executed motion, split into the channels the overlay draws.
+ *
+ * `object` is the ball that dropped where there was one, otherwise the ball the
+ * cue struck first — both read off the event log, never off the plan. `others`
+ * is every remaining ball that moved, which is how a combination shows its
+ * middle ball instead of implying the cue reached the pocket on its own.
+ */
+export interface MeasuredRoute {
+  cue: MeasuredLeg | null;
+  object: MeasuredLeg | null;
+  others: MeasuredLeg[];
+  durationSec: number;
+}
+
+const legOf = (t: ExecutedMotion["trajectories"][number]): MeasuredLeg => ({
+  ballId: t.ballId,
+  points: t.points,
+  timesSec: t.timesSec,
+});
+
+export function measuredRoute(m: ExecutedMotion): MeasuredRoute {
+  const cue = m.trajectories.find((t) => t.roles.includes("cue")) ?? null;
+  const objects = m.trajectories.filter((t) => !t.roles.includes("cue"));
+  const object =
+    objects.find((t) => t.roles.includes("potted")) ??
+    objects.find((t) => t.roles.includes("first-contact")) ??
+    objects[0] ??
+    null;
+  return {
+    cue: cue ? legOf(cue) : null,
+    object: object ? legOf(object) : null,
+    others: objects.filter((t) => t !== object).map(legOf),
+    durationSec: m.durationSec,
+  };
+}
+
 export interface RouteRender {
   index: number;
   kind: TracedKind;
-  /** Cue ball -> ghost-ball contact point. The leg `candidate.path` omits. */
-  cueLeg: [Vec2Trace, Vec2Trace] | null;
-  /** The object ball's route, as the search planned it. */
+  /**
+   * Cue-ball geometry. For a `plan` this is [cue ball, ghost-ball contact
+   * point] — the leg `candidate.path` omits. For a `simulated` route it is the
+   * cue ball's whole measured route, cushions and all.
+   */
+  cueLeg: Vec2Trace[] | null;
+  /** The object ball's route: planned for a `plan`, measured for a `simulated`. */
   objectLeg: Vec2Trace[];
+  source: RouteSource;
+  /** Non-null exactly when `source === "simulated"`. Carries the point times. */
+  measured: MeasuredRoute | null;
   /** 0..1 of the route drawn so far, for the staggered reveal. */
   reveal: number;
   /** 0..1 line prominence. Driven by real ordering, never printed as a number. */
@@ -413,6 +481,8 @@ export function frameAt(
     kind: c.kind,
     cueLeg: [geom.cuePos, c.aimPoint],
     objectLeg: c.path,
+    source: "plan",
+    measured: null,
     reveal: 1,
     weight: 0.35,
     alpha: 0.5,
@@ -421,6 +491,30 @@ export function frameAt(
     resolving: false,
     justResolved: false,
   });
+
+  /**
+   * Swap a route's plan geometry for the measured motion, once there is any.
+   *
+   * Applied only to the shot being played, and only from SELECTED onward: while
+   * the opponent is still comparing candidates the honest picture is the set of
+   * intentions, and a measured route among them would say the others had been
+   * simulated to the same fidelity. When `executed` is null — a decision replay
+   * of a search-only trace, a simulation with no waypoints — the route stays a
+   * plan and stays labelled one.
+   */
+  const withMeasured = (r: RouteRender): RouteRender => {
+    const executed = trace.selected?.executed ?? null;
+    if (executed === null) return r;
+    const m = measuredRoute(executed);
+    if (m.cue === null && m.object === null) return r;
+    return {
+      ...r,
+      source: "simulated",
+      measured: m,
+      cueLeg: m.cue ? m.cue.points : null,
+      objectLeg: m.object ? m.object.points : [],
+    };
+  };
 
   const routes: RouteRender[] = [];
 
@@ -507,6 +601,8 @@ export function frameAt(
           r.role = "selected";
           r.weight = 1;
           r.alpha = 1;
+          routes.push(withMeasured(r));
+          continue;
         } else if (c.physics !== null) {
           r.role = "rejected";
           r.reason = c.rejection;
@@ -531,8 +627,8 @@ export function frameAt(
         const r = base(chosen);
         r.role = "selected";
         r.weight = 1;
-        r.alpha = state === "SHOOTING" ? 0.45 : 1;
-        routes.push(r);
+        r.alpha = state === "SHOOTING" ? 0.7 : 1;
+        routes.push(withMeasured(r));
       } else if (trace.selected) {
         // A generated safety has no candidate row, so its own trace entry is
         // the route. `cuePath` is the contract's cue-ball route — for a kick,
@@ -542,22 +638,26 @@ export function frameAt(
         // OBJECT ball's route, which a safety plans none of (`path` is empty).
         // Putting cue geometry there would draw more of the shot at the cost of
         // saying something false about which ball goes where.
-        routes.push({
-          index: -1,
-          kind: trace.selected.kind,
-          cueLeg:
-            trace.selected.cuePath.length >= 2
-              ? [trace.selected.cuePath[0], trace.selected.cuePath[1]]
-              : null,
-          objectLeg: trace.selected.path,
-          reveal: 1,
-          weight: 1,
-          alpha: state === "SHOOTING" ? 0.45 : 1,
-          role: "selected",
-          reason: null,
-          resolving: false,
-          justResolved: false,
-        });
+        routes.push(
+          withMeasured({
+            index: -1,
+            kind: trace.selected.kind,
+            cueLeg:
+              trace.selected.cuePath.length >= 2
+                ? [trace.selected.cuePath[0], trace.selected.cuePath[1]]
+                : null,
+            objectLeg: trace.selected.path,
+            source: "plan",
+            measured: null,
+            reveal: 1,
+            weight: 1,
+            alpha: state === "SHOOTING" ? 0.7 : 1,
+            role: "selected",
+            reason: null,
+            resolving: false,
+            justResolved: false,
+          }),
+        );
       }
       break;
     }
@@ -571,7 +671,8 @@ export function frameAt(
     label: isReasoning(state) ? STATE_LABEL[state] : null,
     progress: place.progress,
     routes,
-    showContacts: state === "SELECTED" || state === "READY" || state === "STROKE",
+    showContacts:
+      state === "SELECTED" || state === "READY" || state === "STROKE" || state === "SHOOTING",
     strokeProgress: state === "STROKE" ? place.progress : null,
   };
 }
