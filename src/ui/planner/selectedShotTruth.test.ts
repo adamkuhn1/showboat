@@ -74,15 +74,24 @@ const BOARDS: Record<string, Ball[]> = {
     makeBall(1, 0.62, 0.3),
     makeBall(11, 0.35, 0.36),
   ],
-  // Ball 11 is not a legal target and sits directly on the line to the ones
-  // that are, so candidates aimed past it strike it first: the board that
-  // makes `illegal-first-contact` a real rejection rather than a reachable
-  // branch nothing exercises.
-  blockedLine: [
-    makeBall(CUE_ID, -0.86, 0.0),
-    makeBall(11, -0.45, 0.0),
-    makeBall(1, 0.32, 0.0),
-    makeBall(3, 0.5, 0.22),
+  // A pack, not a spread. The four boards above are open enough that the
+  // candidate generator's clearance filter (`isPathClear`, 2R + 4 mm) keeps
+  // every cue path honest, so nothing ever fouls in simulation. On a real
+  // post-break table the balls sit close enough that a ghost-ball aim can clip
+  // a neighbour the straight-line check cleared — which is where
+  // `illegal-first-contact` actually comes from, and it was visible on the
+  // felt in a live browser run before it was reproducible here.
+  pack: [
+    makeBall(CUE_ID, -0.62, 0.02),
+    makeBall(1, 0.28, 0.0),
+    makeBall(2, 0.34, 0.05),
+    makeBall(3, 0.34, -0.05),
+    makeBall(4, 0.4, 0.1),
+    makeBall(5, 0.4, 0.0),
+    makeBall(6, 0.4, -0.1),
+    makeBall(9, 0.46, 0.05),
+    makeBall(10, 0.46, -0.05),
+    makeBall(11, 0.52, 0.0),
   ],
 };
 
@@ -299,12 +308,14 @@ describe("the selected shot, from decision to felt", () => {
     expect(illegal).toBe(0);
   });
 
-  it("the illegal-first-contact rejection is the one that fires when physics says so", () => {
-    // The branch the fixtures cannot reach, exercised where it lives. This
-    // drives the real `buildDecisionTrace` with a real candidate from a real
-    // board; only the verification is constructed, because constructing one is
-    // the only way to express "the simulator disagreed with the clearance
-    // check" without a board that makes it happen.
+  it("rejection ordering: a scratch outranks an illegal first contact", () => {
+    // The pack board above produces illegal first contacts naturally. What it
+    // cannot produce on demand is a candidate that did BOTH, and the order the
+    // two are reported in is a real decision `build.ts` documents: the first
+    // reason that applied, so a shot that scratched is rejected as a scratch.
+    // Real board, real candidates, real `buildDecisionTrace`; only the
+    // verification is constructed, because that is the only way to hold one
+    // variable still.
     const balls = BOARDS.openSpread.map(cloneBall);
     const targets = [1, 3, 9];
     const cands = generateCandidates(balls, table, targets);

@@ -18,9 +18,9 @@ import type { ShotReport } from "../game/game";
 import { placeCueBall } from "../game/game";
 import { CUE_ID } from "../game/rack";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
-import { interpolateBalls, type AnimTrack } from "../render/animate";
+import { interpolateBalls, lastContactSec, type AnimTrack } from "../render/animate";
 import { contactMarks, contactMarksFromExecuted, type ContactMark } from "../render/annotate";
-import type { PlaybackSpeed } from "./playbackSpeed";
+import { settleRate, type PlaybackSpeed } from "./playbackSpeed";
 import {
   buildSchedule,
   frameAt,
@@ -174,15 +174,39 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     null,
   );
 
+  /**
+   * Settles whichever rAF-driven loop is currently awaited.
+   *
+   * Both loops below resolve themselves on `cancelRef`, but only from inside
+   * `tick` — so cancelling the frame they are waiting on means `tick` never
+   * runs again and the promise never settles. The turn body then parks
+   * forever on its `await`, `setBusy(false)` is never reached, and every
+   * control stays disabled with no error anywhere: pressing "New rack" during
+   * the opponent's turn wedged the page until reload.
+   *
+   * Holding the resolver here is what lets `stopLoop` end the wait rather than
+   * merely stopping the animation.
+   */
+  const settleLoopRef = useRef<null | (() => void)>(null);
+
   const stopLoop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
+    const settle = settleLoopRef.current;
+    settleLoopRef.current = null;
+    settle?.();
   }, []);
 
   // ---- the reasoning sequence ------------------------------------------
   const runSequence = useCallback(
     (pre: GameState, planned: PlayedTurn, marks: ContactMark[], thenShoot: boolean) =>
-      new Promise<void>((resolve) => {
+      new Promise<void>((rawResolve) => {
+        // Registered so `stopLoop` can end this wait; see `settleLoopRef`.
+        const resolve = () => {
+          settleLoopRef.current = null;
+          rawResolve();
+        };
+        settleLoopRef.current = resolve;
         const sentence = shotSentence(planned.trace);
         let schedule: PresentationSchedule = buildSchedule({
           trace: planned.trace,
@@ -248,7 +272,13 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   // ---- shot playback ----------------------------------------------------
   const runShot = useCallback(
     (pre: GameState, planned: PlayedTurn, marks: ContactMark[]) =>
-      new Promise<void>((resolve) => {
+      new Promise<void>((rawResolve) => {
+        // Registered so `stopLoop` can end this wait; see `settleLoopRef`.
+        const resolve = () => {
+          settleLoopRef.current = null;
+          rawResolve();
+        };
+        settleLoopRef.current = resolve;
         const sim = planned.report.sim;
         const track: AnimTrack = {
           waypoints: (sim.waypoints ?? []).map((wp) => ({ simTime: wp.time, balls: wp.balls })),
@@ -274,6 +304,14 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           geom,
         );
 
+        // The presentation speed governs the stretch with contacts in it; the
+        // coast to rest afterwards is capped. See `ui/playbackSpeed.ts` for the
+        // measurements behind that — 37% of a median shot happens after the
+        // last contact, and spending the slow motion on it is spending it on
+        // nothing.
+        const contactEnd = lastContactSec(sim);
+        const tailSec = Math.max(0, track.duration - contactEnd);
+
         skipRef.current = false;
         let simTime = 0;
         let last = performance.now();
@@ -282,7 +320,9 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
           // Integrated, not recomputed from a start stamp, so a speed change
           // mid-shot bends the rest of the curve instead of teleporting the
           // balls to where the new speed says they should already be.
-          simTime += ((now - last) / 1000) * speedRef.current;
+          const rate =
+            simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+          simTime += ((now - last) / 1000) * rate;
           last = now;
           // Skipping runs the remaining simulation time out in one frame. The
           // outcome is `planned.report` regardless — see `skip`.

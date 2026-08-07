@@ -10,8 +10,13 @@ import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
-import { interpolateBalls, type AnimTrack } from "./render/animate";
-import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
+import { interpolateBalls, lastContactSec, type AnimTrack } from "./render/animate";
+import {
+  PLAYBACK_SPEEDS,
+  PLAYBACK_SPEED_LABEL,
+  settleRate,
+  usePlaybackSpeed,
+} from "./ui/playbackSpeed";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -157,16 +162,12 @@ export default function App() {
       const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
       render(ctx, scene.state, table, view);
+      // One branch. Ball playback used to arrive here with `frame: null` and a
+      // synthetic marks-only frame was assembled on the spot; the opponent's
+      // shot now carries its real SHOOTING frame, which is what draws the
+      // measured route under the moving balls. The player's own shot passes no
+      // frame and no marks, because the reasoning overlay is the opponent's.
       if (scene.frame) drawPresentation(ctx, scene.frame, view, scene.marks, scene.simTime);
-      else if (scene.marks.length > 0 && scene.simTime !== null) {
-        drawPresentation(
-          ctx,
-          { state: "SHOOTING", label: null, progress: 1, routes: [], showContacts: true, strokeProgress: null },
-          view,
-          scene.marks,
-          scene.simTime,
-        );
-      }
       if (scene.stroke) {
         const cue = scene.state.balls.find((b) => b.id === CUE_ID);
         if (cue && !cue.pocketed) {
@@ -305,6 +306,8 @@ export default function App() {
   const draggingRef = useRef(false);
   /** Set by space/tap while the player's own shot is rolling. */
   const humanSkipRef = useRef(false);
+  /** Identifies the rack a human roll belongs to; see the loop in `shoot`. */
+  const humanShotTokenRef = useRef(0);
   // The shot loop reads the speed per frame, so changing it mid-roll takes
   // effect without the balls jumping.
   const speedRef = useRef(playbackSpeed);
@@ -396,11 +399,26 @@ export default function App() {
       waypoints: waypoints.map((wp) => ({ simTime: wp.time, balls: wp.balls })),
       duration: report.sim.duration,
     };
+    // Same pacing rule the opponent's shots use: the chosen speed governs the
+    // stretch with contacts in it, the coast to rest afterwards is capped.
+    const contactEnd = lastContactSec(report.sim);
+    const tailSec = Math.max(0, track.duration - contactEnd);
+
     humanSkipRef.current = false;
     let simTime = 0;
     let last = performance.now();
+    // The roll is owned by the rack it was taken on. Without this, "New rack"
+    // mid-roll left the loop running against the old report: it kept animating
+    // and then called `commit(report)`, replacing the fresh rack with the
+    // previous board four seconds after the visitor asked for a new one, ball
+    // credited. Bumping the token on reset makes the abandoned loop stop
+    // painting and, crucially, never commit.
+    const token = ++humanShotTokenRef.current;
     const tick = (now: number) => {
-      simTime += ((now - last) / 1000) * speedRef.current;
+      if (humanShotTokenRef.current !== token) return;
+      const rate =
+        simTime < contactEnd ? speedRef.current : settleRate(tailSec, speedRef.current);
+      simTime += ((now - last) / 1000) * rate;
       last = now;
       if (humanSkipRef.current) simTime = track.duration;
       const ctx = canvasRef.current?.getContext("2d");
@@ -468,6 +486,11 @@ export default function App() {
   }, []);
 
   const reset = () => {
+    // Abandon any roll still in flight so it cannot commit over the new rack,
+    // and end the opponent's turn cleanly rather than leaving its loop parked
+    // on an await that never settles.
+    humanShotTokenRef.current += 1;
+    ai.skip();
     game.current = makeGame();
     setState(game.current.state);
     setPhase("aiming");
