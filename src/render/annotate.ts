@@ -23,7 +23,7 @@
 
 import type { SimResult, ShotEvent } from "../physics/engine";
 import type { Vec2 } from "../physics/vec";
-import { ballPositionAt, lastMeasuredPosition } from "../physics/waypoints";
+import { ballPositionAdvancedTo, ballPositionAt, lastMeasuredPosition } from "../physics/waypoints";
 import type { ExecutedMotion } from "../ai/trace/contract";
 
 export type ContactKind = "cushion" | "ball" | "pocket";
@@ -45,7 +45,12 @@ const MARKED: ReadonlySet<string> = new Set(["ball-cushion", "ball-ball", "pocke
 
 /** Where a mark for `e` belongs, or null if the simulation cannot say. */
 const markPosition = (sim: SimResult, e: ShotEvent, ballId: number): Vec2 | null =>
-  e.kind === "pocket" ? lastMeasuredPosition(sim, ballId) : ballPositionAt(sim, ballId, e.time);
+  e.kind === "pocket"
+    ? // The pocket instant, advanced from the last recorded state — see
+      // `ballPositionAdvancedTo`. `lastMeasuredPosition` is the floor for a
+      // capture the advance cannot reach (a ball already classified stationary).
+      ballPositionAdvancedTo(sim, ballId, e.time) ?? lastMeasuredPosition(sim, ballId)
+    : ballPositionAt(sim, ballId, e.time);
 
 /**
  * Contact marks for one executed shot, in time order.

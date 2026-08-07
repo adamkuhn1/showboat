@@ -460,6 +460,43 @@ export interface FrameGeometry {
 
 const easeOut = (t: number): number => 1 - (1 - t) * (1 - t);
 
+/**
+ * The route for a generated safety kick, which is not a member of the candidate
+ * list and so has no row to be addressed by index.
+ *
+ * Its plan geometry is `selected.cuePath` — for a kick, [cue position, rail
+ * point, target] — and only the FIRST segment is drawn: the rest is still
+ * cue-ball geometry, and `objectLeg` is the object ball's route, which a kick
+ * plans none of (`path` is empty). Putting cue geometry in the object channel
+ * would draw more of the shot at the cost of saying something false about which
+ * ball goes where.
+ *
+ * Once the shot has been executed `withMeasured` replaces all of it with the
+ * measured motion, where the cue's full route and whatever it moved are both
+ * real rather than planned.
+ */
+function safetyRoute(
+  selected: NonNullable<DecisionTraceV1["selected"]>,
+  withMeasured: (r: RouteRender) => RouteRender,
+  alpha: number,
+): RouteRender {
+  return withMeasured({
+    index: -1,
+    kind: selected.kind,
+    cueLeg: selected.cuePath.length >= 2 ? [selected.cuePath[0], selected.cuePath[1]] : null,
+    objectLeg: selected.path,
+    source: "plan",
+    measured: null,
+    reveal: 1,
+    weight: 1,
+    alpha,
+    role: "selected",
+    reason: null,
+    resolving: false,
+    justResolved: false,
+  });
+}
+
 /** Rank a candidate 0..1 by the model's own ordering; 0.5 when no model ran. */
 const priorWeight = (c: TracedCandidate, n: number): number =>
   c.neural === null ? 0.5 : 1 - (c.neural.rank - 1) / Math.max(1, n);
@@ -594,6 +631,14 @@ export function frameAt(
     }
 
     case "SELECTED": {
+      // A generated safety kick has no candidate row, so the loop below cannot
+      // reach it. Before this it drew NOTHING during SELECTED — the longest
+      // beat of the sequence, on exactly the turns where the shot is hardest to
+      // read — and the route only appeared at READY. `safetyRoute` is the same
+      // entry the later states use.
+      if (selectedIndex === null && trace.selected) {
+        routes.push(safetyRoute(trace.selected, withMeasured, 1));
+      }
       // Survivors that lost the selection dim away; the winner locks.
       for (const c of cands) {
         const r = base(c);
@@ -630,34 +675,7 @@ export function frameAt(
         r.alpha = state === "SHOOTING" ? 0.7 : 1;
         routes.push(withMeasured(r));
       } else if (trace.selected) {
-        // A generated safety has no candidate row, so its own trace entry is
-        // the route. `cuePath` is the contract's cue-ball route — for a kick,
-        // [cue position, rail point, target] — and its first segment is the
-        // line the white actually travels first. Only that segment is drawn:
-        // the rest of the kick is cue-ball geometry, and `objectLeg` is the
-        // OBJECT ball's route, which a safety plans none of (`path` is empty).
-        // Putting cue geometry there would draw more of the shot at the cost of
-        // saying something false about which ball goes where.
-        routes.push(
-          withMeasured({
-            index: -1,
-            kind: trace.selected.kind,
-            cueLeg:
-              trace.selected.cuePath.length >= 2
-                ? [trace.selected.cuePath[0], trace.selected.cuePath[1]]
-                : null,
-            objectLeg: trace.selected.path,
-            source: "plan",
-            measured: null,
-            reveal: 1,
-            weight: 1,
-            alpha: state === "SHOOTING" ? 0.7 : 1,
-            role: "selected",
-            reason: null,
-            resolving: false,
-            justResolved: false,
-          }),
-        );
+        routes.push(safetyRoute(trace.selected, withMeasured, state === "SHOOTING" ? 0.7 : 1));
       }
       break;
     }

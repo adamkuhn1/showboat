@@ -359,6 +359,7 @@ describe("the shape is pinned by an exhaustive literal", () => {
               startSec: 0,
               endSec: 0.12,
               pocketed: false,
+              endsAtCapture: false,
             },
             {
               ballId: 1,
@@ -373,6 +374,7 @@ describe("the shape is pinned by an exhaustive literal", () => {
               startSec: 0.12,
               endSec: 0.62,
               pocketed: true,
+              endsAtCapture: true,
             },
           ],
           contactSequence: [
