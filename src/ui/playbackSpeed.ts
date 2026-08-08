@@ -8,47 +8,34 @@
 // property (same simulation time, same ball states, whatever the speed) and
 // pins the physics constants so a future pacing change cannot quietly move one.
 //
-// WHY THE COAST TO REST IS CAPPED
+// THE SPEED IS THE WHOLE MAPPING
 //
-// First playback ran at a flat 1.0x. Measured over 399 real simulations across
-// four boards: a shot runs 5.39 simulation seconds at the median (p90 6.74),
-// the last contact lands at 3.04 s (p90 4.82), and the remaining 1.99 s (p90
-// 3.72, max 5.90) is balls coasting to a stop with nothing left to happen —
-// **37% of the median shot, after everything interesting is over**.
-//
-// So the settle is capped at `SETTLE_MAX_SEC` of screen time — never played
-// SLOWER than the chosen speed, only faster. That rule is unchanged and lives
-// in `settleRate` below; `ui/pacing.ts` calls it rather than restating it.
+// One number, applied to the entire shot. It is not blended with anything, it
+// does not change at a contact, and it does not change when the balls are
+// nearly stopped. `ui/pacing.ts` argues why that has to be true on a table with
+// sixteen balls on it; this module is only where the number comes from.
 //
 // WHY 0.5x, AND HOW IT WAS CHOSEN
-//
-// The previous default was 0.6x against a FLAT multiplier, and Adam's report on
-// it was that the balls were still too fast to understand and the route was
-// hard to reconcile with the motion. Two things changed in response: the rate
-// is now a curve that spends its slowness on the contacts (`ui/pacing.ts`), and
-// this number was re-derived rather than inherited.
 //
 // The metric is how far a ball moves across the screen between two displayed
 // frames, because that is what smooth pursuit of a small object can and cannot
 // follow. The ball is 23.7 logical pixels across at the shipped view. Measured
-// by `qa/speed-sweep.ts` over 61 real simulations, walking each shot frame by
-// frame through the real pacing curve at 60 Hz:
+// by `qa/time-mapping.ts` over 82 real simulations, walking each shot frame by
+// frame at 60 Hz:
 //
-//   speed   mean screen s   px/frame p90   at contacts p90   frames > 1 ball
-//   0.35x           11.02            9.0               9.6              0.1%
-//   0.5x             7.98           12.7              13.7              1.3%
-//   0.6x             6.85           15.0              16.3              2.3%
-//   1x               5.53           19.9              23.0              5.7%
+//   speed   mean screen s   px/frame p90   px/frame max   ball widths at p90
+//   0.35x          14.84            5.6           20.5                 0.24
+//   0.5x           10.39            8.0           29.3                 0.34
+//   0.6x            8.66            9.5           35.2                 0.40
+//   0.75x           6.93           11.9           44.0                 0.50
+//   1x              5.20           15.8           58.6                 0.67
 //
-// 0.6x moves 0.69 ball-widths per frame at the p90 contact — which is the
-// complaint, in numbers. 0.35x fixes it and costs 11 seconds a shot, which is
-// not a game anybody finishes a rack of. 0.5x lands at 0.58 ball-widths for
-// about a second more per shot than 0.6x, and combined with the contact curve
-// the moments that matter now play at 0.225x against the old default's flat
-// 0.6x — 2.7x slower where the shot actually happens.
-//
-// 0.35x stays as the explicitly slower replay and 1.0x stays because some
-// visitors want the game to just move. 0.6x is retired: the curve superseded it.
+// 0.5x is a third of a ball width per frame at the p90 and never more than 1.24
+// ball widths at the very fastest instant of the very fastest shot, which is
+// the break. It costs about ten and a half seconds a shot; a tap on the felt or
+// the space bar runs the rest out at once for anyone who does not want to watch
+// it. 0.35x stays as the explicitly slower replay and 1.0x stays because some
+// visitors want the game to just move.
 
 import { useCallback, useState } from "react";
 
@@ -91,21 +78,6 @@ export function savePlaybackSpeed(speed: PlaybackSpeed): void {
 /** The label the UI must use. Never "slow motion" on its own — that reads as a
  *  claim about the simulation rather than about the screen. */
 export const PLAYBACK_SPEED_LABEL = "presentation speed";
-
-/** Screen seconds the post-contact settle is allowed to take, at most. */
-export const SETTLE_MAX_SEC = 1;
-
-/**
- * The rate for the stretch after the shot's last contact.
- *
- * Never slower than the chosen speed — asking for slow motion must not make
- * the coast to rest faster than you asked for — and fast enough that the
- * remaining `tailSimSec` fits inside `SETTLE_MAX_SEC` of screen time. Takes
- * plain numbers so this module keeps its distance from the simulation: the
- * caller reads the last contact off the shot's own event log.
- */
-export const settleRate = (tailSimSec: number, speed: number): number =>
-  tailSimSec <= 0 ? speed : Math.max(speed, tailSimSec / SETTLE_MAX_SEC);
 
 export function usePlaybackSpeed(): [PlaybackSpeed, (s: PlaybackSpeed) => void] {
   const [speed, setSpeed] = useState<PlaybackSpeed>(loadPlaybackSpeed);

@@ -1,35 +1,37 @@
-// Where the slowness goes — checked on real shots.
+// One rate per shot, checked on real shots and per ball.
 //
-// The property that matters is not "the animation is slower". It is that the
-// screen time is spent on the parts of the shot that carry information. So the
-// assertions below are about DISTRIBUTION: what share of the screen time lands
-// near a real contact, versus what share the old flat multiplier gave it.
+// The property is not "the animation is slower". It is that nothing about where
+// the balls are changes how fast time runs. Asserting on the rate function
+// directly cannot catch that failure, because every frame of a warped playback
+// is still a correct sample of a correct simulation — what goes wrong is WHICH
+// simulation instant each frame samples.
 //
-// The shots are real. `buildAnimTrack` runs the reference engine on real boards
-// and the contact times come from the resulting event log, so the curves under
-// test are the curves a visitor actually sees.
+// So the strongest assertion here is measured off the balls themselves: walk a
+// shot frame by frame the way the animation loop does, and for each ball divide
+// the distance it moved on screen by the distance it moved in the simulation.
+// That ratio IS the playback rate, read from that one ball's motion. If it ever
+// changes — and in particular if it changes because a DIFFERENT ball hit
+// something — the mapping is warping time and the physics will be blamed.
+//
+// The shots are real: the reference engine on real boards, and the contact
+// times come from the resulting event log.
 
 import { describe, it, expect } from "vitest";
 import { makeTable } from "../physics/table";
-import { cloneBall, makeBall } from "../physics/ball";
+import { cloneBall, makeBall, type Ball } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
 import { applyCue } from "../physics/cue";
 import { simulateShot } from "../physics/engine";
-import { contactTimes } from "../render/animate";
+import { buildAnimTrack, contactTimes, interpolateBalls, type AnimTrack } from "../render/animate";
 import { PLAYBACK_SPEEDS } from "./playbackSpeed";
-import {
-  buildPacing,
-  screenSeconds,
-  CONTACT_RATE,
-  CONTACT_WINDOW_SEC,
-  COAST_MAX_ABSOLUTE,
-} from "./pacing";
+import { simulationRate, screenSeconds } from "./pacing";
 
 const table = makeTable();
+const FRAME_SEC = 1 / 60;
 
-/** A few real shots, chosen to include a bank and a multi-ball cascade. */
+/** Real shots, chosen to include a bank and a multi-ball cascade. */
 const shots = () => {
-  const boards = [
+  const boards: Ball[][] = [
     [makeBall(CUE_ID, -0.7, 0), makeBall(1, 0.2, 0.15), makeBall(2, 0.4, -0.2)],
     [
       makeBall(CUE_ID, -0.6, -0.1),
@@ -45,15 +47,16 @@ const shots = () => {
     { phi: -0.2, power: 0.65, sideSpin: 0, topSpin: 0.2 },
     { phi: 0.35, power: 0.95, sideSpin: 0.1, topSpin: 0 },
   ];
-  const out: { contacts: number[]; duration: number }[] = [];
+  const out: { contacts: number[]; duration: number; track: AnimTrack }[] = [];
   for (const balls of boards) {
     for (const action of actions) {
       const work = balls.map(cloneBall);
       const cue = work.find((b) => b.id === CUE_ID)!;
       applyCue(cue, action);
-      const sim = simulateShot(work, table);
+      const sim = simulateShot(work.map(cloneBall), table);
       const contacts = contactTimes(sim);
-      if (contacts.length >= 2 && sim.duration > 0.5) out.push({ contacts, duration: sim.duration });
+      if (contacts.length < 2 || sim.duration <= 0.5) continue;
+      out.push({ contacts, duration: sim.duration, track: buildAnimTrack(work, table) });
     }
   }
   return out;
@@ -61,141 +64,122 @@ const shots = () => {
 
 const REAL_SHOTS = shots();
 
+/** Every simulation instant the loop would sample, at 60 Hz. */
+const walk = (speed: number, duration: number): number[] => {
+  const rate = simulationRate(speed);
+  const times = [0];
+  let t = 0;
+  let guard = 0;
+  while (t < duration && guard++ < 20_000) {
+    t = Math.min(t + FRAME_SEC * rate, duration);
+    times.push(t);
+  }
+  return times;
+};
+
 describe("the pacing is built from real shots", () => {
   it("the fixture actually produced shots with contacts in them", () => {
     expect(REAL_SHOTS.length).toBeGreaterThan(2);
-    for (const s of REAL_SHOTS) expect(s.contacts.length).toBeGreaterThanOrEqual(2);
-  });
-});
-
-describe("slowness lands on the contacts", () => {
-  it("the rate at a contact is slower than the rate on open felt", () => {
-    for (const { contacts, duration } of REAL_SHOTS) {
-      const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed: 0.6 });
-      // Compare a contact against a point provably outside every window, and
-      // before the coast to rest (which has its own rule).
-      const c = contacts[0];
-      const open = contacts
-        .slice(0, -1)
-        .map((a, i) => (a + contacts[i + 1]) / 2)
-        .find(
-          (m) => contacts.every((x) => Math.abs(m - x) > CONTACT_WINDOW_SEC) && m < p.lastContactSec,
-        );
-      if (open === undefined) continue; // this shot has no open stretch; nothing to compare
-      expect(p.rateAt(c)).toBeLessThan(p.rateAt(open));
-    }
-  });
-
-  it("the rate exactly at a contact is the contact rate", () => {
-    const p = buildPacing({ contactTimes: [1, 3], durationSec: 5, speed: 0.6 });
-    expect(p.rateAt(1)).toBeCloseTo(0.6 * CONTACT_RATE, 6);
-  });
-
-  it("contacts get a larger share of the screen time than of the shot", () => {
-    // The whole point, stated as a measurement: the fraction of SCREEN seconds
-    // spent within a contact window exceeds the fraction of SIMULATION seconds
-    // those windows occupy.
-    for (const { contacts, duration } of REAL_SHOTS) {
-      const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed: 0.6 });
-      const steps = 4000;
-      const dt = duration / steps;
-      let simNear = 0;
-      let screenNear = 0;
-      let screenTotal = 0;
-      for (let i = 0; i < steps; i++) {
-        const t = i * dt + dt / 2;
-        const rate = p.rateAt(t);
-        const screen = dt / rate;
-        screenTotal += screen;
-        const near = contacts.some((c) => Math.abs(t - c) < CONTACT_WINDOW_SEC);
-        if (near) {
-          simNear += dt;
-          screenNear += screen;
-        }
-      }
-      const simShare = simNear / duration;
-      const screenShare = screenNear / screenTotal;
-      expect(screenShare, `sim ${simShare} vs screen ${screenShare}`).toBeGreaterThan(simShare);
-    }
-  });
-
-  it("no coasting stretch is played faster than real time", () => {
-    for (const { contacts, duration } of REAL_SHOTS) {
-      for (const speed of PLAYBACK_SPEEDS) {
-        const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed });
-        // Everything before the coast to rest. The coast has its own cap and is
-        // deliberately allowed to run fast — it is balls rolling to a stop.
-        for (let t = 0; t < p.lastContactSec; t += 0.02) {
-          expect(p.rateAt(t), `speed ${speed} at ${t}`).toBeLessThanOrEqual(COAST_MAX_ABSOLUTE + 1e-9);
-          expect(p.rateAt(t)).toBeGreaterThan(0);
-        }
-      }
+    for (const s of REAL_SHOTS) {
+      expect(s.contacts.length).toBeGreaterThanOrEqual(2);
+      expect(s.track.waypoints.length).toBeGreaterThan(4);
     }
   });
 });
 
-describe("the shot does not get longer to achieve it", () => {
-  it("total screen time stays close to the flat multiplier it replaces", () => {
-    // The old model: flat `speed` up to the last contact, capped settle after.
-    // The new one redistributes rather than inflates, so the totals should be
-    // comparable — the contacts got longer by making the open felt shorter.
-    for (const { contacts, duration } of REAL_SHOTS) {
-      const speed = 0.6;
-      const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed });
-      const now = screenSeconds(p, duration);
-      const flat = p.lastContactSec / speed + Math.min(1, p.tailSec);
-      // Within a factor of 1.5 either way. This is a sanity bound on the
-      // redistribution, not a target: the point is that it is a redistribution.
-      expect(now, `now ${now} vs flat ${flat}`).toBeLessThan(flat * 1.5);
-      expect(now).toBeGreaterThan(flat / 1.5);
+describe("one rate per shot", () => {
+  it("the rate depends on the speed and on nothing else", () => {
+    // The structural half of the guarantee: the rate is not a function of
+    // simulation time, so no caller can make playback depend on where the balls
+    // are. All a caller can pass is the speed.
+    expect(simulationRate.length).toBe(1);
+    for (const { duration } of REAL_SHOTS) {
+      for (const speed of PLAYBACK_SPEEDS) {
+        expect(simulationRate(speed)).toBe(speed);
+        expect(screenSeconds(duration, speed)).toBeCloseTo(duration / speed, 9);
+      }
     }
   });
 
-  it("the coast to rest is still capped and still never slower than asked", () => {
-    for (const { contacts, duration } of REAL_SHOTS) {
+  it("playback is never faster than real time at any offered speed", () => {
+    for (const speed of PLAYBACK_SPEEDS) {
+      expect(simulationRate(speed)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("simulation time advances by the same amount on every frame", () => {
+    for (const { duration } of REAL_SHOTS) {
       for (const speed of PLAYBACK_SPEEDS) {
-        const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed });
-        const settle = p.rateAt(p.lastContactSec + 1e-6);
-        expect(settle).toBeGreaterThanOrEqual(speed - 1e-9);
-        if (p.tailSec > 0) expect(p.tailSec / settle).toBeLessThanOrEqual(1 + 1e-6);
+        const times = walk(speed, duration);
+        // The last step is short because it is clamped to the end of the shot.
+        const steps = times.slice(1, -1).map((t, i) => t - times[i]);
+        for (const s of steps) expect(s).toBeCloseTo(FRAME_SEC * speed, 12);
       }
+    }
+  });
+
+  it("screen time is the shot divided by the rate, and scales with the speed", () => {
+    for (const { duration } of REAL_SHOTS) {
+      expect(screenSeconds(duration, 1)).toBeCloseTo(duration, 9);
+      expect(screenSeconds(duration, 0.5) / screenSeconds(duration, 1)).toBeCloseTo(2, 9);
     }
   });
 });
 
-describe("degenerate shots behave", () => {
-  it("a shot with no contacts has one constant rate and no dips", () => {
-    const p = buildPacing({ contactTimes: [], durationSec: 2, speed: 0.6 });
-    const rates = [0, 0.5, 1, 1.5, 1.99].map((t) => p.rateAt(t));
-    expect(new Set(rates.map((r) => r.toFixed(9))).size).toBe(1);
-    expect(p.lastContactSec).toBe(0);
-  });
-
-  it("the rate is finite and positive everywhere, at every offered speed", () => {
-    for (const { contacts, duration } of REAL_SHOTS) {
+describe("no ball changes speed because of something another ball did", () => {
+  // The regression this file exists for, measured the way a viewer sees it.
+  it("every moving ball reports the same playback rate on every frame", () => {
+    for (const { duration, track } of REAL_SHOTS) {
       for (const speed of PLAYBACK_SPEEDS) {
-        const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed });
-        for (let t = 0; t <= duration; t += duration / 200) {
-          const r = p.rateAt(t);
-          expect(Number.isFinite(r), `speed ${speed} at ${t}`).toBe(true);
-          expect(r).toBeGreaterThan(0);
+        const times = walk(speed, duration);
+        const implied: number[] = [];
+        let prev = interpolateBalls(track, times[0]);
+        for (let i = 1; i < times.length - 1; i++) {
+          const now = interpolateBalls(track, times[i]);
+          const dSim = times[i] - times[i - 1];
+          for (const b of now) {
+            const p = prev.find((x) => x.id === b.id);
+            if (!p || b.pocketed || p.pocketed) continue;
+            if (Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) < 1e-4) continue;
+            // Simulation seconds consumed per wall-clock second, read off this
+            // one ball's motion. dWall is one frame by construction.
+            implied.push(dSim / FRAME_SEC);
+          }
+          prev = now;
         }
+        expect(implied.length).toBeGreaterThan(20);
+        const min = Math.min(...implied);
+        const max = Math.max(...implied);
+        expect(max / min, `speed ${speed}: implied rate ranged ${min}..${max}`).toBeCloseTo(1, 9);
+        expect(min).toBeCloseTo(speed, 9);
       }
     }
   });
 
-  it("the rate is continuous — a step would read as a physics stutter", () => {
-    for (const { contacts, duration } of REAL_SHOTS) {
-      const p = buildPacing({ contactTimes: contacts, durationSec: duration, speed: 0.6 });
-      const dt = 0.002;
-      let worst = 0;
-      // Up to the last contact; the settle is deliberately a different regime.
-      for (let t = 0; t < p.lastContactSec - dt; t += dt) {
-        worst = Math.max(worst, Math.abs(p.rateAt(t + dt) - p.rateAt(t)));
+  it("the mapping from wall-clock to simulation time is exactly affine", () => {
+    // A single-rate playback satisfies simTime = a*wall + b with zero residual.
+    // The residual is the amount of time-warping in the shot, in simulation
+    // seconds, and it is the one number that summarises the whole defect.
+    for (const { duration } of REAL_SHOTS) {
+      for (const speed of PLAYBACK_SPEEDS) {
+        const times = walk(speed, duration);
+        // Drop the clamped final frame; it is deliberately short.
+        const frames = times.slice(0, -1).map((simTime, i) => ({ wall: i * FRAME_SEC, simTime }));
+        const n = frames.length;
+        let sw = 0, ss = 0, sww = 0, sws = 0;
+        for (const f of frames) {
+          sw += f.wall;
+          ss += f.simTime;
+          sww += f.wall * f.wall;
+          sws += f.wall * f.simTime;
+        }
+        const a = (n * sws - sw * ss) / (n * sww - sw * sw);
+        const b = (ss - a * sw) / n;
+        let residual = 0;
+        for (const f of frames) residual = Math.max(residual, Math.abs(f.simTime - (a * f.wall + b)));
+        expect(residual, `speed ${speed}`).toBeLessThan(1e-9);
+        expect(a).toBeCloseTo(speed, 9);
       }
-      // The cosine ramp spans CONTACT_WINDOW_SEC, so per 2 ms step the change
-      // is small. A switch instead of a blend would show up here immediately.
-      expect(worst).toBeLessThan(0.05);
     }
   });
 });

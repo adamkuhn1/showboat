@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { initPhysics, simulateShotWasm } from "../physics/wasm-bridge";
 import { makeBall, type Ball } from "../physics/ball";
 import { CUE_ID } from "../game/rack";
-import { interpolateBalls, lastContactSec, type AnimTrack } from "../render/animate";
+import { interpolateBalls, type AnimTrack } from "../render/animate";
 import type { SimResult } from "../physics/engine";
 import * as C from "../physics/constants";
 import {
@@ -30,12 +30,10 @@ import {
   PLAYBACK_SPEEDS,
   PLAYBACK_SPEED_KEY,
   PLAYBACK_SPEED_LABEL,
-  SETTLE_MAX_SEC,
   loadPlaybackSpeed,
   savePlaybackSpeed,
-  settleRate,
 } from "./playbackSpeed";
-import { buildPacing, screenSeconds, CONTACT_RATE } from "./pacing";
+import { simulationRate, screenSeconds } from "./pacing";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -173,15 +171,10 @@ describe("playback speed is presentation only", () => {
       .filter((p) => /\b(speedRef|playbackSpeed|PlaybackSpeed|PLAYBACK_SPEED)/.test(codeOf(p)))
       .map((p) => relative(SRC, p))
       .sort();
-    // The module, the rate schedule built from it, the two hosts that own an
-    // animation loop, and the hook seam that carries the value between them.
-    // Nothing in `ai/`, `physics/` or `game/`.
-    expect(readers).toEqual([
-      "App.tsx",
-      "ui/pacing.ts",
-      "ui/playbackSpeed.ts",
-      "ui/useAiTurn.ts",
-    ]);
+    // The module itself and the two hosts that own an animation loop. Nothing
+    // in `ai/`, `physics/` or `game/`. `ui/pacing.ts` is not on the list: it
+    // takes a plain number, so it never learns that a speed control exists.
+    expect(readers).toEqual(["App.tsx", "ui/playbackSpeed.ts", "ui/useAiTurn.ts"]);
     for (const r of readers) {
       expect(r.startsWith("ai/"), `${r} reads the presentation speed`).toBe(false);
       expect(r.startsWith("physics/"), `${r} reads the presentation speed`).toBe(false);
@@ -190,17 +183,15 @@ describe("playback speed is presentation only", () => {
   });
 
   it("the rate schedule cannot reach the simulation", () => {
-    // `pacing.ts` joined the list above, so it needs the same guarantee the
-    // rest of the presentation layer has: it reparameterises time and can
-    // touch nothing that decides an outcome. Checked at the import boundary,
-    // which is where a reach would have to start.
+    // The wall-clock-to-simulation-time mapping needs the same guarantee the
+    // rest of the presentation layer has: it can touch nothing that decides an
+    // outcome. Checked at the import boundary, which is where a reach would
+    // have to start — and the module imports nothing at all, so there is no
+    // boundary to cross. Two numbers in, one number out.
     const src = readFileSync(join(SRC, "ui/pacing.ts"), "utf8");
-    const imports = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
-    expect(imports.length).toBeGreaterThan(0);
-    for (const i of imports) {
-      expect(i.includes("/ai/") || i.includes("../ai"), `pacing imports ${i}`).toBe(false);
-      expect(i.includes("/physics/") || i.includes("../physics"), `pacing imports ${i}`).toBe(false);
-      expect(i.includes("/game/") || i.includes("../game"), `pacing imports ${i}`).toBe(false);
+    expect([...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1])).toEqual([]);
+    for (const banned of ["simulate", "takeShot", "CueAction", "Ball", "GameState"]) {
+      expect(src, `pacing.ts references ${banned}`).not.toContain(banned);
     }
   });
 
@@ -215,12 +206,11 @@ describe("playback speed is presentation only", () => {
       for (const m of src.matchAll(/[^\n]*speedRef\.current[^\n]*/g)) {
         const line = m[0].trim();
         // Two legal shapes and no others: storing the live value into the ref,
-        // and handing it to `buildPacing` as the `speed` field. The rate itself
-        // is now a schedule rather than a ternary, but the constraint is the
-        // same one — the speed may become a playback rate and nothing else.
+        // and turning it into a playback rate. The speed may become a playback
+        // rate and nothing else.
         const ok =
           /^speedRef\.current = playbackSpeed;$/.test(line) ||
-          /^speed: speedRef\.current,$/.test(line);
+          /^const rate = simulationRate\(speedRef\.current\);$/.test(line);
         expect(ok, `${name}: unexpected use of the speed: ${line}`).toBe(true);
       }
       // And the integration itself is a wall-clock delta times that rate.
@@ -228,61 +218,16 @@ describe("playback speed is presentation only", () => {
     }
   });
 
-  it("the settle is capped and never slower than the speed asked for", () => {
-    // 37% of a median shot is coasting after the last contact. The chosen speed
-    // governs the part with contacts in it; this is the rest.
-    for (const speed of PLAYBACK_SPEEDS) {
-      for (const tail of [0, 0.2, 0.9, 1.99, 3.72, 5.9]) {
-        const r = settleRate(tail, speed);
-        // Asking for slow motion must never make the coast faster than asked
-        // when the coast is already short.
-        expect(r, `speed ${speed}, tail ${tail}`).toBeGreaterThanOrEqual(speed);
-        // And a long coast always fits inside the cap.
-        const screenSec = tail === 0 ? 0 : tail / r;
-        expect(screenSec, `speed ${speed}, tail ${tail}`).toBeLessThanOrEqual(SETTLE_MAX_SEC + 1e-9);
-      }
-    }
-    // A shot with no contact at all has nothing to slow down for and settles
-    // whole at the chosen speed.
-    expect(settleRate(0, 0.6)).toBe(0.6);
-  });
-
-  it("the default is slower where the shot happens than the flat default it replaced", () => {
-    // The claim in `playbackSpeed.ts`'s header, recomputed against the real
-    // curve. The old default was a FLAT 0.6x, so at a contact it ran at 0.6.
-    // The new one runs at `DEFAULT * CONTACT_RATE` there.
-    const RETIRED_FLAT_DEFAULT = 0.6;
+  it("the whole shot plays at the chosen speed and nothing rescales it", () => {
+    // The retired model ran the coast to rest on a second, faster rate — up to
+    // 5.68x real time on a measured shot, which flung whichever ball was still
+    // rolling (usually the cue ball) across the table. One rate, applied to the
+    // whole shot, is what replaced it.
     const medianTotal = 5.39;
-    const medianContactEnd = 3.04;
-    // A median-shaped shot: a few contacts, the last at 3.04 s.
-    const contacts = [0.35, 1.4, 2.2, medianContactEnd];
-    const p = buildPacing({
-      contactTimes: contacts,
-      durationSec: medianTotal,
-      speed: DEFAULT_PLAYBACK_SPEED,
-    });
-
-    const atContact = p.rateAt(medianContactEnd - 1e-6);
-    expect(atContact).toBeCloseTo(DEFAULT_PLAYBACK_SPEED * CONTACT_RATE, 6);
-    // 2.7x slower than the retired default, where it counts.
-    expect(RETIRED_FLAT_DEFAULT / atContact).toBeGreaterThan(2.5);
-
-    // And the whole shot has not become something nobody watches twice: the
-    // time comes back out of the open felt and the capped coast to rest.
-    const screen = screenSeconds(p, medianTotal);
-    expect(screen).toBeGreaterThan(medianTotal * 0.9);
-    expect(screen).toBeLessThan(medianTotal * 1.7);
-  });
-
-  it("the last contact is read off the event log, and a shot with none has no slow part", () => {
-    expect(lastContactSec(sim)).toBeGreaterThan(0);
-    const marked = sim.events.filter((e) =>
-      ["ball-ball", "ball-cushion", "pocket"].includes(e.kind),
-    );
-    expect(lastContactSec(sim)).toBe(marked[marked.length - 1].time);
-    expect(lastContactSec({ ...sim, events: [] })).toBe(0);
-    // `stop` is not a contact.
-    expect(lastContactSec({ ...sim, events: [{ time: 9, kind: "stop", balls: [] }] })).toBe(0);
+    for (const speed of PLAYBACK_SPEEDS) {
+      expect(simulationRate(speed)).toBe(speed);
+      expect(screenSeconds(medianTotal, speed)).toBeCloseTo(medianTotal / speed, 9);
+    }
   });
 
   it("no simulation, action or rule is reachable from the speed module", () => {

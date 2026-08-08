@@ -20,7 +20,7 @@ import { type Ball, cloneBall } from "../src/physics/ball";
 import { CUE_ID } from "../src/game/rack";
 import { type GameState } from "../src/game/state";
 import { makeGame, takeShot, placeCueBall, cloneState } from "../src/game/game";
-import { initPhysics, simulateShotWasm, separateOverlaps } from "../src/physics/wasm-bridge";
+import { initPhysics, simulateShotWasm } from "../src/physics/wasm-bridge";
 import { generateCandidates, type Candidate, type CandidateKind } from "../src/ai/candidates";
 import {
   searchWithLegacySelection,
@@ -115,7 +115,7 @@ function classicalSelfPlayStates(table: Table, rng: () => number, maxShots: numb
   const cfg: SearchConfig = { simulations: 16, rolloutDepth: 1, rolloutsPerEval: 2, seed: 4242 };
   for (let shot = 0; shot < maxShots && state.winner === null; shot++) {
     if (state.ballInHand !== false) {
-      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.5);
+      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.5, table);
     }
     if (shot === 0) {
       const report = takeShot(
@@ -160,7 +160,6 @@ export interface OracleEntry {
  */
 export function oracle(balls: Ball[], candidates: Candidate[]): OracleEntry[] {
   const work = balls.map(cloneBall);
-  separateOverlaps(work);
   return candidates.map((c, index) => {
     const sim = simulateShotWasm(work.map(cloneBall), c.action);
     const scratch = sim.pocketed.includes(CUE_ID);
@@ -408,7 +407,7 @@ export async function playGame(
 
   for (let shot = 0; shot < maxShots && state.winner === null; shot++) {
     if (state.ballInHand !== false) {
-      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.4);
+      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.4, table);
     }
     if (shot === 0) {
       state = takeShot(

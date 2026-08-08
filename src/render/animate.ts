@@ -176,37 +176,23 @@ export const buildAnimTrack = (balls: Ball[], table: Table): AnimTrack => {
  * Produces smooth, physically accurate motion with no real-time stepping.
  */
 /**
- * When the last thing worth watching happened, in simulation seconds.
- *
- * Everything after it is balls coasting to rest — measured at 1.99 s of a 5.39 s
- * median shot, so it is not a rounding detail. Playback uses this to decide
- * where the presentation speed stops applying (`ui/playbackSpeed.ts`).
- *
- * Zero when the shot recorded no contact at all, which makes the whole thing
- * settle: a shot that touched nothing has no part worth slowing down for.
- */
-/**
  * Simulation times of every real contact in a shot, in order.
  *
- * The same three event kinds `lastContactSec` counts and the same log the
- * contact marks and the route vertices are drawn from — so the moments the
- * playback slows down for are exactly the moments the felt marks.
+ * A contact is a ball meeting a ball, a cushion or a pocket; `stop` is the
+ * end-of-shot marker and is not one. Read straight off the same event log the
+ * route vertices and the felt marks come from, so the two can never disagree
+ * about when something happened.
+ *
+ * Playback does not consult this: a shot plays at one rate throughout
+ * (`ui/pacing.ts`). It is the motion harness in `qa/time-mapping.ts` that uses
+ * it, to ask whether a ball's apparent speed changed near a contact that had
+ * nothing to do with that ball.
  */
 export const contactTimes = (sim: SimResult): number[] =>
   sim.events
     .filter((e) => e.kind === "ball-ball" || e.kind === "ball-cushion" || e.kind === "pocket")
     .map((e) => e.time)
     .sort((a, b) => a - b);
-
-export const lastContactSec = (sim: SimResult): number => {
-  let t = 0;
-  for (const e of sim.events) {
-    if (e.kind === "ball-ball" || e.kind === "ball-cushion" || e.kind === "pocket") {
-      if (e.time > t) t = e.time;
-    }
-  }
-  return t;
-};
 
 export const interpolateBalls = (track: AnimTrack, simTime: number): Ball[] => {
   const clampedT = Math.min(simTime, track.duration);
