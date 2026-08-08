@@ -68,54 +68,63 @@ export const flattenBalls = (balls: Ball[]): Float64Array => {
   return out;
 };
 
-// After a WASM sim, the Rust engine can leave balls in a numerically overlapping
-// state (distance < 2*BALL_RADIUS) due to floating-point precision at high event
-// counts. Any overlap causes the NEXT simulation that uses this state to generate
-// thousands of immediate ball-ball events before it can terminate, making the
-// search seeding phase extremely slow. Separate overlapping pairs by the minimum
-// distance needed to bring them to exact contact — this is a physics correction,
-// not a foul or position change visible in gameplay.
-// Exported so the search layer can pre-sanitise the game-state copy before any
-// WASM call (the TS engine's break simulation can leave balls numerically at
-// contact distance; passing such a state to Rust causes thousands of t≈0
-// collision events and multi-second hangs).
-export const separateOverlaps = (balls: Ball[]): number => {
-  // 2 mm clearance (≈7% of ball diameter) gives Rust's event-detection enough
-  // room that even after a collision the balls won't immediately re-overlap on
-  // the next timestep.  1e-5 m (0.01 mm) was too tight.
-  const MIN = 2 * BALL_RADIUS + 0.002;
+// Ball separation is the Rust engine's job, not this bridge's.
+//
+// `simulate_shot` (physics-core/src/engine.rs) runs a multi-pass separation
+// before its first event scan, again after every ball-ball resolve, and once
+// more at the end, so no input state can produce the t≈0 event storm that used
+// to block a call for 10–30 s. Measured in `engineInput.test.ts`: a rack at
+// exact contact distance, a rack penetrating by 1 mm and fifteen coincident
+// balls all simulate in ~100 ms. Separating on this side as well would only
+// move the caller's balls before a simulation that is about to do the same
+// thing to its own copy.
+//
+// What stays here is a guard on the state that becomes the committed board:
+// a pair that is genuinely interpenetrating is pushed to touching distance and
+// no further. Expanding a pair that is merely close would move balls the
+// simulation never moved, which is visible on the felt and cumulative across
+// shots.
+
+/** Overlap below this is float noise on a metre-scale coordinate, not penetration. */
+const PENETRATION_EPS = 1e-9;
+
+/**
+ * Push genuinely interpenetrating pairs apart to exactly touching.
+ *
+ * Symmetric (each ball moves half the overlap) and iterated, because resolving
+ * A–B can push A into C. Returns the number of passes used; 0 means nothing was
+ * interpenetrating, which is the normal case.
+ *
+ * The pass budget is sized against the worst board that can exist: all fifteen
+ * object balls racked and penetrating by a full millimetre on every edge
+ * converges in 33 passes (`engineInput.test.ts`). O(n²) per pass with n ≤ 16.
+ */
+export const resolvePenetration = (balls: Ball[]): number => {
+  const TOUCHING = 2 * BALL_RADIUS;
   const live = balls.filter((b) => !b.pocketed);
-  // Iterate until fully converged: a single pass is not enough for tight clusters
-  // (pushing pair A-B can re-overlap A with C if they share ball A).  O(n²) per
-  // pass, n≤15, so 10–20 passes ≈ 2250–4500 comparisons — negligible cost in JS.
-  const MAX_PASSES = 20;
+  const MAX_PASSES = 48;
   let pass = 0;
   for (; pass < MAX_PASSES; pass++) {
-    let anyOverlap = false;
+    let any = false;
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];
         const dx = b.pos.x - a.pos.x;
         const dy = b.pos.y - a.pos.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < MIN) {
-          anyOverlap = true;
-          const overlap = MIN - dist;
-          if (dist < 1e-9) {
-            // Coincident: push apart along x
-            a.pos = { x: a.pos.x - MIN / 2, y: a.pos.y };
-            b.pos = { x: b.pos.x + MIN / 2, y: b.pos.y };
-          } else {
-            const nx = dx / dist, ny = dy / dist;
-            a.pos = { x: a.pos.x - nx * overlap / 2, y: a.pos.y - ny * overlap / 2 };
-            b.pos = { x: b.pos.x + nx * overlap / 2, y: b.pos.y + ny * overlap / 2 };
-          }
-        }
+        const overlap = TOUCHING - dist;
+        if (overlap <= PENETRATION_EPS) continue;
+        any = true;
+        // Coincident centres have no separating direction; +x is arbitrary and
+        // only has to be consistent.
+        const [nx, ny] = dist > PENETRATION_EPS ? [dx / dist, dy / dist] : [1, 0];
+        a.pos = { x: a.pos.x - (nx * overlap) / 2, y: a.pos.y - (ny * overlap) / 2 };
+        b.pos = { x: b.pos.x + (nx * overlap) / 2, y: b.pos.y + (ny * overlap) / 2 };
       }
     }
-    if (!anyOverlap) break;
+    if (!any) break;
   }
-  return pass; // number of passes needed (0 = no overlaps found)
+  return pass;
 };
 
 // Write a flat array back onto an existing ball list (preserving id order).
@@ -166,11 +175,8 @@ export const simulateShotWasm = (
   balls: Ball[],
   action: CueAction,
 ): SimResult => {
-  // Fix any overlapping balls in the INPUT before handing to Rust.  The caller
-  // may have cloned state from the TS engine (e.g. post-break) where balls
-  // ended up numerically touching; without this Rust generates thousands of
-  // t=0 events and the call blocks for 10-30 s.
-  separateOverlaps(balls);
+  // The input goes to Rust exactly as the caller holds it; the engine does its
+  // own separation on its own copy (see the note above `resolvePenetration`).
   const flat = flattenBalls(balls);
   const res = wasmSimulateShot(
     flat,
@@ -181,7 +187,11 @@ export const simulateShotWasm = (
   );
 
   applyFlat(balls, res.balls);
-  separateOverlaps(balls);
+  // The engine's own final pass already leaves no pair interpenetrating, so on
+  // every measured shot this is a no-op. It stays because the engine can also
+  // exit on its iteration guard, and a resting board with one ball inside
+  // another is the one state the next shot must never start from.
+  resolvePenetration(balls);
 
   const kinds = res.eventKinds;
   const eballs = res.eventBalls; // pairs
@@ -254,7 +264,6 @@ export const rolloutValueWasm = (
   nRollouts: number,
   seed: number,
 ): number => {
-  separateOverlaps(balls);
   const flat = flattenBalls(balls);
   return wasmRolloutValue(
     flat,

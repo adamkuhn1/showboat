@@ -89,7 +89,7 @@ export function playSelfPlayGame(
     opts.onShot?.(shot);
     if (state.ballInHand !== false) {
       const { x, y } = randomLegalCuePlacement(state, table, rng);
-      state = placeCueBall(state, x, y);
+      state = placeCueBall(state, x, y, table);
     }
 
     const targets = legalTargets(state, state.turn);

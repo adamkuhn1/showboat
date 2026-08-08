@@ -38,6 +38,24 @@ const toPx = (x: number, y: number, v: ViewTransform): [number, number] => [
   v.offsetY - y * v.scale,
 ];
 
+/**
+ * The aim angle that sends the cue ball TOWARDS a canvas point.
+ *
+ * Lives beside the transform it inverts, and is a function rather than four
+ * lines in a pointer handler so the one thing about it that matters — which way
+ * the ball goes — is pinned by a test. The canvas y axis points down and the
+ * table's points up, which is the sign that has to be right.
+ */
+export const aimTowards = (
+  cue: { x: number; y: number },
+  canvasX: number,
+  canvasY: number,
+  v: ViewTransform,
+): number => {
+  const [cx, cy] = toPx(cue.x, cue.y, v);
+  return Math.atan2(-(canvasY - cy), canvasX - cx);
+};
+
 export const drawTable = (
   ctx: CanvasRenderingContext2D,
   table: Table,

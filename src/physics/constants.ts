@@ -57,3 +57,12 @@ export const STOP_SPIN = 0.05; // rad/s
 
 // Numerical guard for event-time comparisons.
 export const EPS = 1e-9;
+
+// Minimum centre-to-centre clearance the simulation engine keeps between two
+// resting balls, over and above a diameter. The engine enforces it itself
+// (`separate_overlaps` in physics-core/src/engine.rs) before its first event
+// scan, so any state built tighter than this is pushed apart before the shot
+// starts. Anything the app places deliberately — a rack, a spotted ball — is
+// built at this clearance so the engine has nothing to correct and the position
+// on screen is the position that is simulated.
+export const ENGINE_MIN_GAP = 0.002; // m

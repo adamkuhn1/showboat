@@ -30,6 +30,7 @@
     "eval:gate": "tsx eval/gateReport.ts",
     "eval:trickonly": "tsx eval/trickOnlyEval.ts",
     "eval:trickonly-gate": "tsx eval/trickOnlyGateReport.ts",
+    "qa:motion": "tsx qa/time-mapping.ts",
     "wasm:provenance": "node scripts/wasm-provenance.mjs",
     "wasm:provenance:update": "node scripts/wasm-provenance.mjs --update"
   },

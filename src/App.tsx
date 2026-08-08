@@ -3,16 +3,15 @@ import { makeGame, takeShot, placeCueBall, type ShotReport } from "./game/game";
 import { CUE_ID, SOLIDS, STRIPES } from "./game/rack";
 import type { GameState, PlayerId } from "./game/state";
 import type { CueAction } from "./physics/cue";
-import { computeView, render, drawAim, drawCueStroke } from "./render/renderer";
+import { aimTowards, computeView, render, drawAim, drawCueStroke } from "./render/renderer";
 import { drawPresentation } from "./render/overlay";
-import { BALL_RADIUS } from "./physics/constants";
 import { initPhysics, simulateShotWasm } from "./physics/wasm-bridge";
 import { neuralEvaluator } from "./ai/neural/evaluator";
 import { OverlayPanel, type ModelBadge } from "./ui/OverlayPanel";
 import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
-import { contactTimes, interpolateBalls, type AnimTrack } from "./render/animate";
+import { interpolateBalls, type AnimTrack } from "./render/animate";
 import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
-import { buildPacing } from "./ui/pacing";
+import { simulationRate } from "./ui/pacing";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -24,28 +23,22 @@ const STEP = (2 * Math.PI) / 180;
 /** Keyboard power step. */
 const POWER_STEP = 0.05;
 
-// --- Direct cue interaction -----------------------------------------------
+// --- Cue interaction --------------------------------------------------------
 //
-// Press behind the cue ball and pull away from where you want to shoot, as if
-// drawing the cue back: the direction is set by where you pull FROM, and the
-// distance you pull sets the power. Release to strike.
+// Aiming and striking are separate acts, and the pointer only aims. Drag
+// anywhere on the felt and the cue ball points AT the pointer; power is the
+// slider or the vertical arrow keys; the shot is the Shoot button or space.
 //
-// This replaces a 5 px-tall power slider and two 0.25-degree nudge buttons,
-// which is a form for describing a shot rather than a way of taking one. Both
-// alternatives survive: the slider is still there as the pointer-free power
-// control, and the keyboard drives aim and power directly (see the key handler)
-// so the game is fully playable without a drag gesture at all.
-
-/** Pull distance, in metres of felt, below which nothing happens. */
-const PULL_DEAD_M = 0.03;
-/** Pull distance at which power reaches 1. Roughly a third of the table. */
-const PULL_FULL_M = 0.42;
-
-/** Map a pull distance in metres onto the cue action's power range. */
-const powerFromPull = (metres: number): number => {
-  const t = (metres - PULL_DEAD_M) / (PULL_FULL_M - PULL_DEAD_M);
-  return Math.max(0.05, Math.min(1, 0.05 + t * 0.95));
-};
+// They are separate because a gesture that both sets a shot up and takes it has
+// no way to be wrong safely. A pull-back stroke on this canvas fired a
+// full-power shot from any drag of more than four pixels, anywhere on the
+// table, with no way to cancel and no requirement that the press began near the
+// cue ball — and it aimed the cue ball away from the pointer, so a drag toward
+// the ball you meant to hit sent the cue 180 degrees the other way. Two
+// controls that each do one thing are worth more here than one that does both.
+//
+// Every action is reachable from the keyboard: horizontal keys aim (Shift for a
+// 0.25-degree step), vertical keys set power, space shoots. See the key handler.
 
 // Convert a pointer event's CSS-pixel coordinates into the canvas's intrinsic
 // pixel space. `.table { max-width: 100% }` (index.css) lets the canvas render
@@ -347,9 +340,6 @@ export default function App() {
 
   // ---- human input ------------------------------------------------------
   const draggingRef = useRef(false);
-  /** Where the current drag started, and whether it has moved enough to strike. */
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const dragMovedRef = useRef(false);
   /** Set by space/tap while the player's own shot is rolling. */
   const humanSkipRef = useRef(false);
   /** Identifies the rack a human roll belongs to; see the loop in `shoot`. */
@@ -361,25 +351,16 @@ export default function App() {
   const yourTurn = phase === "aiming" && state.turn !== AI_PLAYER && !ai.busy;
 
   /**
-   * Set aim and power from one pointer position, pull-back style.
+   * Point the cue ball at the pointer.
    *
-   * The cue ball travels AWAY from the pointer, so the gesture is the stroke:
-   * you place the butt of the cue and draw it back. Distance from the cue ball
-   * is the draw length and therefore the power.
+   * Aim only. Power comes from the slider or the vertical arrow keys, and the
+   * shot is taken by the Shoot button or space — so no drag can fire one, and
+   * no drag can overwrite a power that was set deliberately.
    */
-  const cueFrom = (px: number, py: number) => {
+  const aimAt = (px: number, py: number) => {
     const cue = state.balls.find((b) => b.id === CUE_ID);
     if (!cue || cue.pocketed) return;
-    // Pointer in world metres, so the pull maps onto the felt rather than onto
-    // whatever size the canvas happens to be rendered at.
-    const wx = (px - view.offsetX) / view.scale;
-    const wy = -(py - view.offsetY) / view.scale;
-    const dx = cue.pos.x - wx;
-    const dy = cue.pos.y - wy;
-    const pull = Math.hypot(dx, dy);
-    if (pull < PULL_DEAD_M) return; // inside the ball: no direction to read
-    setAim(Math.atan2(dy, dx));
-    setPower(powerFromPull(pull));
+    setAim(aimTowards(cue.pos, px, py, view));
   };
 
   // Drag to aim, on Pointer Events: one code path for mouse, pen and touch.
@@ -409,26 +390,22 @@ export default function App() {
     if (state.ballInHand !== false) {
       const wx = (x - view.offsetX) / view.scale;
       const wy = -(y - view.offsetY) / view.scale;
-      const hx = table.length / 2 - BALL_RADIUS;
-      const hy = table.width / 2 - BALL_RADIUS;
-      setState(placeCueBall(state, Math.max(-hx, Math.min(hx, wx)), Math.max(-hy, Math.min(hy, wy))));
+      // Clamping to the cushions and clearing any ball already sitting there is
+      // `placeCueBall`'s job, so every caller gets the same legal spot.
+      setState(placeCueBall(state, wx, wy, table));
       setMessage("cue ball placed. drag to aim.");
       return;
     }
     // Capture so a drag that leaves the canvas keeps tracking.
     e.currentTarget.setPointerCapture(e.pointerId);
     draggingRef.current = true;
-    dragMovedRef.current = false;
-    dragStartRef.current = { x, y };
-    cueFrom(x, y);
+    aimAt(x, y);
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!draggingRef.current || !yourTurn) return;
     const { x, y } = getCanvasPoint(e);
-    const s = dragStartRef.current;
-    if (s && Math.hypot(x - s.x, y - s.y) > 4) dragMovedRef.current = true;
-    cueFrom(x, y);
+    aimAt(x, y);
   };
 
   const endDrag = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -437,13 +414,6 @@ export default function App() {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    // Release strikes — that is what makes it a stroke rather than a form. A
-    // press that never moved does not: a stray tap on the felt should line the
-    // shot up, not take it, and that is the one way this gesture could cost
-    // someone a game they were not ready to lose.
-    if (dragMovedRef.current) shootRef.current();
-    dragMovedRef.current = false;
-    dragStartRef.current = null;
   };
 
   const shoot = useCallback(() => {
@@ -476,9 +446,6 @@ export default function App() {
       waypoints: waypoints.map((wp) => ({ simTime: wp.time, balls: wp.balls })),
       duration: report.sim.duration,
     };
-    // Exactly the pacing the opponent's shots use, off this shot's own events.
-    const contacts = contactTimes(report.sim);
-
     humanSkipRef.current = false;
     let simTime = 0;
     let last = performance.now();
@@ -491,11 +458,8 @@ export default function App() {
     const token = ++humanShotTokenRef.current;
     const tick = (now: number) => {
       if (humanShotTokenRef.current !== token) return;
-      const rate = buildPacing({
-        contactTimes: contacts,
-        durationSec: track.duration,
-        speed: speedRef.current,
-      }).rateAt(simTime);
+      // Exactly the pacing the opponent's shots use: one rate for the shot.
+      const rate = simulationRate(speedRef.current);
       simTime += ((now - last) / 1000) * rate;
       last = now;
       if (humanSkipRef.current) simTime = track.duration;

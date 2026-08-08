@@ -394,7 +394,7 @@ async function playGame(
 
   for (let shot = 0; shot < maxShots && state.winner === null; shot++) {
     if (state.ballInHand !== false) {
-      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.4);
+      state = placeCueBall(state, -table.length / 4, (rng() - 0.5) * table.width * 0.4, table);
     }
     if (shot === 0) {
       state = takeShot(

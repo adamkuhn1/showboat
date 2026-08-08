@@ -3,7 +3,7 @@ import { type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
 import { type ShotEvent, type SimResult } from "../physics/engine";
 import { type Candidate, type CandidateKind, generateCandidates } from "./candidates";
-import { rolloutValueWasm, separateOverlaps, simulateShotWasm } from "../physics/wasm-bridge";
+import { rolloutValueWasm, simulateShotWasm } from "../physics/wasm-bridge";
 import { railsBeforePot } from "./trace";
 import { NO_PROGRESS, type SearchProgressSink } from "./search/progress";
 
@@ -509,10 +509,10 @@ export const searchCandidates = (
     return { stats: [], allStats: [], verifications: [], simulations: 0, trace: baseTrace() };
   }
 
-  // Separate any overlapping balls before handing to Rust — the TS animation
-  // engine can leave balls at exact contact distance.
+  // Every candidate is simulated from this one board, so it is cloned once
+  // rather than per candidate. It is handed to the engine as it stands: the
+  // Rust side separates its own copy (see physics/wasm-bridge.ts).
   const workBalls = balls.map(cloneBall);
-  separateOverlaps(workBalls);
 
   const stats: CandidateStat[] = candidates.map((c) => ({
     candidate: c,
