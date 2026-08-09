@@ -11,11 +11,15 @@
 //    of simulation times, compute where the ball is (`interpolateBalls`) and
 //    the nearest point on the drawn route polyline, and report the distance.
 //
-// 2. PACING. How far a ball moves between two displayed frames, near a contact
-//    and away from one, at each offered speed. This is the number behind the
-//    complaint that the balls are too fast to understand: a ball crossing
-//    30 logical px between frames cannot be tracked by eye, and the route it is
-//    following cannot be reconciled with it.
+// 2. PACING. How far the cue ball moves between two displayed frames, measured
+//    off the painted pixels rather than off the model. A ball crossing 30
+//    logical px between frames cannot be followed by eye, and the route drawn
+//    under it cannot be reconciled with it; the ball is 23.7 logical px across,
+//    which is what these numbers are read against.
+//
+//    `qa/time-mapping.ts` measures the same quantity for every ball over many
+//    more shots, without a browser. This one is the check that the app on
+//    screen agrees with it.
 //
 // Both run against a real dev server and the real app, via the repo's own CDP
 // harness. Usage: node qa/motion.mjs [url]
