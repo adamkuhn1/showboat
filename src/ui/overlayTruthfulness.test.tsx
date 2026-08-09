@@ -79,6 +79,9 @@ const panel = (trace: DecisionTraceV1 | null, over: Partial<Parameters<typeof Ov
     renderToStaticMarkup(
       <OverlayPanel
         trace={trace}
+        // Null by default: most cases here are about the plan, which is on
+        // screen before the shot has happened. The outcome has its own case.
+        outcome={null}
         state="READY"
         planning={false}
         modelLoading={false}
@@ -232,6 +235,11 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     for (const c of classical.candidates) {
       fromTrace.add(String(c.target));
       fromTrace.add(String(c.potId));
+      // The rung sentence quotes the chosen candidate's measured strength
+      // against the reliability bar. It is a physics value, so it belongs in
+      // this set by exactly the rule the test states — but it is only ever
+      // printed to two places, so that is the form allowed here.
+      if (c.physics) fromTrace.add(c.physics.strength.toFixed(2));
     }
     if (classical.selected) {
       fromTrace.add(classical.selected.reliabilityThreshold.toFixed(2));
@@ -280,9 +288,28 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     expect(text).toContain("Neural evaluator and physics search");
     // The prior's calibrated estimates are real decision data, but printed
     // eight-to-a-panel as bare decimals they were a scoreboard, not reasoning.
+    //
+    // Two numbers the panel IS entitled to print sit on the same 0–1 scale as a
+    // synthetic score — the reliability bar, and the chosen candidate's own
+    // measured strength — so a score that happens to round to one of them is a
+    // collision rather than a leak, and is excluded rather than asserted on.
+    // (The fixture's [0.60, 0.99] band was already chosen to dodge the bar; the
+    // strength is a real physics value and cannot be dodged by construction.)
+    const sel = hybridLike.selected!;
+    const chosenPhysics = hybridLike.candidates.find(
+      (c) => c.index === sel.candidateIndex,
+    )?.physics;
+    const allowed = new Set([
+      sel.reliabilityThreshold.toFixed(2),
+      ...(chosenPhysics ? [chosenPhysics.strength.toFixed(2)] : []),
+    ]);
     const withPrior = hybridLike.candidates.filter((c) => c.neural !== null);
+    const checkable = withPrior.filter((c) => !allowed.has(c.neural!.score.toFixed(2)));
     expect(withPrior.length).toBeGreaterThan(0);
-    for (const c of withPrior) expect(text).not.toContain(c.neural!.score.toFixed(2));
+    // Most of the set still has to be checked, or the exclusion above has
+    // quietly turned this assertion into a formality.
+    expect(checkable.length).toBeGreaterThan(withPrior.length / 2);
+    for (const c of checkable) expect(text).not.toContain(c.neural!.score.toFixed(2));
     expect(text).not.toContain("showboat-ranker-phase2d");
     for (const re of BANNED) expect(text).not.toMatch(re);
   });

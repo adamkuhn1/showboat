@@ -26,6 +26,7 @@ import {
   buildSchedule,
   frameAt,
   holdScaleForTurn,
+  settleMs,
   stateAt,
   withSkip,
   type PresentationFrame,
@@ -33,6 +34,7 @@ import {
   type PresentationState,
 } from "../render/presentation";
 import { shotSentence } from "./shotSentence";
+import { shotOutcomeLine, type ShotOutcomeLine } from "./shotOutcome";
 import { usePlanner } from "./planner/usePlanner";
 import type { ModelStatus, PlannedTurn, PlayedTurn } from "./planner/plan";
 import {
@@ -81,6 +83,16 @@ export interface UseAiTurnArgs {
 export interface AiTurnView {
   presentation: PresentationState;
   trace: DecisionTraceV1 | null;
+  /**
+   * What the last opponent shot actually did, or null before there has been
+   * one and while the next one is being planned.
+   *
+   * Set the moment the balls stop and held across the settled-result beat, the
+   * commit, and the whole of the human's reply — so the outcome is still on
+   * screen when the visitor looks up from the table. Cleared only by the next
+   * opponent turn starting.
+   */
+  outcome: ShotOutcomeLine | null;
   /** The search is running and nothing has arrived yet. */
   planning: boolean;
   modelLoading: boolean;
@@ -173,6 +185,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
 
   const [presentation, setPresentation] = useState<PresentationState>("IDLE");
   const [trace, setTrace] = useState<DecisionTraceV1 | null>(null);
+  const [outcome, setOutcome] = useState<ShotOutcomeLine | null>(null);
   const [planning, setPlanning] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
   const [turnIndex, setTurnIndex] = useState(0);
@@ -389,6 +402,39 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
     [],
   );
 
+  // ---- the settled-result beat ------------------------------------------
+  /**
+   * Wait, painting nothing.
+   *
+   * Everything on the canvas is already correct — `runShot`'s last frame left
+   * the balls at rest with the measured route under them — so this holds that
+   * frame rather than drawing over it. A rAF loop rather than a timer because
+   * it has to be cancellable by exactly the two things that cancel the rest of
+   * the turn: `stopLoop` (a new rack, an unmount) and a skip.
+   *
+   * `skipRef` is cleared on entry, deliberately. Skipping the shot means "stop
+   * watching the balls roll", not "and don't tell me what happened"; each beat
+   * is skipped on its own press.
+   */
+  const runHold = useCallback(
+    (ms: number) =>
+      new Promise<void>((rawResolve) => {
+        const resolve = () => {
+          settleLoopRef.current = null;
+          rawResolve();
+        };
+        settleLoopRef.current = resolve;
+        skipRef.current = false;
+        const start = performance.now();
+        const tick = (now: number) => {
+          if (cancelRef.current || skipRef.current || now - start >= ms) return resolve();
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      }),
+    [],
+  );
+
   // ---- the turn ---------------------------------------------------------
   useEffect(() => {
     const action = nextTurnAction({
@@ -431,6 +477,9 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       setBusy(true);
       setPlanning(true);
       setTrace(null);
+      // The previous turn's outcome has had the settled-result beat plus the
+      // whole of the human's reply to be read. This is the one place it goes.
+      setOutcome(null);
       setPresentation("IDLE");
       setPhase("searching");
       const nextTurn = turnIndexRef.current + 1;
@@ -555,7 +604,17 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       await runShot(planState, planned, marks);
       if (disposed || cancelRef.current) return;
 
+      // The shot is over and the board is at rest. Say what it did, from the
+      // simulation that was just replayed and the rules verdict on it, and hold
+      // the settled frame long enough for that to be read — `commit` is what
+      // releases the table, and on a turn the opponent keeps, releasing it
+      // starts the next search and clears this panel.
       setPresentation("SETTLED");
+      const settled = shotOutcomeLine(planned.trace, planned.report.outcome);
+      setOutcome(settled);
+      await runHold(settleMs(settled?.words ?? 0, holdScaleForTurn(turnIndexRef.current)));
+      if (disposed || cancelRef.current) return;
+
       setBusy(false);
       commit(planned.report);
     })();
@@ -627,6 +686,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
   return {
     presentation,
     trace,
+    outcome,
     planning,
     modelLoading,
     turnIndex,
