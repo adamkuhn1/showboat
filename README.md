@@ -212,9 +212,10 @@ is uniform priors + a physics rollout value, no model involved.
 With **neural ranking** enabled, `src/ai/neural/evaluator.ts` encodes every
 generated candidate with the same `encode.ts` the training data was built with,
 runs one batched `session.run()` through the committed ONNX artifact, applies
-the manifest's Platt calibration, blends `double-bank` scores halfway toward
-the training-split kind mean (the artifact's own documented weak kind), and
-hands the result to `searchCandidates` as a **prior only**. The prior decides
+the manifest's Platt calibration, and hands the result to `searchCandidates` as
+a **prior only**. (A per-kind confidence blend exists for checkpoints with a
+measurably weak candidate kind. The shipped artifact carries 1.0 for every
+kind, so no blending runs.) The prior decides
 the order candidates are physics-verified in, and which ones are dropped before
 any simulation runs. It never supplies a value: `potsTarget` still comes from
 `isLegalPot()` on a real WASM simulation, `strength` still comes from real
