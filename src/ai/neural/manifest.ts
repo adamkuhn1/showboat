@@ -92,11 +92,16 @@ export function validateManifest(m: unknown): { ok: true; manifest: ProductionMo
  * logit, then blended toward the training-split candidate-kind mean by the
  * manifest's per-kind confidence weight.
  *
- * The blend is not a hedge for its own sake: `kind_confidence["double-bank"]`
- * is 0.5 because that is the one kind this exact checkpoint is measurably weak
- * at ranking (group-aware Spearman 0.0600 val / 0.0447 test, vs. 0.37 pooled —
- * the artifact's own first known limitation). Every other kind is 1.0, i.e.
- * the model's score is used unmodified.
+ * For the shipped artifact the blend does nothing. Every kind carries a
+ * confidence of 1.0, so `calibratedMakeEstimate` returns the Platt-scaled
+ * probability unchanged and returns early before any mean is fetched. The
+ * mechanism is kept because it is the mitigation a weaker checkpoint needs:
+ * the previous Phase 2D MLP ranked double-bank candidates barely above chance
+ * and was held at 0.5. This checkpoint's per-kind numbers did not warrant it,
+ * which the manifest says in its own `kind_confidence.note`.
+ *
+ * A retrain that regresses one kind sets that kind's weight below 1.0 in the
+ * manifest and the blend starts running again; nothing here needs to change.
  */
 export function calibratedMakeEstimate(
   logit: number,

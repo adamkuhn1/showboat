@@ -6,12 +6,15 @@
 // is still a correct sample of a correct simulation — what goes wrong is WHICH
 // simulation instant each frame samples.
 //
-// So the strongest assertion here is measured off the balls themselves: walk a
-// shot frame by frame the way the animation loop does, and for each ball divide
-// the distance it moved on screen by the distance it moved in the simulation.
-// That ratio IS the playback rate, read from that one ball's motion. If it ever
-// changes — and in particular if it changes because a DIFFERENT ball hit
-// something — the mapping is warping time and the physics will be blamed.
+// So the strongest assertion here is positional. Walk a shot frame by frame
+// the way the animation loop does, then check every ball against where the
+// straight line through the sequence's own endpoints says it should be. Under
+// one rate the two agree to floating-point residue. Under a warp the balls run
+// ahead of or behind that line — and a viewer, seeing a ball surge because a
+// DIFFERENT ball hit something, blames the physics.
+//
+// The last of these tests warps the playback on purpose and asserts the check
+// rejects it, because a guard nobody has watched fail is not yet a guard.
 //
 // The shots are real: the reference engine on real boards, and the contact
 // times come from the resulting event log.
@@ -126,60 +129,72 @@ describe("one rate per shot", () => {
   });
 });
 
+/**
+ * How far a ball set has travelled, as a fraction of the whole shot.
+ *
+ * Positions only. A frame is compared against the track at the fraction of
+ * simulation time that a single-rate playback would have reached by then, so
+ * the assertion is about where the balls actually are, not about the helper
+ * that produced the frame.
+ */
+const worstOffsetFrom = (track: AnimTrack, frame: Ball[], simTime: number): number => {
+  const ref = interpolateBalls(track, simTime);
+  let worst = 0;
+  for (const b of frame) {
+    const r = ref.find((x) => x.id === b.id);
+    if (!r || b.pocketed || r.pocketed) continue;
+    worst = Math.max(worst, Math.hypot(b.pos.x - r.pos.x, b.pos.y - r.pos.y));
+  }
+  return worst;
+};
+
+/**
+ * The largest distance, in metres, by which any ball sits away from where a
+ * constant rate would have put it. Zero for single-rate playback; a warp
+ * shows up as balls running ahead of or behind the straight line.
+ */
+const worstDriftFromConstantRate = (track: AnimTrack, times: number[]): number => {
+  // The straight line through the sequence's own first and last samples. Using
+  // the endpoints rather than the per-frame step keeps this independent of the
+  // formula being tested, and sidesteps the final frame, which is clamped to
+  // the end of the shot and so is not on the line by construction.
+  const end = times.length - 2;
+  if (end < 2) return 0;
+  const span = times[end] - times[0];
+  let worst = 0;
+  for (let i = 1; i < end; i++) {
+    const onTheLine = times[0] + span * (i / end);
+    worst = Math.max(worst, worstOffsetFrom(track, interpolateBalls(track, times[i]), onTheLine));
+  }
+  return worst;
+};
+
 describe("no ball changes speed because of something another ball did", () => {
   // The regression this file exists for, measured the way a viewer sees it.
-  it("every moving ball reports the same playback rate on every frame", () => {
+  //
+  // Asserting on the frame times alone would prove nothing: those are produced
+  // by the helper under test. So the check is positional. Under one rate, a
+  // ball a third of the way through the wall-clock is a third of the way
+  // through its journey, and every ball agrees at once.
+  it("every ball sits where a single rate would put it, on every frame", () => {
     for (const { duration, track } of REAL_SHOTS) {
       for (const speed of PLAYBACK_SPEEDS) {
-        const times = walk(speed, duration);
-        const implied: number[] = [];
-        let prev = interpolateBalls(track, times[0]);
-        for (let i = 1; i < times.length - 1; i++) {
-          const now = interpolateBalls(track, times[i]);
-          const dSim = times[i] - times[i - 1];
-          for (const b of now) {
-            const p = prev.find((x) => x.id === b.id);
-            if (!p || b.pocketed || p.pocketed) continue;
-            if (Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y) < 1e-4) continue;
-            // Simulation seconds consumed per wall-clock second, read off this
-            // one ball's motion. dWall is one frame by construction.
-            implied.push(dSim / FRAME_SEC);
-          }
-          prev = now;
-        }
-        expect(implied.length).toBeGreaterThan(20);
-        const min = Math.min(...implied);
-        const max = Math.max(...implied);
-        expect(max / min, `speed ${speed}: implied rate ranged ${min}..${max}`).toBeCloseTo(1, 9);
-        expect(min).toBeCloseTo(speed, 9);
+        const drift = worstDriftFromConstantRate(track, walk(speed, duration));
+        // Micrometres: floating-point residue, not a warp. The test below
+        // shows what a real one costs.
+        expect(drift, `speed ${speed}: worst drift ${drift} m`).toBeLessThan(1e-6);
       }
     }
   });
 
-  it("the mapping from wall-clock to simulation time is exactly affine", () => {
-    // A single-rate playback satisfies simTime = a*wall + b with zero residual.
-    // The residual is the amount of time-warping in the shot, in simulation
-    // seconds, and it is the one number that summarises the whole defect.
-    for (const { duration } of REAL_SHOTS) {
-      for (const speed of PLAYBACK_SPEEDS) {
-        const times = walk(speed, duration);
-        // Drop the clamped final frame; it is deliberately short.
-        const frames = times.slice(0, -1).map((simTime, i) => ({ wall: i * FRAME_SEC, simTime }));
-        const n = frames.length;
-        let sw = 0, ss = 0, sww = 0, sws = 0;
-        for (const f of frames) {
-          sw += f.wall;
-          ss += f.simTime;
-          sww += f.wall * f.wall;
-          sws += f.wall * f.simTime;
-        }
-        const a = (n * sws - sw * ss) / (n * sww - sw * sw);
-        const b = (ss - a * sw) / n;
-        let residual = 0;
-        for (const f of frames) residual = Math.max(residual, Math.abs(f.simTime - (a * f.wall + b)));
-        expect(residual, `speed ${speed}`).toBeLessThan(1e-9);
-        expect(a).toBeCloseTo(speed, 9);
-      }
-    }
+  it("a warped playback fails that check", () => {
+    // The guard above is only worth having if it rejects the defect it names.
+    // This is the shape the removed code produced: simulation time advancing
+    // as a curve against wall-clock instead of a straight line.
+    const { duration, track } = REAL_SHOTS[0];
+    const frames = walk(0.5, duration).length - 1;
+    const warped = Array.from({ length: frames + 1 }, (_, i) => duration * (i / frames) ** 2);
+    const drift = worstDriftFromConstantRate(track, warped);
+    expect(drift).toBeGreaterThan(0.05);
   });
 });
