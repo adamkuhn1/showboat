@@ -287,6 +287,19 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     for (const re of BANNED) expect(text).not.toMatch(re);
   });
 
+  it("a build whose ranker never loaded cannot name the model", () => {
+    // The failure this pins: a trace carries the brain that was asked to plan,
+    // so a neural-shaped trace with no fallback set can arrive in a build where
+    // the artifact failed preflight and was never fetched. The badge is the
+    // half that knows. Reading the trace alone put "Neural evaluator" on screen
+    // while the console said the opponent had stayed on the physics search.
+    const text = panel(hybridLike, {
+      badge: { mode: "classical", fallbackReason: "HTTP 404" },
+    });
+    expect(text).not.toContain("Neural evaluator");
+    expect(text).toContain("Physics search");
+  });
+
   it("a fallback decision is never dressed up as a neural one", () => {
     const fallback: DecisionTraceV1 = {
       ...classical,
