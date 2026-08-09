@@ -18,6 +18,21 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 
+/* Present to assistive technology, absent from the layout. Used by the live
+   region and by the table's long description, neither of which has anything to
+   show a sighted visitor that the table and the status line do not already. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 body {
   /* Byte-identical to the shell's --serif (apps/portfolio/src/index.css), and
      the face is actually shipped — see src/main.tsx. The old stack led with
@@ -348,6 +363,58 @@ button.secondary {
 }
 button.secondary:hover:not(:disabled) { border-color: var(--text); }
 
+/* The felt takes focus on pointer-down so that space belongs to the shot again
+   (App.tsx). That is a pointer focus, so `:focus-visible` never matches it and
+   no ring is drawn; a ring is still drawn if it is ever focused by other means. */
+.table:focus { outline: none; }
+.table:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+
+/* ── Keyboard disclosure ─────────────────────────────────────────── */
+/* Closed by default: it is reference, not instruction. Every key it lists works
+   whether or not it has been opened. */
+
+.keyboard-help {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.keyboard-help summary {
+  cursor: pointer;
+  width: fit-content;
+  padding: 0.1rem 0;
+}
+
+.keyboard-help ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+}
+
+.keyboard-help li { display: contents; }
+
+.keys { display: flex; gap: 0.2rem; align-items: center; }
+
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.05rem 0.34rem;
+  border: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.keyboard-note {
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
 /* ── Overlay panel ───────────────────────────────────────────────── */
 /* Mounted only once there is a real decision to show (see App.tsx) — before
    the opponent's first turn, nothing renders here at all. */
@@ -491,6 +558,21 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   margin-top: 0.6rem;
 }
 
+/* What the shot did. Set at the weight of the plan sentence, because it is the
+   other half of it, and separated by a rule so it reads as the later event
+   rather than as more of the reasoning. The tone is carried by weight, not by a
+   red/green pair: three outcomes, one of which ("nothing fell") is neither good
+   nor bad, and a scoreboard palette would overstate all three. */
+.overlay-outcome {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.6rem;
+  color: var(--text);
+}
+
+.overlay-outcome[data-tone="made"] { font-weight: 600; }
+.overlay-outcome[data-tone="foul"] { color: #d9a441; }
+
 /* ── Win / loss screen ───────────────────────────────────────────── */
 
 .win-screen {
@@ -557,6 +639,24 @@ button.secondary:hover:not(:disabled) { border-color: var(--text); }
   .layout { flex-direction: column; align-items: center; }
   .board { flex: 0 0 auto; width: 100%; max-width: 900px; }
   .overlay { flex: 0 0 auto; width: 100%; max-width: 900px; }
+
+  /* Tighter vertical rhythm, only here, and only above the Shoot button.
+     Stacked, the reasoning panel sits BETWEEN the table and the controls, so
+     every pixel of spacing above them pushes the primary action further down
+     the page; and at full width the panel's lines are short enough that the
+     separation a 288px side column needs is no longer doing any work. Worth
+     about 40px, which is what the outcome line costs at this width. The row
+     layout — which is what the portfolio embed gets, and where the panel costs
+     the controls no vertical space at all — is untouched. */
+  .shell { gap: 0.6rem; }
+  .topbar { padding-bottom: 0.6rem; }
+  .layout { gap: 0.7rem; }
+  .overlay { padding: 0.7rem 0.9rem; }
+  .overlay-title { margin-bottom: 0.45rem; padding-bottom: 0.4rem; }
+  .overlay-reason,
+  .overlay-outcome { margin-top: 0.45rem; padding-top: 0.4rem; }
+  .overlay-actions,
+  .overlay-compare { margin-top: 0.5rem; padding-top: 0.4rem; }
 }
 
 @media (max-width: 620px) {

@@ -39,7 +39,12 @@ import {
   MIN_TRAVEL_M,
   SIMPLIFY_TOLERANCE_M,
 } from "./executed";
-import type { DecisionTraceV1, ExecutedMotion, Vec2Trace } from "./contract";
+import {
+  DECISION_TRACE_VERSION,
+  type DecisionTraceV1,
+  type ExecutedMotion,
+  type Vec2Trace,
+} from "./contract";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../../..");
@@ -525,7 +530,7 @@ describe("executed motion: extraction from real simulations", () => {
       expect(withExecutedMotion(bare, motion)).toBe(bare);
 
       const trace = {
-        version: "showboat-decision-trace/2",
+        version: DECISION_TRACE_VERSION,
         selected: { executed: null, kind: "bank" },
       } as unknown as DecisionTraceV1;
       const out = withExecutedMotion(trace, motion);

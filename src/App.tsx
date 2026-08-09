@@ -12,6 +12,8 @@ import { useAiTurn, type Phase, type Scene } from "./ui/useAiTurn";
 import { interpolateBalls, type AnimTrack } from "./render/animate";
 import { PLAYBACK_SPEEDS, PLAYBACK_SPEED_LABEL, usePlaybackSpeed } from "./ui/playbackSpeed";
 import { simulationRate } from "./ui/pacing";
+import { boardLabel } from "./ui/boardLabel";
+import { focusedControlOwnsKey } from "./ui/keys";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
@@ -104,6 +106,18 @@ export default function App() {
   const [side, setSide] = useState(0);
   const [top, setTop] = useState(0);
   const [message, setMessage] = useState("loading…");
+  /**
+   * The one live region on the page.
+   *
+   * Every state change worth interrupting a screen reader for lands here and
+   * nowhere else: whose turn it is, a foul and its consequence, what the
+   * opponent's shot did, and the end of the game. Ball motion emphatically does
+   * NOT — a polite region updated per animation frame is unusable, and the
+   * canvas is not narrated, it is summarised once it has settled (see
+   * `boardLabel`). The visible `.msg` line stays a plain element so the same
+   * sentence is not announced twice.
+   */
+  const [announcement, setAnnouncement] = useState("");
   const [engineReady, setEngineReady] = useState(false);
   // Neural ranking is the DEFAULT; the physics-only comparison stays one click
   // away, in the reasoning panel. The corrected pre-registered gate that made
@@ -134,8 +148,12 @@ export default function App() {
       .then(() => {
         setEngineReady(true);
         setMessage("break to start");
+        setAnnouncement("Ready. Break to start.");
       })
-      .catch(() => setMessage("couldn't load the physics engine"))
+      .catch(() => {
+        setMessage("couldn't load the physics engine");
+        setAnnouncement("The physics engine could not be loaded.");
+      })
       .finally(() => postToShell("ready"));
 
     // Preflight only: validates the manifest and hashes the 14 KB artifact
@@ -268,6 +286,7 @@ export default function App() {
       msg = `${playerName(shooter)} ${verb(shooter, "stay", "stays")} at the table.`;
     }
     setMessage(msg);
+    setAnnouncement(msg);
   }, []);
 
   const ai = useAiTurn({
@@ -286,7 +305,10 @@ export default function App() {
     // `shot === null` reaches here only when the opponent had no legal target
     // at all. The hook has already rested the phase; this is the sentence that
     // tells the visitor why nothing is happening.
-    onNoLegalShot: () => setMessage("no legal shot for the opponent."),
+    onNoLegalShot: () => {
+      setMessage("no legal shot for the opponent.");
+      setAnnouncement("No legal shot for the opponent.");
+    },
     onModelStatus: (s) =>
       setModelBadge(
         s.status === "ready"
@@ -294,6 +316,13 @@ export default function App() {
           : { mode: "classical", fallbackReason: s.reason ?? "not loaded" },
       ),
   });
+
+  // The opponent's shot result reaches the live region the moment the balls
+  // stop — one settled-result beat before `commit` announces whose turn it is
+  // next, which is the order the two facts happen in.
+  useEffect(() => {
+    if (ai.outcome) setAnnouncement(ai.outcome.text);
+  }, [ai.outcome]);
 
   // Build the ranker session in the worker as soon as the page is idle, rather
   // than on the first opponent turn. The session lives in the worker and
@@ -373,6 +402,13 @@ export default function App() {
     // Any touch of the felt counts, including one that only skips a replay:
     // the visitor is engaging with the game, which is the signal.
     warmOnFirstInteraction();
+    // Take focus off whatever was last clicked. A focused control owns Space
+    // (`ui/keys.ts`), so without this, clicking "New rack" and then pressing
+    // space would rack again instead of shooting — the button would still hold
+    // focus and would still, correctly, own the key. `tabIndex={-1}` keeps the
+    // canvas out of the tab order: a keyboard visitor reaches the shot through
+    // the Shoot button, which is a real control with a real name.
+    e.currentTarget.focus({ preventScroll: true });
     // Pointer-down anywhere on the felt skips whatever is being shown: the
     // opponent's reasoning, the opponent's shot, or your own shot rolling out.
     // None of the three can be corrupted by it — every one is a replay of
@@ -492,12 +528,10 @@ export default function App() {
       // without this guard it claimed Space and the arrows everywhere: the
       // English and Draw-Follow sliders took focus, drew a focus ring, and then
       // did nothing at all, because the aim handler called preventDefault
-      // before the range input ever saw the key.
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea" || el?.isContentEditable) {
-        return;
-      }
+      // before the range input ever saw the key. `ui/keys.ts` states the rule
+      // in full — sliders and fields own every key, buttons and the Keyboard
+      // disclosure own Space and Enter, and the arrows are always the game's.
+      if (focusedControlOwnsKey(e.target, e.code)) return;
 
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
@@ -526,11 +560,10 @@ export default function App() {
       }
       if (e.code === "Escape" && !e.repeat) {
         // The shell's focused embed route tells the visitor Escape leaves.
-        // Since d269d9b this frame takes the focus the shell offers (so
-        // space-to-shoot works inside the embed), which means the parent's own
-        // Escape listener never fires and that promise stopped being true.
-        // Hand the request back up instead of dropping window.focus(), which
-        // would trade one broken key for another.
+        // This frame takes the focus the shell offers, so space-to-shoot works
+        // inside the embed — and so the parent's own Escape listener never
+        // fires. The request is handed back up rather than dropping
+        // `window.focus()`, which would trade one broken key for another.
         postToShell("releaseFocus");
       }
     };
@@ -587,6 +620,13 @@ export default function App() {
 
       <div className="layout">
         <div className="board">
+          {/* A canvas exposes nothing to a screen reader on its own, so it is
+              named as the picture it is — the same treatment the portfolio
+              gives its network diagram — and the name is rebuilt from live
+              state so it describes this board rather than a racked one. The
+              description carries the controls; `tabIndex={-1}` makes the
+              surface focusable by pointer without putting an unnamed box in
+              the tab order (see `onPointerDown`). */}
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
@@ -596,7 +636,16 @@ export default function App() {
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
             className="table"
+            role="img"
+            tabIndex={-1}
+            aria-label={boardLabel(state, AI_PLAYER)}
+            aria-describedby="sb-table-help"
           />
+          <p id="sb-table-help" className="visually-hidden">
+            Drag anywhere on the table to point the cue ball at the pointer. Left and right
+            arrows aim, with Shift for a quarter-degree step; up and down arrows set power;
+            space shoots, and skips the opponent&rsquo;s reasoning or a shot already rolling.
+          </p>
           <div className="status">
             <span className={`turn p${state.turn}`}>
               {aiTurn ? "opponent" : "you"}
@@ -620,6 +669,12 @@ export default function App() {
           </div>
         </div>
 
+        {/* The page's only live region. Never fed an animation frame; see the
+            `announcement` state for what does reach it. */}
+        <p className="visually-hidden" role="status" aria-live="polite">
+          {announcement}
+        </p>
+
         {/* Nothing renders here until the opponent has actually planned once.
             An empty "candidates appear here" box beside the table was dead
             weight that also broke the embedded layout: at the ~1180px embed
@@ -629,6 +684,7 @@ export default function App() {
         {(ai.trace !== null || ai.planning || ai.liveCounts !== null) && (
           <OverlayPanel
             trace={ai.trace}
+            outcome={ai.outcome}
             state={ai.presentation}
             planning={ai.planning}
             modelLoading={ai.modelLoading}
@@ -724,6 +780,53 @@ export default function App() {
             />
           </label>
         </div>
+
+        {/* Every shortcut the window listener implements, written down where a
+            visitor can find it. It was previously discoverable only by reading
+            the source: the keys worked, and nothing on the page said so. */}
+        <details className="keyboard-help">
+          <summary>Keyboard</summary>
+          <ul>
+            <li>
+              <span className="keys">
+                <kbd>&larr;</kbd>
+                <kbd>&rarr;</kbd>
+              </span>
+              <span>aim</span>
+            </li>
+            <li>
+              <span className="keys">
+                <kbd>Shift</kbd>
+                <kbd>&larr;</kbd>
+                <kbd>&rarr;</kbd>
+              </span>
+              <span>fine aim, a quarter of a degree per press</span>
+            </li>
+            <li>
+              <span className="keys">
+                <kbd>&uarr;</kbd>
+                <kbd>&darr;</kbd>
+              </span>
+              <span>power, in steps of five per cent</span>
+            </li>
+            <li>
+              <span className="keys">
+                <kbd>Space</kbd>
+              </span>
+              <span>shoot — or skip the reasoning, a shot rolling, or the result</span>
+            </li>
+            <li>
+              <span className="keys">
+                <kbd>Esc</kbd>
+              </span>
+              <span>leave the game when it is running inside the portfolio</span>
+            </li>
+          </ul>
+          <p className="keyboard-note">
+            A focused button or slider keeps its own keys: press <kbd>Enter</kbd> to activate
+            a button you have tabbed to, and click the table to hand space back to the shot.
+          </p>
+        </details>
       </div>
 
       {state.winner !== null && (

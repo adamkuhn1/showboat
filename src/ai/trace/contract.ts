@@ -37,8 +37,15 @@
 // was the plan — and the overlay drew it as though it were the shot being
 // played. /2 adds the third. A renderer may draw a plan as a plan; it may not
 // draw a plan as the route the balls take.
+//
+// /3 adds `SelectedShotTrace.passedOverDirectIndex`: which straight pot, if
+// any, this decision turned down. The trick-only policy's headline behaviour
+// was unstatable from /2 — directs appear in `candidates` labelled
+// `direct-excluded-by-policy`, but whether the pot was genuinely ON needed a
+// clearance the candidate generator does not compute, so a renderer could not
+// tell "a straight pot was refused" from "a direct was enumerated and blocked".
 
-export const DECISION_TRACE_VERSION = "showboat-decision-trace/2" as const;
+export const DECISION_TRACE_VERSION = "showboat-decision-trace/3" as const;
 
 /**
  * The four shot kinds Showboat is allowed to play. This is the product
@@ -296,6 +303,24 @@ export interface SelectedShotTrace {
    * nothing — `cuePath`/`path` are not a stand-in for it.
    */
   executed: ExecutedMotion | null;
+  /**
+   * The straight pot this decision turned down — an index into
+   * `DecisionTraceV1.candidates`, or null when there was none to turn down.
+   *
+   * The row it addresses is always a `direct` carrying
+   * `rejection: "direct-excluded-by-policy"`. An index is recorded only when
+   * the pot was genuinely available, which takes one clearance more than the
+   * candidate generator computes: `generateCandidates` establishes that the cue
+   * can reach the ghost-ball contact point unobstructed at a makeable cut
+   * angle, and `trace/build.ts` additionally requires the object ball's line to
+   * the pocket to be clear of every other ball. A direct whose pocket is
+   * screened was enumerated but was never on, and is not recorded here.
+   *
+   * Null therefore means one of: no direct was generated, every generated
+   * direct is blocked on the way to the pocket, or the board had no legal
+   * target at all.
+   */
+  passedOverDirectIndex: number | null;
   /** `strength + STYLE_WEIGHT * styleScore`, or null for a safety kick. */
   utility: number | null;
   /** The bar a trick must clear on rung 1. A physics-derived threshold. */
