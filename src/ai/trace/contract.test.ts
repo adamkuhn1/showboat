@@ -332,6 +332,7 @@ describe("the shape is pinned by an exhaustive literal", () => {
         cuePath: [{ x: -0.5, y: 0 }, { x: 0.05, y: 0.15 }],
         path: [{ x: 0.06, y: 0.16 }, { x: 0.4, y: -0.32 }, { x: -0.88, y: -0.44 }],
         utility: 0.86,
+        passedOverDirectIndex: 0,
         reliabilityThreshold: 0.5,
         qualifyingTricks: 2,
         safetyQuality: null,

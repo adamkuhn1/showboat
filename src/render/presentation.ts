@@ -152,6 +152,25 @@ export const TIMING = {
   SELECT_MIN_HOLD_SCALE: 0.75,
   /** Skipping lands in READY for long enough to read the sentence's shape. */
   SKIP_READY_MS: 250,
+  /**
+   * The settled-result beat: the board at rest, the measured route still drawn
+   * under it, and the outcome written — held before the turn is committed.
+   *
+   * It has to be *before* the commit rather than after it, because committing
+   * is what hands the table back, and when the opponent pots and stays at the
+   * table the very next thing that happens is a fresh search that clears the
+   * panel. Without this hold the outcome existed for one frame on exactly the
+   * turns where the opponent was doing best.
+   *
+   * Length is READY's rule applied to the outcome sentence — the same scan rate
+   * over the sentence that actually has to be read. It decays with the session
+   * like the other holds, but on SELECTED's gentler floor and for the same
+   * reason: the shape is constant, the content is different every turn.
+   */
+  SETTLE_BASE_MS: 900,
+  SETTLE_MIN_MS: 1200,
+  SETTLE_MAX_MS: 1900,
+  SETTLE_MIN_HOLD_SCALE: 0.75,
 } as const;
 
 /**
@@ -163,6 +182,19 @@ export const holdScaleForTurn = (turnIndex: number): number =>
   turnIndex <= 2 ? 1 : turnIndex <= 5 ? 0.6 : 0.4;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+
+/**
+ * How long to hold the settled result, for an outcome sentence of `words`.
+ * Reduced motion does not shorten it: a hold is not an animation, and the
+ * reason it exists — that the sentence has to be readable before the next turn
+ * begins — applies with more force, not less, when motion has been turned down.
+ */
+export const settleMs = (words: number, decay = 1): number =>
+  clamp(
+    TIMING.SETTLE_BASE_MS + words * TIMING.READY_PER_WORD_MS,
+    TIMING.SETTLE_MIN_MS,
+    TIMING.SETTLE_MAX_MS,
+  ) * clamp(decay, TIMING.SETTLE_MIN_HOLD_SCALE, 1);
 
 export interface Segment {
   state: PresentationState;

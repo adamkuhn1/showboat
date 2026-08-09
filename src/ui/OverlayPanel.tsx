@@ -14,16 +14,19 @@
 //   - no fabricated natural-language reasoning. The last line is the selection
 //     ladder's own rung, mapped one-to-one to a phrase.
 //
-// It is deliberately about five lines long, and it must stay that way: at the
-// portfolio's ~1180 px embed the panel takes 288 px and the table gets the
-// remaining ~74 %. That ratio is the floor. Which is also why the per-route
-// elimination reasons are drawn on the felt beside the route they belong to
-// rather than listed here.
+// It is deliberately short — a title, the state, the plan, why, and what the
+// shot did — and it must stay that way: at the portfolio's ~1180 px embed the
+// panel takes 288 px and the table gets the remaining ~74 %. That ratio is the
+// floor. Which is also why the per-route elimination reasons are drawn on the
+// felt beside the route they belong to rather than listed here, and why the
+// straight-pot refusal is a clause inside the plan sentence rather than a line
+// of its own.
 // ---------------------------------------------------------------------------
 
 import type { DecisionTraceV1 } from "../ai/trace/contract";
 import { STATE_LABEL, isReasoning, type PresentationState } from "../render/presentation";
 import { rungText, shotSentence } from "./shotSentence";
+import type { ShotOutcomeLine } from "./shotOutcome";
 
 export interface ModelBadge {
   /** What is configured to run. The rendered mode always comes from the trace. */
@@ -36,6 +39,12 @@ export interface ModelBadge {
 
 export interface OverlayPanelProps {
   trace: DecisionTraceV1 | null;
+  /**
+   * What the last opponent shot did, once it has finished. Built from the
+   * executed simulation's event log and the rules verdict on it — see
+   * `ui/shotOutcome.ts`; nothing here derives it and nothing here softens it.
+   */
+  outcome: ShotOutcomeLine | null;
   state: PresentationState;
   /** True between "the opponent is up" and the trace arriving. */
   planning: boolean;
@@ -67,6 +76,7 @@ export interface OverlayPanelProps {
 
 export function OverlayPanel({
   trace,
+  outcome,
   state,
   planning,
   modelLoading,
@@ -141,6 +151,16 @@ export function OverlayPanel({
           panel had already printed. */}
       {decided && sentence && <p className="overlay-line chosen-why">{sentence.text}</p>}
       {decided && rung && <p className="overlay-line overlay-reason">{rung}</p>}
+
+      {/* What it did. Last, because it is the only line here that is about the
+          past — plan, then why, then result, read top to bottom. It survives
+          the commit and the human's whole reply, so a visitor who looked away
+          during the roll still finds out. */}
+      {outcome && (
+        <p className="overlay-line overlay-outcome" data-tone={outcome.tone}>
+          {outcome.text}
+        </p>
+      )}
 
       {showDisclosure && trace && (
         <>

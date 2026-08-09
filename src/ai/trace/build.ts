@@ -21,7 +21,8 @@ import {
   TRICK_RELIABILITY_THRESHOLD,
 } from "../shotSearch";
 import { isTrickCandidate, type TrickOnlyDecision } from "../policy/trickOnly";
-import { type Candidate } from "../candidates";
+import { isPathClear, type Candidate } from "../candidates";
+import { type Ball } from "../../physics/ball";
 import { type ProgressCandidate } from "../search/progress";
 import {
   DECISION_TRACE_VERSION,
@@ -124,6 +125,45 @@ const rejectionOf = (
   return "lower-utility-than-selected";
 };
 
+/**
+ * The straight pot the trick-only policy turned down, or null if none was on.
+ *
+ * `generateCandidates` emits a `direct` once the cue can reach the ghost-ball
+ * contact point unobstructed at a makeable cut angle. It never checks the other
+ * half of the shot — whether the object ball can actually reach the pocket —
+ * because for every other kind the physics search settles that question, and a
+ * direct is never simulated: the policy excludes it before the search spends a
+ * unit on it. So "a direct was enumerated" is weaker than "a straight pot was
+ * on", and the panel's claim needs the stronger one.
+ *
+ * This closes exactly that gap, with the generator's own clearance primitive
+ * over the generator's own object-ball leg (`path[0]` is the object ball,
+ * `path[1]` the pocket for a direct). The cue ball is skipped because the
+ * ghost-ball construction puts it behind the object ball relative to the
+ * pocket, and the target is skipped because it is the ball travelling.
+ *
+ * Among the directs that pass, the shortest object-ball run is recorded: the
+ * easiest of them. Which one is named only decides how strong the example is —
+ * the claim a renderer makes from it is true of every member of the set.
+ */
+function passedOverDirectIndex(candidates: TracedCandidate[], balls: Ball[]): number | null {
+  const live = balls.filter((b) => !b.pocketed);
+  let bestIndex: number | null = null;
+  let bestRun = Infinity;
+  for (const c of candidates) {
+    if (c.kind !== "direct" || c.path.length < 2) continue;
+    const from = c.path[0];
+    const to = c.path[c.path.length - 1];
+    if (!isPathClear(from, to, live, new Set([CUE_ID, c.target]))) continue;
+    const run = Math.hypot(to.x - from.x, to.y - from.y);
+    if (run < bestRun) {
+      bestRun = run;
+      bestIndex = c.index;
+    }
+  }
+  return bestIndex;
+}
+
 export interface BuildTraceInput {
   outcome: SearchOutcome;
   decision: TrickOnlyDecision;
@@ -222,6 +262,7 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
             // motion onto the trace the moment there is one, through
             // `withExecutedMotion`. Null here is the truth, not a placeholder.
             executed: null,
+            passedOverDirectIndex: passedOverDirectIndex(candidates, state.balls),
             utility: decision.utility,
             reliabilityThreshold: TRICK_RELIABILITY_THRESHOLD,
             qualifyingTricks: decision.qualifyingTricks,
