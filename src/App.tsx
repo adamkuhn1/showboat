@@ -488,6 +488,17 @@ export default function App() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // A focused control owns its own keys. This listener is on the window, so
+      // without this guard it claimed Space and the arrows everywhere: the
+      // English and Draw-Follow sliders took focus, drew a focus ring, and then
+      // did nothing at all, because the aim handler called preventDefault
+      // before the range input ever saw the key.
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "select" || tag === "textarea" || el?.isContentEditable) {
+        return;
+      }
+
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
         // While anything is playing back, space skips ahead rather than firing

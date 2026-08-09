@@ -81,7 +81,14 @@ export function OverlayPanel({
   // The title names what decided *this* decision. Before there is one, it names
   // what is configured.
   const mode = trace?.mode ?? (badge.mode === "neural-hybrid" ? "neural-hybrid" : "classical-trick-only");
-  const usedNeural = mode === "neural-hybrid" && !trace?.fallback;
+  // Naming the model requires agreement from both sources, not either one.
+  // A trace carries the brain that was *asked* to plan, so a build whose ranker
+  // never loaded can still produce a neural-shaped trace with no fallback set;
+  // the badge is the half that knows whether the artifact is actually there.
+  // Claiming the model ran when it did not is the one thing this panel must
+  // never do, so a disagreement resolves to the weaker claim.
+  const usedNeural =
+    mode === "neural-hybrid" && !trace?.fallback && badge.mode === "neural-hybrid";
   const title = usedNeural ? "Neural evaluator and physics search" : "Physics search";
 
   const sentence = trace ? shotSentence(trace) : null;
