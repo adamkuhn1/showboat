@@ -44,8 +44,14 @@
 // `direct-excluded-by-policy`, but whether the pot was genuinely ON needed a
 // clearance the candidate generator does not compute, so a renderer could not
 // tell "a straight pot was refused" from "a direct was enumerated and blocked".
+//
+// /4 adds `MeasuredRoute`, on every simulated candidate and on the selected
+// shot, plus `SelectedShotTrace.plannedKind`. A candidate's `kind` is the
+// generator's proposal; `measured` is what the rollout's event log shows the
+// shot doing. They can differ, and when they do both are published — the fourth
+// description a renderer must keep apart from the other three.
 
-export const DECISION_TRACE_VERSION = "showboat-decision-trace/3" as const;
+export const DECISION_TRACE_VERSION = "showboat-decision-trace/4" as const;
 
 /**
  * The four shot kinds Showboat is allowed to play. This is the product
@@ -61,14 +67,62 @@ export type TracedKind = TrickKind | "direct" | "safety-kick";
 
 /**
  * Which rung of the selection ladder produced the shot. Ordered strongest to
- * weakest; none of them can return a direct.
+ * weakest; none of them can return a direct, and the two trick rungs are
+ * reachable only by a candidate whose rollout measurably executed a trick.
  */
 export type SelectionRung =
   | "trick-qualified"
   | "trick-below-threshold"
-  | "trick-attempt-no-verified-pot"
   | "non-direct-safety"
   | "forced-legal-contact";
+
+/**
+ * What a rollout's event log shows the shot DOING, as opposed to what the
+ * generator proposed. Produced only by `ai/measure/classify.ts`.
+ *
+ * `direct` appears here on rejected candidates and never on a selected one: a
+ * nominal bank whose measured route touches no cushion is a direct pot, and a
+ * direct pot is not playable.
+ */
+export type MeasuredClass =
+  | "direct"
+  | "one-rail-bank"
+  | "multi-rail-bank"
+  | "combination"
+  | "rail-combination"
+  | "safety"
+  | "foul"
+  | "miss";
+
+export interface MeasuredRoute {
+  classification: MeasuredClass;
+  /**
+   * Cushion contacts taken by the balls that carried the shot, before the
+   * decisive pot. Cushions after the pot, and cushions taken by balls not on
+   * the contact chain, are excluded — see `ai/measure/classify.ts`.
+   */
+  rails: number;
+  /** Those cushions, in contact order. */
+  railCushions: string[];
+  /**
+   * The causal ball chain: cue ball first, each ball set moving by the one
+   * before it, ending at the ball that dropped. Empty when nothing dropped or
+   * when the log does not attribute the pot to the cue ball.
+   */
+  contactChain: number[];
+  pottedBall: number | null;
+  pocket: string | null;
+  firstContact: number | null;
+  firstContactLegal: boolean;
+  scratched: boolean;
+  /**
+   * The measured class is one of the four supported trick structures AND the
+   * ball the shot was for is the ball that dropped AND the cue struck the ball
+   * it was supposed to. This is the whole eligibility test for playing a
+   * candidate as a trick.
+   */
+  trickVerified: boolean;
+}
 
 /**
  * Why a candidate is not the shot being played. Exactly one reason per
@@ -83,6 +137,15 @@ export type RejectionReason =
   | "scratched-in-simulation"
   | "illegal-first-contact"
   | "did-not-pot"
+  /**
+   * The rollout potted the intended ball, and the route it took is not the
+   * trick structure the candidate was generated as, nor any other supported
+   * one — most often a nominal bank whose object ball reached the pocket
+   * without touching a cushion. Ranked after `did-not-pot` and before the
+   * reliability bar, because it is a fact about the route rather than about
+   * how good the route is.
+   */
+  | "planned-trick-not-measured"
   | "below-reliability-threshold"
   | "lower-utility-than-selected";
 
@@ -180,6 +243,12 @@ export interface TracedCandidate {
   neural: NeuralPrior | null;
   /** Null iff no simulation was ever run on this candidate. */
   physics: PhysicsVerification | null;
+  /**
+   * What that simulation's event log shows the route doing. Non-null exactly
+   * when `physics` is: both come from the same single rollout, so a candidate
+   * can never carry a measurement of a simulation that did not run.
+   */
+  measured: MeasuredRoute | null;
   /** Null iff this candidate is the one being played. */
   rejection: RejectionReason | null;
 }
@@ -280,7 +349,25 @@ export interface SelectedShotTrace {
    * never by position in a re-sorted list.
    */
   candidateIndex: number | null;
+  /**
+   * The MEASURED trick structure being played, or `safety-kick`. Not the
+   * generator's label: a candidate proposed as a bank that measurably runs two
+   * cushions is `double-bank` here, and one that measurably runs none is never
+   * selected at all. Everything the interface says about the shot's type is
+   * derived from this and from `measured.rails`.
+   */
   kind: TrickKind | "safety-kick";
+  /**
+   * What the generator proposed, kept so the two can be compared. Equal to
+   * `kind` on most shots; when it differs, the interface says so rather than
+   * quietly showing one of them.
+   */
+  plannedKind: TracedKind;
+  /**
+   * The measurement `kind` was derived from. Null only for a safety kick, whose
+   * route is verified against the ruleset rather than classified as a trick.
+   */
+  measured: MeasuredRoute | null;
   rung: SelectionRung;
   action: CueActionTrace;
   /**

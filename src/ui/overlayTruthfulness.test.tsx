@@ -27,6 +27,7 @@ import { isTrickCandidate, selectTrickOnly } from "../ai/policy/trickOnly";
 import { buildDecisionTrace } from "../ai/trace/build";
 import { REASONING_STATES, STATE_LABEL } from "../render/presentation";
 import type { DecisionTraceV1 } from "../ai/trace/contract";
+import { shotSentence } from "./shotSentence";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, "../..");
@@ -353,7 +354,6 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     const expected: Record<string, string> = {
       "trick-qualified": "reliability bar",
       "trick-below-threshold": "still pots in simulation",
-      "trick-attempt-no-verified-pot": "best legal attempt",
       "non-direct-safety": "safety off the cushion",
       "forced-legal-contact": "shortest legal contact",
     };
@@ -384,5 +384,98 @@ describe("reasoning overlay: only real values, only earned vocabulary", () => {
     const css = readFileSync(join(APP_ROOT, "src/index.css"), "utf8");
     expect(css).not.toContain("thinking-dots");
     expect(css).not.toContain("dot-pulse");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The plan sentence names the MEASURED route, and reconciles it with the plan.
+//
+// The failure these guard: a candidate the generator called a bank, whose
+// rollout put the ball in without touching a cushion, was described to the
+// visitor as "a bank". The panel now takes its noun from the measurement, and
+// says the plan out loud only beside it.
+// ---------------------------------------------------------------------------
+describe("planned and measured are both shown, and never confused", () => {
+  const withMeasured = (
+    over: Partial<NonNullable<DecisionTraceV1["selected"]>["measured"]> & Record<string, unknown>,
+    selOver: Record<string, unknown> = {},
+  ): DecisionTraceV1 => ({
+    ...classical,
+    selected: {
+      ...classical.selected!,
+      rung: "trick-qualified",
+      measured: {
+        classification: "one-rail-bank",
+        rails: 1,
+        railCushions: ["top"],
+        contactChain: [0, 1],
+        pottedBall: 1,
+        pocket: "tr",
+        firstContact: 1,
+        firstContactLegal: true,
+        scratched: false,
+        trickVerified: true,
+        ...over,
+      },
+      ...selOver,
+    },
+  });
+
+  it("a route measured at three cushions is called a three-rail bank", () => {
+    const t = withMeasured(
+      { classification: "multi-rail-bank", rails: 3, railCushions: ["top", "right", "bottom"] },
+      { kind: "double-bank", plannedKind: "bank" },
+    );
+    // The plan sentence itself, not merely somewhere in the panel: the noun
+    // after "Playing a" is the measurement's, and the generator's word appears
+    // only in the reconciliation line under it.
+    expect(shotSentence(t)!.text).toMatch(/^Playing a three-rail bank on the \d+/);
+    expect(panel(t)).toContain("Planned as a bank; the simulation found a three-rail bank.");
+  });
+
+  it("no reconciliation line appears when the plan and the measurement agree", () => {
+    const chosen = classical.candidates.find(
+      (c) => c.index === classical.selected!.candidateIndex,
+    );
+    const t = withMeasured(
+      { pocket: chosen?.pocket ?? "tr" },
+      { kind: "bank", plannedKind: "bank" },
+    );
+    expect(panel(t)).not.toContain("Planned as");
+  });
+
+  it("a differing pocket is reconciled rather than rounded off", () => {
+    const chosen = classical.candidates.find(
+      (c) => c.index === classical.selected!.candidateIndex,
+    )!;
+    const other = chosen.pocket === "bl" ? "tr" : "bl";
+    const t = withMeasured({ pocket: other }, { kind: "bank", plannedKind: "bank" });
+    expect(panel(t)).toMatch(/Planned into the .* pocket; the simulation finds the /);
+  });
+
+  it("the safety rung says how many nominal tricks the measurement threw out", () => {
+    const t: DecisionTraceV1 = {
+      ...classical,
+      candidates: classical.candidates.map((c, i) =>
+        i < 2 && c.eligible ? { ...c, rejection: "planned-trick-not-measured" as const } : c,
+      ),
+      selected: {
+        ...classical.selected!,
+        candidateIndex: null,
+        kind: "safety-kick",
+        plannedKind: "safety-kick",
+        measured: null,
+        rung: "non-direct-safety",
+        safetyQuality: "foul-free",
+      },
+    };
+    const rejected = t.candidates.filter(
+      (c) => c.rejection === "planned-trick-not-measured",
+    ).length;
+    const text = panel(t);
+    expect(text).toContain("safety off the cushion");
+    if (rejected > 0) {
+      expect(text).toMatch(/potted without the cushion/);
+    }
   });
 });

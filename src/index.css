@@ -552,6 +552,14 @@ kbd {
   color: var(--text);
 }
 
+/* Only present when the generator's proposal and the simulated route are
+   different shots. Set below the plan sentence and above the rule, so it reads
+   as a qualification of the line it follows rather than as a new claim. */
+.overlay-reconcile {
+  font-size: 0.82rem;
+  margin-top: 0.3rem;
+}
+
 .overlay-reason {
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);

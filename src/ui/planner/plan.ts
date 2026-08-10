@@ -121,7 +121,7 @@ export interface PlayedTurn {
 /**
  * A turn in which the policy returned no shot.
  *
- * The trick-only ladder's rungs 4 and 5 produce a shot whenever a legal target
+ * The trick-only ladder's two safety rungs produce a shot whenever a legal target
  * exists, so this now means exactly one thing: **there was no legal target.**
  * It is not a search failure and it is not a fallback — there is nothing to
  * fall back to. The host rests the turn rather than sitting on "searching…".
@@ -242,7 +242,7 @@ export async function planTurnTraced(
 
   // `result.shot` is a branded `PlayableShot` — the only thing in the codebase
   // that can be played, and something only `policy/trickOnly.ts` can mint. It
-  // is null only when there was no legal target (the ladder's rungs 4-5 cover
+  // is null only when there was no legal target (the ladder's safety rungs cover
   // every other case), and there is no local aim to fall back on: the
   // nearest-legal-ball escape hatch that used to live here is deleted.
   if (result.shot === null) return { kind: "no-legal-shot", trace };

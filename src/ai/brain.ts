@@ -140,6 +140,8 @@ const emptyDecision = (): TrickOnlyDecision => ({
   qualifyingTricks: 0,
   utility: null,
   excludedIndices: [],
+  unmeasuredTrickIndices: [],
+  verifiedTricks: 0,
   safetySimsSpent: 0,
   safety: null,
   safetyQuality: null,
@@ -167,8 +169,6 @@ const legacyReasonFor = (rung: SelectionRung | null): SelectionReason => {
       return "trick-qualified";
     case "trick-below-threshold":
       return "no-trick-qualified";
-    case "trick-attempt-no-verified-pot":
-      return "no-verified-pot";
     default:
       return "none";
   }
@@ -200,11 +200,10 @@ const assemble = (
     best: idx === null ? null : outcome.allStats[idx] ?? null,
     // Compatibility shim for the CURRENT overlay panel, which renders a
     // sentence keyed off the legacy `SelectionReason`. The mapping is lossy but
-    // not untrue: rung 2 really is "no trick cleared the reliability bar", rung
-    // 3 really is "nothing potted in simulation", and rungs 4-5 really are "no
-    // trick candidate survived physics verification". New rendering should read
-    // `decision.selected.rung`, which has all five values; this line goes away
-    // when it does.
+    // not untrue: rung 2 really is "no trick cleared the reliability bar", and
+    // the two safety rungs really are "no trick candidate was measurably
+    // executed". New rendering should read `decision.selected.rung`, which has
+    // all four values; this line goes away when it does.
     trace: outcome.trace && { ...outcome.trace, selectionReason: legacyReasonFor(decision.rung) },
     shot: decision.shot,
     decision: buildDecisionTrace({
@@ -300,12 +299,15 @@ const decide = (
     selectionMs,
   });
 
-  // The two rejection reasons the SEARCH cannot know, because they are
-  // selection decisions rather than physics results. Published from the
-  // finished trace rather than recomputed, so the live stream and the record
-  // cannot disagree about why a route lost.
+  // The three rejection reasons the SEARCH cannot know, because they are
+  // selection decisions rather than physics results — the measured-route
+  // rejection included, since the search records an event log and the policy is
+  // what classifies it. Published from the finished trace rather than
+  // recomputed, so the live stream and the record cannot disagree about why a
+  // route lost.
   for (const c of result.decision.candidates) {
     if (
+      c.rejection === "planned-trick-not-measured" ||
       c.rejection === "below-reliability-threshold" ||
       c.rejection === "lower-utility-than-selected"
     ) {
