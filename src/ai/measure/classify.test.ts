@@ -243,6 +243,121 @@ describe("fouls, safeties and misses", () => {
   });
 });
 
+describe("the two rules are load-bearing: the same cushions, moved", () => {
+  // Each pair below is the same shot with one cushion event relocated. If the
+  // rule were absent the two members of a pair would classify identically, so
+  // the pair is what shows the rule doing work rather than merely existing.
+
+  it("a chain ball's cushion counts before the pot and does not count after it", () => {
+    const before = classify(
+      [hit(0.1, CUE, 1), hit(0.25, 1, 2), rail(0.4, 1, "left"), pot(0.6, 2)],
+      intent({ potId: 2 }),
+    );
+    const after = classify(
+      [hit(0.1, CUE, 1), hit(0.25, 1, 2), pot(0.6, 2), rail(0.9, 1, "left")],
+      intent({ potId: 2 }),
+    );
+    expect(measuredRouteLabel(before)).toBe("rail combination");
+    expect(measuredRouteLabel(after)).toBe("combination");
+  });
+
+  it("a cushion counts when the ball taking it is on the chain and not when it is not", () => {
+    const onChain = classify(
+      [hit(0.1, CUE, 1), hit(0.25, 1, 2), rail(0.4, 2, "left"), pot(0.6, 2)],
+      intent({ potId: 2 }),
+    );
+    const offChain = classify(
+      [hit(0.1, CUE, 1), hit(0.25, 1, 2), rail(0.4, 7, "left"), pot(0.6, 2)],
+      intent({ potId: 2 }),
+    );
+    expect(measuredRouteLabel(onChain)).toBe("rail combination");
+    expect(measuredRouteLabel(offChain)).toBe("combination");
+  });
+});
+
+describe("repeated contacts between the same pair", () => {
+  // A ball trapped between another ball and a cushion produces several contacts
+  // in a few milliseconds. `qa/classifier-audits.ts` case 3 builds one in real
+  // physics; these state what the classifier does with the shape.
+
+  it("chatter between the same pair does not extend or reorder the chain", () => {
+    const m = classify(
+      [
+        hit(0.1, CUE, 1),
+        hit(0.12, CUE, 1),
+        hit(0.14, CUE, 1),
+        hit(0.2, 1, 2),
+        hit(0.21, 1, 2),
+        pot(0.5, 2),
+      ],
+      intent({ potId: 2 }),
+    );
+    expect(m.contactChain).toEqual([CUE, 1, 2]);
+    expect(m.classification).toBe("combination");
+    expect(m.rails).toBe(0);
+  });
+
+  it("no amount of chatter turns a route that touched no cushion into a bank", () => {
+    const m = classify([hit(0.1, CUE, 1), hit(0.11, CUE, 1), hit(0.13, CUE, 1), pot(0.4, 1)]);
+    expect(m.classification).toBe("direct");
+    expect(m.rails).toBe(0);
+    expect(m.trickVerified).toBe(false);
+  });
+
+  it("two contacts with one cushion are two rails, and the first of them is never a repeat", () => {
+    // The rail count is one per cushion event, so a ball that rattles against
+    // the same rail is counted twice. A rattle can therefore raise the number
+    // in a bank's name; it can never produce the first cushion, because the
+    // repeat by definition follows a contact that was not one.
+    const m = classify([
+      hit(0.1, CUE, 1),
+      rail(0.2, 1, "bottom"),
+      rail(0.24, 1, "bottom"),
+      pot(0.6, 1),
+    ]);
+    expect(m.rails).toBe(2);
+    expect(m.railCushions).toEqual(["bottom", "bottom"]);
+    expect(measuredRouteLabel(m)).toBe("two-rail bank");
+  });
+});
+
+describe("a contact with a ball that is already moving", () => {
+  it("credits the ball that set the potted ball moving, not the last one to touch it", () => {
+    // The 1 starts the 2; the cue catches the 2 and puts it in. The chain names
+    // the 1. `qa/classifier-audits.ts` case 4 is this shot in real physics.
+    const m = classify(
+      [hit(0.1, CUE, 1), hit(0.2, 1, 2), hit(0.5, CUE, 2), pot(0.7, 2)],
+      intent({ potId: 2 }),
+    );
+    expect(m.contactChain).toEqual([CUE, 1, 2]);
+    expect(m.classification).toBe("combination");
+    // The property that keeps the ambiguity harmless: a chain of three or more
+    // requires the cue's first contact to have been a different ball, so no
+    // straight pot can be reclassified upward by it.
+    expect(m.firstContact).toBe(1);
+    expect(m.firstContact).not.toBe(m.pottedBall);
+  });
+
+  it("a second contact between two moving balls does not re-point the chain", () => {
+    const m = classify(
+      [hit(0.1, CUE, 1), hit(0.2, CUE, 3), hit(0.3, 3, 1), hit(0.4, 1, 2), pot(0.8, 2)],
+      intent({ potId: 2 }),
+    );
+    // The 3 touched the 1 while both were moving, so it never becomes the 1's
+    // driver, and the chain is the one the first motions established.
+    expect(m.contactChain).toEqual([CUE, 1, 2]);
+  });
+
+  it("a ball whose cushion predates its own first motion is not credited with it", () => {
+    const m = classify(
+      [rail(0.05, 2, "left"), hit(0.1, CUE, 1), hit(0.3, 1, 2), pot(0.7, 2)],
+      intent({ potId: 2 }),
+    );
+    expect(m.rails).toBe(0);
+    expect(m.classification).toBe("combination");
+  });
+});
+
 describe("the intended ball has to be the one that drops, off the intended contact", () => {
   it("a bank that pots by striking the wrong ball first is not verified", () => {
     const m = classify(
