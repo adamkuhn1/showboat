@@ -181,20 +181,96 @@ describe("every opponent shot is reported, and the report matches the simulation
     }
   });
 
-  it("a pot with no cushion and no combination is not dressed up as a trick", () => {
-    // Synthesised from a real trace by emptying the potted ball's cushion
-    // breaks: the ball still drops, at the same pocket, off nothing.
+  it("counts the same cushions the plan line counted, on a combination whose middle ball also railed", () => {
+    // Fixture `controlled-2` of the frozen measured gate, reduced to its
+    // contact log. The cue drives the 4 into the 5; the 5 takes two cushions
+    // and drops; and the 4, having already handed the shot on, takes one of its
+    // own before the drop. The classifier credits all three to the chain and
+    // the plan line says "three-rail combination". The result line used to
+    // count the potted ball's own trajectory and say "Two-rail combination
+    // made." — two sentences about one shot, disagreeing.
     const turn = played.get("openSpread")!;
     const chosen = turn.trace.candidates.find(
       (c) => c.index === turn.trace.selected!.candidateIndex,
     )!;
     const executed = turn.trace.selected!.executed!;
+    const ev = (
+      kind: "ball-ball" | "ball-cushion" | "pocket",
+      timeSec: number,
+      balls: number[],
+      cushion: string | null = null,
+      pocket: string | null = null,
+    ) => ({ kind, timeSec, balls, cushion, pocket });
+    const POT = chosen.potId;
+    const MID = 4 === POT ? 6 : 4;
+    const rebuilt = {
+      ...turn.trace,
+      turn: { ...turn.trace.turn, legalTargets: [MID, POT] },
+      selected: {
+        ...turn.trace.selected!,
+        executed: {
+          ...executed,
+          contactSequence: [
+            ev("ball-ball", 0.14, [0, MID]),
+            ev("ball-ball", 0.22, [MID, POT]),
+            ev("ball-cushion", 0.38, [POT], "top"),
+            ev("ball-cushion", 0.46, [MID], "top"),
+            ev("ball-cushion", 0.54, [POT], "top"),
+            ev("pocket", 0.71, [POT], null, "tr"),
+          ],
+          // Only the potted ball's own two cushions are on its trajectory,
+          // which is exactly the count the old code read.
+          trajectories: executed.trajectories.map((t) =>
+            t.ballId === POT
+              ? {
+                  ...t,
+                  roles: [...new Set([...t.roles, "combination" as const])],
+                  breaks: [
+                    { at: 1, kind: "cushion" as const, timeSec: 0.38, withBall: null, cushion: "top", pocket: null },
+                    { at: 2, kind: "cushion" as const, timeSec: 0.54, withBall: null, cushion: "top", pocket: null },
+                  ],
+                }
+              : t,
+          ),
+        },
+      },
+    };
+    const line = shotOutcomeLine(rebuilt, {
+      foul: false,
+      foulReason: null,
+      pocketedThisShot: [POT],
+      turnPasses: false,
+      ballInHandForNext: false,
+      assignedGroups: false,
+      gameOver: false,
+      winner: null,
+    })!;
+    expect(line.text.startsWith("Three-rail combination made."), line.text).toBe(true);
+  });
+
+  it("a pot with no cushion and no combination is not dressed up as a trick", () => {
+    // Synthesised from a real trace by replacing the executed contact log with
+    // the plainest pot there is — the cue strikes the ball and it drops, off no
+    // cushion and off no other ball. The trajectory is flattened to match, so
+    // the two records of the route say the same thing.
+    const turn = played.get("openSpread")!;
+    const chosen = turn.trace.candidates.find(
+      (c) => c.index === turn.trace.selected!.candidateIndex,
+    )!;
+    const executed = turn.trace.selected!.executed!;
+    const drop = executed.contactSequence.find(
+      (e) => e.kind === "pocket" && e.balls.includes(chosen.potId),
+    )!;
     const flattened = {
       ...turn.trace,
       selected: {
         ...turn.trace.selected!,
         executed: {
           ...executed,
+          contactSequence: [
+            { kind: "ball-ball" as const, timeSec: 0.05, balls: [0, chosen.potId], cushion: null, pocket: null },
+            drop,
+          ],
           trajectories: executed.trajectories.map((t) =>
             t.ballId === chosen.potId
               ? { ...t, roles: t.roles.filter((r) => r !== "combination"), breaks: t.breaks.filter((b) => b.kind !== "cushion") }
