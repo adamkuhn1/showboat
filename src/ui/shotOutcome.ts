@@ -23,6 +23,7 @@ import { CUE_ID, EIGHT_ID } from "../game/rack";
 import type { ShotOutcome } from "../game/rules";
 import type { DecisionTraceV1, ExecutedMotion } from "../ai/trace/contract";
 import { POCKET_NAME, wordsIn } from "./shotSentence";
+import { railWord } from "../ai/measure/classify";
 
 /** Enough to colour the line and to decide nothing else. */
 export type OutcomeTone = "made" | "missed" | "foul";
@@ -74,11 +75,12 @@ const trajectoryOf = (executed: ExecutedMotion | null, ballId: number): Trajecto
  */
 function measuredShape(trajectory: Trajectory): string | null {
   const cushions = trajectory.breaks.filter((b) => b.kind === "cushion").length;
+  const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   if (trajectory.roles.includes("combination")) {
-    return cushions > 0 ? "Rail combination" : "Combination";
+    if (cushions === 0) return "Combination";
+    return cushions === 1 ? "Rail combination" : capitalise(`${railWord(cushions)}-rail combination`);
   }
-  if (cushions >= 3) return "Multi-rail bank";
-  if (cushions === 2) return "Two-rail bank";
+  if (cushions >= 2) return capitalise(`${railWord(cushions)}-rail bank`);
   if (cushions === 1) return "Bank";
   return null;
 }
@@ -197,10 +199,13 @@ export function shotOutcomeLine(
       // It went in, but not as the shot it was chosen to be.
       return line(`${dropped(plannedPot).slice(0, -1)}, but without the ${plannedShape}.`, "made");
     }
-    // Which pocket, and whether it is the one the plan named. Both are on the
-    // felt already — the dashed plan and the solid measured route — and the
-    // sentence has to agree with them rather than round the difference off.
-    const aimedAt = chosen ? (POCKET_NAME[chosen.pocket] ?? chosen.pocket) : null;
+    // Which pocket, and whether it is the one the panel said the ball would go
+    // into. That claim comes from the rollout's measured route, not from the
+    // generator's pocket — the plan line already reconciles those two — so this
+    // clause fires only when the executed run diverged from the run the panel
+    // showed, which is the difference worth reporting after the fact.
+    const predicted = sel.measured?.pocket ?? chosen?.pocket ?? null;
+    const aimedAt = predicted === null ? null : (POCKET_NAME[predicted] ?? predicted);
     const actual = pocketOf(executed, plannedPot);
     const elsewhere = actual !== null && aimedAt !== null && actual !== aimedAt;
     return line(

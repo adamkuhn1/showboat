@@ -256,17 +256,23 @@ describe("every opponent shot is reported, and the report matches the simulation
     expect(line.text).not.toMatch(/made\./);
   });
 
-  it("says so when the ball drops somewhere other than the pocket the plan named", () => {
+  it("says so when the ball drops somewhere other than the pocket the panel predicted", () => {
+    // The comparison is against `selected.measured.pocket` — the pocket the
+    // rollout the panel described puts the ball in — not against the
+    // generator's pocket, which the plan line reconciles separately. So the
+    // divergence this catches is the serious one: the executed run differing
+    // from the run the visitor was shown.
     const turn = played.get("openSpread")!;
     const chosen = turn.trace.candidates.find(
       (c) => c.index === turn.trace.selected!.candidateIndex,
     )!;
     const executed = turn.trace.selected!.executed!;
+    const predicted = turn.trace.selected!.measured?.pocket ?? chosen.pocket;
     const potEvent = executed.contactSequence.find(
       (e) => e.kind === "pocket" && e.balls.includes(chosen.potId),
     );
     if (!potEvent) return; // this board's shot did not pot; nothing to compare
-    const elsewhere = potEvent.pocket === chosen.pocket ? "tl" : potEvent.pocket;
+    const elsewhere = predicted === "tl" ? "tr" : "tl";
     const moved = {
       ...turn.trace,
       selected: {

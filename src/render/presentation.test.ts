@@ -34,7 +34,24 @@ function candidate(
   index: number,
   over: Partial<TracedCandidate> & { verified?: boolean; pots?: boolean } = {},
 ): TracedCandidate {
-  const { verified, pots, ...rest } = over;
+  const { verified, pots, measured: measuredOver, ...rest } = over;
+  const measured: TracedCandidate["measured"] =
+    measuredOver !== undefined
+      ? measuredOver
+      : verified
+        ? {
+            classification: (pots ?? true) ? "one-rail-bank" : "miss",
+            rails: (pots ?? true) ? 1 : 0,
+            railCushions: (pots ?? true) ? ["left"] : [],
+            contactChain: (pots ?? true) ? [0, 1 + (index % 7)] : [],
+            pottedBall: (pots ?? true) ? 1 + (index % 7) : null,
+            pocket: (pots ?? true) ? "tl" : null,
+            firstContact: 1,
+            firstContactLegal: true,
+            scratched: false,
+            trickVerified: pots ?? true,
+          }
+        : null;
   return {
     index,
     kind: (over.kind ?? "bank") as TracedKind,
@@ -69,6 +86,7 @@ function candidate(
           styleScore: 0.2,
         }
       : null,
+    measured,
     rejection: null,
     ...rest,
   };
@@ -103,6 +121,8 @@ function trace(over: Partial<DecisionTraceV1> = {}): DecisionTraceV1 {
     selected: {
       candidateIndex: 0,
       kind: "bank",
+      plannedKind: "bank",
+      measured: candidates[0]?.measured ?? null,
       rung: "trick-qualified",
       action: { phi: 0.2, power: 0.6, sideSpin: 0, topSpin: 0 },
       // Guarded: a fixture may pass `candidates: []` and its own `selected`,
@@ -302,6 +322,8 @@ describe("what gets drawn", () => {
     selected: {
       candidateIndex: 19,
       kind: "double-bank",
+      plannedKind: "double-bank",
+      measured: many[19].measured,
       rung: "trick-qualified",
       action: { phi: 0.1, power: 0.7, sideSpin: 0, topSpin: 0 },
       cuePath: many[19].cuePath,
@@ -390,6 +412,8 @@ describe("what gets drawn", () => {
       selected: {
         candidateIndex: null,
         kind: "safety-kick",
+        plannedKind: "safety-kick",
+        measured: null,
         rung: "non-direct-safety",
         action: { phi: -0.4, power: 0.35, sideSpin: 0, topSpin: 0 },
         cuePath: [geom.cuePos, rail, { x: 0.2, y: 0.3 }],

@@ -8,8 +8,17 @@
 // `lower-utility-than-selected` — i.e. one the search recorded as having lost
 // to the chosen shot. Nothing here compares, ranks or scores anything on its
 // own.
+//
+// FOUR DESCRIPTIONS, KEPT APART
+//
+// The shot being played is named from `selected.measured` — the classification
+// of the rollout the playback follows — and never from `selected.plannedKind`,
+// which is the generator's proposal. When the two differ, `plannedVsMeasured`
+// says so in one line rather than the panel silently showing whichever is
+// handier. What the shot then DID is `ui/shotOutcome.ts`, after the balls stop.
 
-import type { DecisionTraceV1, TracedCandidate } from "../ai/trace/contract";
+import type { DecisionTraceV1, MeasuredRoute, TracedCandidate } from "../ai/trace/contract";
+import { measuredRouteLabel } from "../ai/measure/classify";
 
 const KIND_LABEL: Record<string, string> = {
   direct: "direct pot",
@@ -29,20 +38,68 @@ export const POCKET_NAME: Record<string, string> = {
   st: "top-side",
 };
 
-/** "a two-rail bank on the 3, into the top-side pocket" */
-export function describeCandidate(c: {
-  kind: string;
-  target: number;
-  pocket: string;
-}): string {
-  const kind = KIND_LABEL[c.kind] ?? c.kind;
-  const pocket = POCKET_NAME[c.pocket] ?? c.pocket;
-  return `a ${kind} on the ${c.target}, into the ${pocket} pocket`;
+const pocketName = (id: string | null): string | null =>
+  id === null ? null : (POCKET_NAME[id] ?? id);
+
+/**
+ * The shot being played, named from the MEASUREMENT: the structure the rollout
+ * executed, the ball the cue strikes, and the pocket the simulation drops the
+ * ball into. `measuredRouteLabel` reads the measured cushion count, so a route
+ * that runs three cushions is a "three-rail bank" and not the nearest word in
+ * the generator's four-kind vocabulary.
+ */
+function describeMeasured(m: MeasuredRoute, target: number): string {
+  const label = measuredRouteLabel(m);
+  const pocket = pocketName(m.pocket);
+  return pocket === null
+    ? `a ${label} on the ${target}`
+    : `a ${label} on the ${target}, into the ${pocket} pocket`;
 }
 
-/** "a bank on the 11" — short form, for the comparison clause. */
-const shortForm = (c: TracedCandidate): string =>
-  `a ${KIND_LABEL[c.kind] ?? c.kind} on the ${c.target}`;
+/**
+ * One line reconciling the generator's proposal with the rollout, or null when
+ * they agree. This is the only place the panel prints the planned route, and it
+ * always prints it beside the measured one.
+ */
+export function plannedVsMeasured(trace: DecisionTraceV1): string | null {
+  const sel = trace.selected;
+  if (!sel || sel.measured === null) return null;
+  const chosen =
+    sel.candidateIndex === null
+      ? null
+      : (trace.candidates.find((c) => c.index === sel.candidateIndex) ?? null);
+
+  const planned = KIND_LABEL[sel.plannedKind] ?? sel.plannedKind;
+  const measured = measuredRouteLabel(sel.measured);
+  const plannedPocket = chosen ? pocketName(chosen.pocket) : null;
+  const measuredPocket = pocketName(sel.measured.pocket);
+
+  const kindDiffers = planned !== measured;
+  const pocketDiffers =
+    plannedPocket !== null && measuredPocket !== null && plannedPocket !== measuredPocket;
+  if (!kindDiffers && !pocketDiffers) return null;
+  if (kindDiffers && pocketDiffers) {
+    return `Planned as a ${planned} into the ${plannedPocket} pocket; the simulation found a ${measured} into the ${measuredPocket}.`;
+  }
+  if (kindDiffers) return `Planned as a ${planned}; the simulation found a ${measured}.`;
+  return `Planned into the ${plannedPocket} pocket; the simulation finds the ${measuredPocket}.`;
+}
+
+/**
+ * "a bank on the 11" — short form, for the comparison clause.
+ *
+ * Named from the loser's OWN measurement when it has one. Every candidate this
+ * clause can reach carries a rollout (`runnerUp` requires `physics`), and a
+ * route that reached `lower-utility-than-selected` also cleared the measured
+ * check, so the label is the structure its events executed rather than the one
+ * the generator proposed for it.
+ */
+const shortForm = (c: TracedCandidate): string => {
+  const label = c.measured?.trickVerified
+    ? measuredRouteLabel(c.measured)
+    : (KIND_LABEL[c.kind] ?? c.kind);
+  return `a ${label} on the ${c.target}`;
+};
 
 /**
  * The strongest candidate the trace recorded as losing to the selected one.
@@ -102,10 +159,12 @@ export function shotSentence(trace: DecisionTraceV1): ShotSentence | null {
       ? null
       : (trace.candidates.find((c) => c.index === sel.candidateIndex) ?? null);
 
-  const head = chosen
-    ? describeCandidate(chosen)
-    : // A generated safety has no candidate row; it still has a real kind.
-      `a ${KIND_LABEL[sel.kind] ?? sel.kind}`;
+  const head =
+    sel.measured !== null && chosen
+      ? describeMeasured(sel.measured, chosen.target)
+      : // A generated safety has no candidate row and no trick classification;
+        // it still has a real kind, verified against the ruleset.
+        `a ${KIND_LABEL[sel.kind] ?? sel.kind}`;
 
   // The refusal outranks the comparison, and only one of the two is ever said.
   //
@@ -131,6 +190,21 @@ export function shotSentence(trace: DecisionTraceV1): ShotSentence | null {
 }
 
 export const wordsIn = (text: string): number => text.split(/\s+/).filter(Boolean).length;
+
+/**
+ * Why a safety rung was reached, when part of the answer is that nominal tricks
+ * potted their ball by a route that was not the trick. Counting the trace's own
+ * `planned-trick-not-measured` rows keeps the clause a restatement of a
+ * rejection the policy recorded, rather than a second judgement of the same
+ * candidates.
+ */
+function withRejectedTricks(trace: DecisionTraceV1, base: string): string {
+  const n = trace.candidates.filter((c) => c.rejection === "planned-trick-not-measured").length;
+  if (n === 0) return base;
+  return n === 1
+    ? `${base} — one route potted without the cushion it was planned around, so it is not a trick`
+    : `${base} — ${n} routes potted without the cushion they were planned around, so none is a trick`;
+}
 
 /**
  * Why that shot, in the selection ladder's own terms. One string per rung;
@@ -169,10 +243,11 @@ export function rungText(trace: DecisionTraceV1): string | null {
       return measured === null
         ? `nothing cleared the ${bar} reliability bar, and this one still pots in simulation`
         : `nothing cleared the ${bar} reliability bar; at ${measured} this one still pots in simulation`;
-    case "trick-attempt-no-verified-pot":
-      return "nothing potted in simulation, so this is the best legal attempt";
     case "non-direct-safety":
-      return "no trick was makeable here, so this is a safety off the cushion";
+      return withRejectedTricks(
+        trace,
+        "no trick was makeable here, so this is a safety off the cushion",
+      );
     case "forced-legal-contact":
       // Rung 5 is reached by two different states of knowledge, and saying
       // "the shortest legal contact" for both asserted a legality nothing had

@@ -21,6 +21,7 @@ import {
   TRICK_RELIABILITY_THRESHOLD,
 } from "../shotSearch";
 import { isTrickCandidate, type TrickOnlyDecision } from "../policy/trickOnly";
+import { classifyMeasuredShot, toMeasuredRoute } from "../measure/classify";
 import { isPathClear, type Candidate } from "../candidates";
 import { type Ball } from "../../physics/ball";
 import { type ProgressCandidate } from "../search/progress";
@@ -30,6 +31,7 @@ import {
   type DecisionTiming,
   type DecisionTraceV1,
   type FallbackTrace,
+  type MeasuredRoute,
   type ModelIdentity,
   type PhysicsVerification,
   type RailContact,
@@ -107,6 +109,7 @@ const rejectionOf = (
   index: number,
   stat: CandidateStat,
   verification: CandidateVerification | null,
+  measured: MeasuredRoute | null,
   selectedIndex: number | null,
   considered: Set<number>,
   usedPrior: boolean,
@@ -121,6 +124,11 @@ const rejectionOf = (
   if (verification.scratched) return "scratched-in-simulation";
   if (!verification.legalFirstContact) return "illegal-first-contact";
   if (!verification.legalPot) return "did-not-pot";
+  // It potted the ball it was for, and the route it took is not the structure
+  // it was generated as, nor any other supported one. This is the rejection the
+  // measured classifier added, and it is placed exactly where the policy makes
+  // it: after "did it pot", before "was it reliable".
+  if (measured === null || !measured.trickVerified) return "planned-trick-not-measured";
   if (stat.strength < TRICK_RELIABILITY_THRESHOLD) return "below-reliability-threshold";
   return "lower-utility-than-selected";
 };
@@ -189,6 +197,19 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
   const candidates: TracedCandidate[] = outcome.allStats.map((stat, index) => {
     const c = stat.candidate;
     const verification = outcome.verifications[index] ?? null;
+    // One classification per real rollout, from the same event log the policy
+    // classified. `selectTrickOnly` runs the identical call on the identical
+    // input, so the trace cannot disagree with the decision about what a route
+    // did — and a candidate with no rollout gets no measurement at all.
+    const measured: MeasuredRoute | null =
+      verification === null
+        ? null
+        : toMeasuredRoute(
+            classifyMeasuredShot(
+              { events: verification.events },
+              { target: c.target, potId: c.potId, legalTargets: targets },
+            ),
+          );
     return {
       index,
       kind: c.kind as TracedKind,
@@ -209,10 +230,12 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
               rank: stat.priorRank,
             },
       physics: verification === null ? null : physicsOf(stat, verification),
+      measured,
       rejection: rejectionOf(
         index,
         stat,
         verification,
+        measured,
         selectedIndex,
         considered,
         usedPrior,
@@ -253,6 +276,8 @@ export function buildDecisionTrace(input: BuildTraceInput): DecisionTraceV1 {
         : {
             candidateIndex: shot.candidateIndex,
             kind: shot.kind,
+            plannedKind: shot.plannedKind,
+            measured: shot.measured,
             rung: decision.rung,
             action: { ...shot.action },
             cuePath: shot.cuePath.map(v2),

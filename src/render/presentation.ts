@@ -835,6 +835,7 @@ export const REJECTION_TEXT: Record<RejectionReason, string> = {
   "scratched-in-simulation": "scratches",
   "illegal-first-contact": "illegal first contact",
   "did-not-pot": "did not pot",
+  "planned-trick-not-measured": "not the planned route",
   "below-reliability-threshold": "below the bar",
   "lower-utility-than-selected": "lower utility",
 };

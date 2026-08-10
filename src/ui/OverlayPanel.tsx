@@ -25,7 +25,7 @@
 
 import type { DecisionTraceV1 } from "../ai/trace/contract";
 import { STATE_LABEL, isReasoning, type PresentationState } from "../render/presentation";
-import { rungText, shotSentence } from "./shotSentence";
+import { plannedVsMeasured, rungText, shotSentence } from "./shotSentence";
 import type { ShotOutcomeLine } from "./shotOutcome";
 
 export interface ModelBadge {
@@ -102,6 +102,7 @@ export function OverlayPanel({
   const title = usedNeural ? "Neural evaluator and physics search" : "Physics search";
 
   const sentence = trace ? shotSentence(trace) : null;
+  const reconcile = trace ? plannedVsMeasured(trace) : null;
   const rung = trace ? rungText(trace) : null;
   const label = isReasoning(state) ? STATE_LABEL[state] : null;
   const decided =
@@ -150,6 +151,12 @@ export function OverlayPanel({
           beat meaningless — the sequence would be narrating a conclusion the
           panel had already printed. */}
       {decided && sentence && <p className="overlay-line chosen-why">{sentence.text}</p>}
+      {/* Printed only when the generator's proposal and the simulated route are
+          different shots. The line above always names the measured one, so this
+          is where the plan gets said — beside it, never instead of it. */}
+      {decided && reconcile && (
+        <p className="overlay-line overlay-reconcile">{reconcile}</p>
+      )}
       {decided && rung && <p className="overlay-line overlay-reason">{rung}</p>}
 
       {/* What it did. Last, because it is the only line here that is about the
