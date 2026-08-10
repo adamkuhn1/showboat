@@ -14,16 +14,23 @@
 //
 // Deliberately NOT read: the neural score, the search utility, the reliability
 // strength, and — with one exception — the plan. A shot has to read as what
-// happened, not as what it was for, so the word naming the shot is derived from
-// the potted ball's own measured route (`measuredShape`) and the miss branches
-// count the cushions the ball really took. The single exception is naming the
-// shape that did NOT come off, which is the one place the plan is the subject.
+// happened, not as what it was for, so the word naming the shot comes from
+// `ai/measure/classify.ts` run over the executed contact log (`measuredShape`)
+// and the miss branches count the cushions the ball really took. The single
+// exception is naming the shape that did NOT come off, which is the one place
+// the plan is the subject.
+//
+// The classifier is the SAME function the plan line's noun comes from, called
+// on the executed run rather than on the pre-shot rollout. That is what keeps
+// "Playing a three-rail combination…" and "…combination made." counting the
+// same cushions; see the note on `measuredShape`.
 
 import { CUE_ID, EIGHT_ID } from "../game/rack";
 import type { ShotOutcome } from "../game/rules";
-import type { DecisionTraceV1, ExecutedMotion } from "../ai/trace/contract";
+import type { ContactEvent, DecisionTraceV1, ExecutedMotion } from "../ai/trace/contract";
+import type { ShotEvent } from "../physics/engine";
 import { POCKET_NAME, wordsIn } from "./shotSentence";
-import { railWord } from "../ai/measure/classify";
+import { classifyMeasuredShot, measuredRouteLabel } from "../ai/measure/classify";
 
 /** Enough to colour the line and to decide nothing else. */
 export type OutcomeTone = "made" | "missed" | "foul";
@@ -52,37 +59,67 @@ type Trajectory = ExecutedMotion["trajectories"][number];
 const trajectoryOf = (executed: ExecutedMotion | null, ballId: number): Trajectory | null =>
   executed?.trajectories.find((t) => t.ballId === ballId) ?? null;
 
+/** The executed run's contact log, in the shape the classifier reads. */
+const asEvents = (seq: readonly ContactEvent[]): ShotEvent[] =>
+  seq.map((e) => ({
+    time: e.timeSec,
+    kind: e.kind,
+    balls: [...e.balls],
+    ...(e.cushion === null ? {} : { cushion: e.cushion }),
+    ...(e.pocket === null ? {} : { pocket: e.pocket }),
+  }));
+
 /**
- * What the shot WAS, read off the potted ball's measured route.
+ * What the shot WAS, read off the EXECUTED simulation's own contact log by the
+ * same classifier that named it in the plan line.
  *
  * The label used to be `selected.kind` — the plan's word — and a live run
  * caught it out: a candidate generated as a bank whose mirror point sat almost
  * on the pocket was played, the object ball ran straight in touching no
  * cushion at all, and the panel said "Bank made." over an event log with no
- * cushion in it. The plan is not evidence about the shot. This is.
+ * cushion in it. The plan is not evidence about the shot. The event log is.
  *
- * Null means the ball reached the pocket off nothing — no cushion, and not set
- * moving by another object ball. There is no trick word for that, and the
- * caller says so rather than reaching for the plan's.
+ * It then counted cushions itself, off the potted ball's trajectory alone, and
+ * that is one measurement too many: the classifier credits every cushion on the
+ * causal chain, so a combination whose middle ball also took a rail was
+ * announced as a "three-rail combination" and reported as a "two-rail
+ * combination made" — two sentences about one shot, disagreeing, both derived
+ * from the same physics. Measured once, on fixture `controlled-2` of the frozen
+ * gate. Classifying here removes the second counter rather than trying to keep
+ * the two in step.
  *
- * Takes a trajectory rather than a ball id so that "no route was recorded" and
- * "the recorded route had no cushion in it" cannot collapse into one answer.
- * They did, briefly, and a live turn caught that out too: a combination's
- * middle ball was struck a few millimetres from the pocket, travelled less than
- * `MIN_TRAVEL_M` and so had no trajectory extracted at all, and the panel
- * reported it as a pot "without the rail combination" — a claim about a route
- * nothing had measured.
+ * Null means the route the log shows is not one of the four trick structures —
+ * the ball reached the pocket off nothing. There is no trick word for that, and
+ * the caller says so rather than reaching for the plan's.
+ *
+ * The caller still checks the potted ball's trajectory first, so that "no route
+ * was recorded" and "the recorded route was not a trick" cannot collapse into
+ * one answer. They did, briefly, and a live turn caught that out too: a rail
+ * combination's middle ball was struck a few millimetres from the pocket,
+ * travelled less than `MIN_TRAVEL_M` and so had no trajectory extracted at all,
+ * and the panel reported it as a pot "without the rail combination" — a claim
+ * about a route nothing had measured.
  */
-function measuredShape(trajectory: Trajectory): string | null {
-  const cushions = trajectory.breaks.filter((b) => b.kind === "cushion").length;
-  const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  if (trajectory.roles.includes("combination")) {
-    if (cushions === 0) return "Combination";
-    return cushions === 1 ? "Rail combination" : capitalise(`${railWord(cushions)}-rail combination`);
+function measuredShape(
+  executed: ExecutedMotion,
+  legalTargets: readonly number[],
+  potId: number,
+): string | null {
+  const m = classifyMeasuredShot(
+    { events: asEvents(executed.contactSequence) },
+    { target: null, potId, legalTargets: [...legalTargets] },
+  );
+  switch (m.classification) {
+    case "one-rail-bank":
+    case "multi-rail-bank":
+    case "combination":
+    case "rail-combination": {
+      const label = measuredRouteLabel(m);
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    default:
+      return null;
   }
-  if (cushions >= 2) return capitalise(`${railWord(cushions)}-rail bank`);
-  if (cushions === 1) return "Bank";
-  return null;
 }
 
 const ORDINALS = ["", "first", "second", "third", "fourth", "fifth", "sixth"];
@@ -149,7 +186,10 @@ export function shotOutcomeLine(
   if (outcome.gameOver) {
     if (!outcome.foul) {
       const eight = trajectoryOf(executed, EIGHT_ID);
-      const shape = eight === null ? null : measuredShape(eight);
+      const shape =
+        eight === null || executed === null
+          ? null
+          : measuredShape(executed, trace.turn.legalTargets, EIGHT_ID);
       return line(
         shape === null
           ? `${dropped(EIGHT_ID)} Game over.`
@@ -194,7 +234,8 @@ export function shotOutcomeLine(
       // no claim in either direction about the route.
       return line(dropped(plannedPot), "made");
     }
-    const shape = measuredShape(trajectory);
+    const shape =
+      executed === null ? null : measuredShape(executed, trace.turn.legalTargets, plannedPot);
     if (shape === null) {
       // It went in, but not as the shot it was chosen to be.
       return line(`${dropped(plannedPot).slice(0, -1)}, but without the ${plannedShape}.`, "made");

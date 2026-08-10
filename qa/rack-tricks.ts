@@ -73,7 +73,9 @@ const main = async () => {
     ).next;
 
     for (let shot = 0; shot < MAX_SHOTS && state.winner === null; shot++) {
-      if (state.ballInHand !== false) state = placeCueBall(state, -game.table.length / 4, 0);
+      if (state.ballInHand !== false) {
+        state = placeCueBall(state, -game.table.length / 4, 0, game.table);
+      }
       const brain = getBrain(true, evaluator);
       const decision = await brain.plan(
         state,

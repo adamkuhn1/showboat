@@ -71,6 +71,10 @@ export const PROBE = `
       reconcile: txt(".overlay-reconcile"),
       reason: txt(".overlay-reason"),
       outcome: otext,
+      // The fallback banner. Sampled with the rest because the recovery gate
+      // has to read it off a turn that has already been replaced by the next
+      // one by the time the table settles.
+      warn: txt(".overlay-warn"),
     };
     const lastP = qa.panels[qa.panels.length - 1];
     const same =
@@ -79,7 +83,8 @@ export const PROBE = `
       lastP.chosen === p.chosen &&
       lastP.reconcile === p.reconcile &&
       lastP.reason === p.reason &&
-      lastP.outcome === p.outcome;
+      lastP.outcome === p.outcome &&
+      lastP.warn === p.warn;
     if (same) lastP.until = now;
     else qa.panels.push({ at: now, until: now, ...p });
   }, 40);
@@ -317,6 +322,7 @@ export interface PanelSample {
   reconcile: string | null;
   reason: string | null;
   outcome: string | null;
+  warn: string | null;
 }
 
 export interface QaCapture {
