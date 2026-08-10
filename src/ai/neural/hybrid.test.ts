@@ -339,7 +339,12 @@ describe("neural hybrid: fallback is real and never mislabelled", () => {
     const brain = neuralTrickOnlyBrain(broken);
     const res = await brain.plan(asState(BOARDS.openSpread), table, 0, config);
     expect(res.trace!.fallbackReason).toMatch(/model unavailable/);
-    expect(res.best).not.toBeNull();
+    // A real playable shot came out of it. `best` is the selected CANDIDATE's
+    // stat and is null on a safety kick, which this board reaches at the tight
+    // budget above once a trick has to be measurably a trick — so the assertion
+    // is on the shot, which exists on every rung.
+    expect(res.shot).not.toBeNull();
+    expect(res.shot!.kind).not.toBe("direct");
     // The decision itself is a real classical search — same shape, real physics.
     expect(res.simulations).toBeGreaterThan(0);
     expect(res.trace!.prunedByPrior).toBe(0);

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import { makeTable } from "../../physics/table";
 import { makeBall, type Ball } from "../../physics/ball";
-import { type SimResult } from "../../physics/engine";
+import { type ShotEvent, type SimResult } from "../../physics/engine";
 import { CUE_ID } from "../../game/rack";
 import { type GameState } from "../../game/state";
 import { takeShot } from "../../game/game";
@@ -85,7 +85,7 @@ const stat = (
   verified: o.verified ?? true,
 });
 
-/** A verification record consistent with a stat, for the rung-3 path. */
+/** A verification record consistent with a stat that did NOT pot. */
 const verification = (
   index: number,
   o: Partial<CandidateVerification> = {},
@@ -99,6 +99,59 @@ const verification = (
   railsBeforePot: 0,
   events: [],
   ...o,
+});
+
+/**
+ * The event log a rollout of `kind` produces when the trick comes off.
+ *
+ * A fixture that says `potsTarget: true` for a bank is claiming the physics
+ * potted the ball off a cushion, and the policy now reads that claim from the
+ * event log rather than from the boolean. Supplying the log is what makes the
+ * fixture self-consistent; a fixture that wants to say "it potted, but not as
+ * the trick it was generated as" supplies its own log instead (see D).
+ */
+const trickEvents = (kind: CandidateKind): ShotEvent[] => {
+  const hit = (t: number, a: number, b: number): ShotEvent => ({
+    time: t,
+    kind: "ball-ball",
+    balls: [a, b],
+  });
+  const rail = (t: number, b: number, cushion: string): ShotEvent => ({
+    time: t,
+    kind: "ball-cushion",
+    balls: [b],
+    cushion,
+  });
+  const pot = (t: number, b: number): ShotEvent => ({
+    time: t,
+    kind: "pocket",
+    balls: [b],
+    pocket: "tr",
+  });
+  switch (kind) {
+    case "bank":
+      return [hit(0.1, CUE_ID, 1), rail(0.3, 1, "top"), pot(0.6, 1)];
+    case "double-bank":
+      return [hit(0.1, CUE_ID, 1), rail(0.3, 1, "top"), rail(0.45, 1, "right"), pot(0.7, 1)];
+    case "combo":
+      return [hit(0.1, CUE_ID, 1), hit(0.25, 1, 2), pot(0.6, 2)];
+    case "rail-combo":
+      return [hit(0.1, CUE_ID, 1), hit(0.25, 1, 2), rail(0.4, 2, "left"), pot(0.7, 2)];
+    default:
+      return [hit(0.1, CUE_ID, 1), pot(0.5, 1)];
+  }
+};
+
+/** A verification whose event log really executes `kind` and pots. */
+const potting = (index: number, kind: CandidateKind, potId: number): CandidateVerification => ({
+  index,
+  firstContact: 1,
+  legalFirstContact: true,
+  scratched: false,
+  legalPot: true,
+  pocketed: [potId],
+  railsBeforePot: kind === "double-bank" ? 2 : kind === "bank" || kind === "rail-combo" ? 1 : 0,
+  events: trickEvents(kind),
 });
 
 /** A board with a real legal target, so the safety rung has something to aim at. */
@@ -126,10 +179,24 @@ const forbiddenSimulator = (): SimResult => {
   throw new Error("the safety rung must not be reached on this fixture");
 };
 
-const pick = (stats: CandidateStat[], verifications: (CandidateVerification | null)[] = []) =>
+/**
+ * Select over `stats`. Any trick stat marked `potsTarget` that the caller did
+ * not give a verification for gets the canonical `potting` log for its kind, so
+ * "this fixture's bank potted off a cushion" and "the event log says so" are
+ * the same statement. Callers testing the measured gate supply their own.
+ */
+const pick = (
+  stats: CandidateStat[],
+  verifications: (CandidateVerification | null | undefined)[] = [],
+) =>
   selectTrickOnly(
     stats,
-    stats.map((_, i) => verifications[i] ?? null),
+    stats.map((s, i) => {
+      if (verifications[i] !== undefined && verifications[i] !== null) return verifications[i]!;
+      if (verifications[i] === null) return null;
+      if (!isTrickCandidate(s.candidate) || !s.potsTarget) return null;
+      return potting(i, s.candidate.kind, s.candidate.potId);
+    }),
     ctxFor(SAFETY_BOARD, [1], forbiddenSimulator),
   );
 
@@ -160,12 +227,20 @@ describe("A. a direct is available and better, and still cannot be selected", ()
     expect(d.qualifyingTricks).toBe(0);
   });
 
-  it("A3: a 0.99 potting direct loses to a strong bank that does NOT pot (rung 3)", () => {
+  it("A3: a 0.99 potting direct loses to a safety when the only bank does NOT pot", () => {
+    // There is no rung for "a trick that misses". A trick that does not pot in
+    // simulation cannot be shown to be a trick at all, so the ladder drops to
+    // the safety rung rather than playing the miss and calling it a bank. The
+    // direct still loses, which is the property this fixture is here for.
     const direct = stat("direct", { strength: 0.99, potsTarget: true });
     const bank = stat("bank", { strength: 0.9, potsTarget: false });
-    const d = pick([direct, bank], [null, verification(1)]);
-    expect(d.shot?.kind).toBe("bank");
-    expect(d.rung).toBe("trick-attempt-no-verified-pot");
+    const d = selectTrickOnly(
+      [direct, bank],
+      [null, verification(1)],
+      ctxFor(SAFETY_BOARD, [1]),
+    );
+    expect(d.shot?.kind).toBe("safety-kick");
+    expect(d.rung === "non-direct-safety" || d.rung === "forced-legal-contact").toBe(true);
   });
 
   it("A4: directs only, all potting at 0.99 — a safety kick is played instead", () => {
@@ -385,44 +460,42 @@ describe("A. a direct is available and better, and still cannot be selected", ()
   // the docs' "A1-A10" pointed at nine tests and one gap. This is the gap
   // filled with the property the other nine assume rather than check: the
   // ladder is STRICTLY ORDERED. A1-A3 each pit one rung against a direct; none
-  // of them pits a rung against a weaker rung, which is what makes "five rungs,
+  // of them pits a rung against a weaker rung, which is what makes "four rungs,
   // strictly ordered" a claim about the code rather than about the comment
   // above it.
   it("A9: a lower rung never fires while a higher one has a member", () => {
-    // Every rung is populated at once, and deliberately inverted: the weakest
-    // shot sits on the highest rung. A ladder that ranked by quality instead of
-    // by rung would pick the 0.95 attempt every time.
+    // Both trick rungs are populated at once, and deliberately inverted: the
+    // weakest shot sits on the highest rung. A ladder that ranked by quality
+    // instead of by rung would pick the 0.95 miss every time.
     const qualified = stat("bank", { strength: TRICK_RELIABILITY_THRESHOLD + 0.01, potsTarget: true });
     const belowBar = stat("combo", { strength: TRICK_RELIABILITY_THRESHOLD - 0.3, potsTarget: true });
-    const attempt = stat("double-bank", { strength: 0.95, potsTarget: false });
-    // Index 2 is the attempt: verified, legal contact, no scratch, did not pot.
-    const verifications = [null, null, verification(2)];
+    const miss = stat("double-bank", { strength: 0.95, potsTarget: false });
 
-    const all = pick([qualified, belowBar, attempt], verifications);
+    const all = pick([qualified, belowBar, miss], [undefined, undefined, verification(2)]);
     expect(all.rung).toBe("trick-qualified");
     expect(all.shot!.candidateIndex).toBe(0);
 
     // Remove the top rung; the next one down must take over, not the strongest
-    // remaining shot overall (the attempt is 0.95 against the potter's 0.99 —
-    // and here they are the other way round on purpose in the next case).
+    // remaining shot overall.
     const noQualified = pick(
       [stat("combo", { strength: 0.2, potsTarget: true }), stat("double-bank", { strength: 0.95, potsTarget: false })],
-      [null, verification(1)],
+      [undefined, verification(1)],
     );
     expect(noQualified.rung).toBe("trick-below-threshold");
     expect(noQualified.shot!.candidateIndex, "a 0.20 POT outranks a 0.95 miss").toBe(0);
 
-    // Remove rung 2; rung 3 takes over.
-    const onlyAttempts = pick(
+    // Remove rung 2 — nothing pots — and the ladder falls to the safety rung.
+    // A trick that misses is not a rung, because a miss cannot be shown to be
+    // a trick. `pick` supplies a simulator that throws if reached, so these
+    // two run the real one.
+    const onlyMisses = selectTrickOnly(
       [stat("bank", { strength: 0.3, potsTarget: false }), stat("double-bank", { strength: 0.7, potsTarget: false })],
       [verification(0), verification(1)],
+      ctxFor(SAFETY_BOARD, [1]),
     );
-    expect(onlyAttempts.rung).toBe("trick-attempt-no-verified-pot");
-    expect(onlyAttempts.shot!.candidateIndex, "among attempts, strength decides").toBe(1);
+    expect(onlyMisses.rung === "non-direct-safety" || onlyMisses.rung === "forced-legal-contact").toBe(true);
+    expect(onlyMisses.shot!.kind).toBe("safety-kick");
 
-    // Remove rung 3 — a verified trick that scratched is NOT an attempt — and
-    // the ladder must fall through to the safety rung. `pick` supplies a
-    // simulator that throws if reached, so this one runs the real one.
     const scratchedOnly = selectTrickOnly(
       [stat("bank", { strength: 0.9, potsTarget: false })],
       [verification(0, { scratched: true })],
@@ -433,7 +506,7 @@ describe("A. a direct is available and better, and still cannot be selected", ()
 
     // And the rung the decision reports is the rung stamped on the shot — the
     // panel reads one and the felt reads the other.
-    for (const d of [all, noQualified, onlyAttempts, scratchedOnly]) {
+    for (const d of [all, noQualified, onlyMisses, scratchedOnly]) {
       expect(d.shot!.rung).toBe(d.rung);
     }
   }, 30_000);

@@ -557,7 +557,7 @@ export function useAiTurn(args: UseAiTurnArgs): AiTurnView {
       }
 
       // No legal target — the only thing `shot === null` can mean now that the
-      // trick-only ladder's rungs 4 and 5 cover every board where one exists.
+      // trick-only ladder's two safety rungs cover every board where one exists.
       // There is no aim to invent here and nothing to fall back to, so the turn
       // rests: the phase goes back to "aiming", `planning`/`busy` are cleared,
       // and the host says why. Leaving any of those set is what wedged the
