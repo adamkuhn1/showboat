@@ -1,7 +1,9 @@
 // Public surface of the in-house event-based pool physics engine.
 //
-// Architecture (Han-2005 lineage, mirroring pooltool's train-time sim so the
-// ONNX policy sees consistent physics at play time):
+// Architecture (Han-2005 lineage: solve analytically for the next event
+// rather than stepping frame by frame). This same engine both labels
+// training data (training/generate.ts) and plays the game, so the ranker's
+// training-time physics and play-time physics are never out of sync:
 //   - vec.ts         2D vector math
 //   - constants.ts   SI physical constants + table geometry
 //   - ball.ts        ball state + motion-phase classification
