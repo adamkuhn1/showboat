@@ -19,11 +19,14 @@ const GAMES = Number(process.env.GAMES ?? 20);
 const MAX_SHOTS = Number(process.env.MAX_SHOTS ?? 120);
 const SEED = Number(process.env.SEED ?? 42);
 
-const neural = makeRanker();
+// Force "neural" regardless of the held-out gate (src/ai/ranker.ts's default
+// may be classical if the gate failed) — self-play's whole purpose is
+// comparing the two even when neural didn't earn default status.
+const neural = makeRanker("neural");
 const classical = makeRanker("classical");
 if (neural.name !== "neural") {
   console.error(
-    "weights.json failed validation — self-play would be classical vs classical. Train first.",
+    "weights.json failed shape validation — self-play would be classical vs classical. Train first.",
   );
   process.exit(1);
 }

@@ -1,0 +1,79 @@
+{
+  "heldOutRows": 80,
+  "heldOutPositions": 2,
+  "neural": {
+    "bce": 0.33278524431991297,
+    "auc": 0.8782051282051282,
+    "meanSpearman": 0.1800264448695208
+  },
+  "classical": {
+    "bce": 0.38836824240774964,
+    "auc": 0.8974358974358975,
+    "meanSpearman": 0.174740504623426
+  },
+  "top1DisagreementRate": 1,
+  "meanLabelOfTop1": {
+    "neural": 0.08333333333333333,
+    "classical": 0.3333333333333333
+  },
+  "modelMeta": {
+    "trainedAt": "2026-08-12T02:57:45.468Z",
+    "datasetRows": 240,
+    "trainRows": 160,
+    "heldOutRows": 80,
+    "featureNames": [
+      "kind_direct",
+      "kind_bank",
+      "kind_kick",
+      "kind_combo",
+      "rails_planned",
+      "cue_path_len",
+      "object_path_len",
+      "cut_cos",
+      "pocket_approach_cos",
+      "cue_path_clearance",
+      "object_path_clearance",
+      "target_is_eight",
+      "power"
+    ],
+    "normalization": {
+      "mean": [
+        0.0625,
+        0.55,
+        0.375,
+        0.0125,
+        0.621875,
+        0.40441651902148956,
+        0.6723758356429677,
+        0.7276497604460073,
+        0.7961210259267977,
+        0.6655529888408535,
+        0.3531264856995096,
+        0,
+        0.8327109556976708
+      ],
+      "std": [
+        0.24206145913796356,
+        0.49749371855331026,
+        0.4841229182759271,
+        0.1111024302164449,
+        0.2891089489707985,
+        0.2373671322935308,
+        0.2962875154555582,
+        0.2389787234933469,
+        0.24593137215656244,
+        0.44584477122197486,
+        0.4546053798169841,
+        1,
+        0.14805731406170813
+      ]
+    },
+    "arch": "13-20-12-1",
+    "seed": 7,
+    "heldOut": {
+      "bce": 0.33278524431991297,
+      "bestEpoch": 28
+    }
+  },
+  "gate": "FAIL"
+}
