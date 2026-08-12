@@ -1,358 +1,272 @@
-import { type Vec2 } from "../physics/vec";
-import { type Ball } from "../physics/ball";
-import { type Table } from "../physics/table";
-import { BALL_RADIUS } from "../physics/constants";
+import { type Vec2, add, dot, mag, normalize, scale, sub } from "../physics/vec";
+import { BALL_DIAMETER, BALL_RADIUS } from "../physics/constants";
+import { type Cushion, type Pocket, type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
-import { CUE_ID } from "../game/rack";
+import { type GameState } from "../game/state";
+import { CUE_ID, EIGHT_ID, SOLIDS, STRIPES } from "../game/rack";
 
-// Enumerate aiming paths geometrically: direct pots, single- and double-cushion
-// banks (via pocket mirroring), simple combos through an intermediate ball, and
-// rail-plus-combination routes (combo where the intermediate ball's leg to the
-// pocket banks off one rail). Emits aim angle + suggested power — the UCB
-// search value function picks what's good.
+// Candidate shot generation. Produces concrete, parameterised cue actions from
+// pure geometry: ghost-ball aiming for direct shots, mirror-image reflection
+// for banks (object ball off one or two cushions) and kicks (cue ball off a
+// cushion first), and two-stage ghost-ball chaining for combos.
+//
+// Two properties matter here:
+//   - The `kind` on a candidate is only a *generation* label. The published
+//     shot kind shown to the player is always re-measured from the event log
+//     of the actual simulation (see classify.ts) — never from this intent.
+//   - Jump and massé shots cannot be generated because CueAction has no
+//     elevation axis at all (see physics/cue.ts). There is nothing here to
+//     "discourage": the action space cannot express them.
 
-export type CandidateKind = "direct" | "bank" | "double-bank" | "combo" | "rail-combo";
+export type CandidateKind = "direct" | "bank" | "kick" | "combo";
 
 export interface Candidate {
+  id: number;
   kind: CandidateKind;
-  target: number; // ball the CUE must legally strike first (first-contact legality)
-  // Ball that should actually end up in the pocket. Equal to `target` for
-  // direct/bank/double-bank (the struck ball travels straight to the
-  // pocket). Distinct from `target` for combo/rail-combo, where the cue
-  // strikes `target` (satisfying legal first contact) which then drives a
-  // *different* ball (`potId`) into the pocket — checking `pocketed.includes`
-  // against the wrong one of these two ids is a real, confirmed bug: for a
-  // combo shot simulated at realistic (non-degenerate) range, `target`
-  // generally does NOT itself reach the pocket, only `potId` does.
-  potId: number;
-  pocket: string; // pocket id aimed at
-  aimPoint: Vec2; // the "ghost ball" point the cue is aimed through
-  action: CueAction; // phi + a suggested power (spin left to search)
-  // For overlay: the polyline the intended object ball follows (world coords).
-  path: Vec2[];
-  banks: number; // number of cushions in the object-ball route (0 = direct)
+  targetBall: number; // the ball this shot intends to pot
+  comboBall?: number; // for combos: the ball the cue strikes first
+  pocketId: string;
+  railsPlanned: number; // cushions in the *planned* geometry (0 for direct)
+  action: CueAction;
+  // Planned geometry for the dashed "hypothetical" preview. These are the
+  // idealised mirror-line polylines, NOT a simulation result — the UI must
+  // draw them dashed and visually distinct from the verified route.
+  cuePath: Vec2[]; // cue position -> (cushion points) -> ghost point
+  objectPath: Vec2[]; // object ball -> (cushion points) -> pocket
 }
 
-const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, y: a.y - b.y });
-const add = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
-const scale = (a: Vec2, s: number): Vec2 => ({ x: a.x * s, y: a.y * s });
-const mag = (a: Vec2): number => Math.hypot(a.x, a.y);
-const norm = (a: Vec2): Vec2 => {
-  const m = mag(a);
-  return m < 1e-9 ? { x: 0, y: 0 } : { x: a.x / m, y: a.y / m };
+// --- geometry helpers --------------------------------------------------------
+
+// The line a ball's CENTRE reflects across is the cushion nose pushed one ball
+// radius into the table (the centre never reaches the nose itself).
+const centreLine = (c: Cushion): number =>
+  c.axis === "x" ? c.pos + c.normal.x * BALL_RADIUS : c.pos + c.normal.y * BALL_RADIUS;
+
+const reflectAcross = (p: Vec2, c: Cushion): Vec2 => {
+  const line = centreLine(c);
+  return c.axis === "x" ? { x: 2 * line - p.x, y: p.y } : { x: p.x, y: 2 * line - p.y };
 };
 
-// The ghost-ball contact point: to send the object ball toward `aimTarget`, the
-// cue ball must strike it at the point one ball-diameter back along the line
-// from aimTarget through the object ball.
-const ghostBall = (obj: Vec2, aimTarget: Vec2): Vec2 => {
-  const dir = norm(sub(aimTarget, obj));
-  return sub(obj, scale(dir, 2 * BALL_RADIUS));
-};
-
-// Power heuristic from distance (longer paths need more speed). Kept modest and
-// only a *suggestion* — search/spin refine it, nothing here is a tuned trick.
-const powerFor = (dist: number): number =>
-  Math.max(0.35, Math.min(0.95, 0.35 + dist * 0.35));
-
-const aimAction = (cue: Vec2, ghost: Vec2, power: number): CueAction => {
-  const d = sub(ghost, cue);
-  return { phi: Math.atan2(d.y, d.x), power, sideSpin: 0, topSpin: 0 };
-};
-
-// Mirror a point across a cushion line (for bank-shot geometry).
-// Exported (with `railCrossing` and `isPathClear` below) so `ai/policy/safety.ts`
-// builds its rail-first kicks out of these exact primitives instead of a second
-// copy of the same geometry.
-export const mirrorAcross = (p: Vec2, table: Table, side: string): Vec2 => {
-  const hx = table.length / 2;
-  const hy = table.width / 2;
-  switch (side) {
-    case "left":
-      return { x: -2 * hx - p.x, y: p.y };
-    case "right":
-      return { x: 2 * hx - p.x, y: p.y };
-    case "bottom":
-      return { x: p.x, y: -2 * hy - p.y };
-    case "top":
-      return { x: p.x, y: 2 * hy - p.y };
-    default:
-      return p;
-  }
-};
-
-export const SIDES = ["left", "right", "top", "bottom"] as const;
-
-// Check the line segment from `from` to `to` is clear of blocking balls.
-// A ball blocks if its center is within 2*BALL_RADIUS of the segment.
-// `skipIds` contains balls that are intentionally on the path (cue, target).
-export const isPathClear = (
-  from: Vec2,
-  to: Vec2,
-  live: Ball[],
-  skipIds: Set<number>,
-): boolean => {
-  const d = sub(to, from);
-  const len = mag(d);
-  if (len < 1e-9) return true;
-  const dn = { x: d.x / len, y: d.y / len };
-  const minDist = 2 * BALL_RADIUS + 0.004; // 4mm margin for physics tolerance
-  for (const b of live) {
-    if (skipIds.has(b.id)) continue;
-    const v = sub(b.pos, from);
-    const t = v.x * dn.x + v.y * dn.y;
-    if (t < 0 || t > len) continue;
-    const perp2 = (v.x - t * dn.x) ** 2 + (v.y - t * dn.y) ** 2;
-    if (perp2 < minDist * minDist) return false;
-  }
-  return true;
-};
-
-// Enumerate candidates for one shooter given the legal target ids.
-export const generateCandidates = (
-  balls: Ball[],
-  table: Table,
-  targets: number[],
-): Candidate[] => {
-  const cue = balls.find((b) => b.id === CUE_ID);
-  if (!cue || cue.pocketed) return [];
-  const cuePos = cue.pos;
-  const live = balls.filter((b) => !b.pocketed);
-  const out: Candidate[] = [];
-
-  // Max total path length for a 2-cushion route: beyond this the shot is
-  // almost impossible to execute at the required precision.
-  const MAX_DOUBLE_BANK_PATH = table.length * 3.5;
-
-  for (const tid of targets) {
-    const obj = live.find((b) => b.id === tid);
-    if (!obj) continue;
-
-    const skipCueAndTarget = new Set([CUE_ID, tid]);
-
-    for (const pk of table.pockets) {
-      // --- Direct pot -------------------------------------------------------
-      const ghost = ghostBall(obj.pos, pk.center);
-      const cutOk = isReachable(cuePos, ghost, obj.pos, pk.center);
-      if (cutOk && isPathClear(cuePos, ghost, live, skipCueAndTarget)) {
-        const dist = mag(sub(pk.center, obj.pos)) + mag(sub(ghost, cuePos));
-        out.push({
-          kind: "direct",
-          target: tid,
-          potId: tid,
-          pocket: pk.id,
-          aimPoint: ghost,
-          action: aimAction(cuePos, ghost, powerFor(dist)),
-          path: [obj.pos, pk.center],
-          banks: 0,
-        });
-      }
-
-      // --- Single-cushion bank ----------------------------------------------
-      // Aim the object ball at the mirror image of the pocket across each rail:
-      // the straight line to the mirror crosses the rail at the true bank point.
-      for (const side of SIDES) {
-        const mirror = mirrorAcross(pk.center, table, side);
-        const bankPoint = railCrossing(obj.pos, mirror, table, side);
-        if (!bankPoint) continue;
-        const gb = ghostBall(obj.pos, bankPoint);
-        if (!isReachable(cuePos, gb, obj.pos, bankPoint)) continue;
-        if (!isPathClear(cuePos, gb, live, skipCueAndTarget)) continue;
-        const dist =
-          mag(sub(bankPoint, obj.pos)) +
-          mag(sub(pk.center, bankPoint)) +
-          mag(sub(gb, cuePos));
-        out.push({
-          kind: "bank",
-          target: tid,
-          potId: tid,
-          pocket: pk.id,
-          aimPoint: gb,
-          action: aimAction(cuePos, gb, powerFor(dist)),
-          path: [obj.pos, bankPoint, pk.center],
-          banks: 1,
-        });
-      }
-
-      // --- Double-cushion bank (2 rails) ------------------------------------
-      // Mirror pocket across rail1 → m1, then m1 across rail2 → m2. Object
-      // ball aims toward m2, hits side2 at B2, deflects toward m1, hits side1
-      // at B1, arrives at pocket. The reflection principle ensures the straight
-      // line obj→m2 unfolds to the correct two-cushion path.
-      for (const side1 of SIDES) {
-        for (const side2 of SIDES) {
-          if (side1 === side2) continue;
-          const m1 = mirrorAcross(pk.center, table, side1);
-          const m2 = mirrorAcross(m1, table, side2);
-          const B2 = railCrossing(obj.pos, m2, table, side2);
-          if (!B2) continue;
-          const B1 = railCrossing(B2, m1, table, side1);
-          if (!B1) continue;
-          const gb = ghostBall(obj.pos, B2);
-          if (!isReachable(cuePos, gb, obj.pos, B2)) continue;
-          if (!isPathClear(cuePos, gb, live, skipCueAndTarget)) continue;
-          const dist =
-            mag(sub(gb, cuePos)) +
-            mag(sub(B2, obj.pos)) +
-            mag(sub(B1, B2)) +
-            mag(sub(pk.center, B1));
-          if (dist > MAX_DOUBLE_BANK_PATH) continue;
-          out.push({
-            kind: "double-bank",
-            target: tid,
-            potId: tid,
-            pocket: pk.id,
-            aimPoint: gb,
-            action: aimAction(cuePos, gb, powerFor(dist)),
-            path: [obj.pos, B2, B1, pk.center],
-            banks: 2,
-          });
-        }
-      }
-    }
-
-    // --- Combo (through one intermediate ball) ----------------------------
-    // Pruned to candidates where the intermediate is within COMBO_RADIUS —
-    // long-range combos are rarely makeable and blow the search budget.
-    const COMBO_RADIUS = table.length * 0.45;
-    for (const mid of live) {
-      if (mid.id === tid || mid.id === CUE_ID) continue;
-      if (mag(sub(mid.pos, obj.pos)) > COMBO_RADIUS) continue;
-      for (const pk of table.pockets) {
-        const midGhost = ghostBall(mid.pos, pk.center);
-        const objGhost = ghostBall(obj.pos, midGhost);
-        if (!isReachable(cuePos, objGhost, obj.pos, midGhost)) continue;
-        if (!isReachable(obj.pos, midGhost, mid.pos, pk.center)) continue;
-        if (!isPathClear(cuePos, objGhost, live, skipCueAndTarget)) continue;
-        const dist =
-          mag(sub(objGhost, cuePos)) +
-          mag(sub(mid.pos, obj.pos)) +
-          mag(sub(pk.center, mid.pos));
-        out.push({
-          kind: "combo",
-          target: tid,
-          potId: mid.id,
-          pocket: pk.id,
-          aimPoint: objGhost,
-          action: aimAction(cuePos, objGhost, powerFor(dist)),
-          path: [obj.pos, mid.pos, pk.center],
-          banks: 0,
-        });
-      }
-
-      // --- Rail-plus-combination (combo, intermediate ball banks one rail) --
-      // Same combo geometry, but the intermediate ball's leg to the pocket
-      // reflects off one cushion instead of running straight — the pocket is
-      // mirrored across a rail (as in the single-cushion bank above) and the
-      // intermediate ball is aimed at the bank point instead of the pocket
-      // directly. This is a genuinely distinct, harder route (two balls'
-      // worth of aiming precision plus a cushion), not a relabeled combo.
-      for (const pk of table.pockets) {
-        for (const side of SIDES) {
-          const mirror = mirrorAcross(pk.center, table, side);
-          const bankPoint = railCrossing(mid.pos, mirror, table, side);
-          if (!bankPoint) continue;
-          const midGhost = ghostBall(mid.pos, bankPoint);
-          const objGhost = ghostBall(obj.pos, midGhost);
-          if (!isReachable(cuePos, objGhost, obj.pos, midGhost)) continue;
-          if (!isReachable(obj.pos, midGhost, mid.pos, bankPoint)) continue;
-          if (!isPathClear(cuePos, objGhost, live, skipCueAndTarget)) continue;
-          const dist =
-            mag(sub(objGhost, cuePos)) +
-            mag(sub(mid.pos, obj.pos)) +
-            mag(sub(bankPoint, mid.pos)) +
-            mag(sub(pk.center, bankPoint));
-          out.push({
-            kind: "rail-combo",
-            target: tid,
-            potId: mid.id,
-            pocket: pk.id,
-            aimPoint: objGhost,
-            action: aimAction(cuePos, objGhost, powerFor(dist)),
-            path: [obj.pos, mid.pos, bankPoint, pk.center],
-            banks: 1,
-          });
-        }
-      }
-    }
-  }
-
-  // Cap per candidate kind so seeding cost (1 physics sim + rolloutsPerEval
-  // rollouts per candidate) stays within ~600 WASM calls on an open table.
-  // Shorter paths are more makeable, so sort by total path distance and keep
-  // the top N of each kind. The search still considers all shot types; it just
-  // prunes the least-promising geometric variants before UCB search begins.
-  const pathLen = (c: Candidate): number => {
-    let d = 0;
-    for (let i = 1; i < c.path.length; i++) d += mag(sub(c.path[i], c.path[i - 1]));
-    return d;
-  };
-  const capByKind = (kind: CandidateKind, n: number): Candidate[] =>
-    out
-      .filter((c) => c.kind === kind)
-      .sort((a, b) => pathLen(a) - pathLen(b))
-      .slice(0, n);
-
-  return [
-    ...capByKind("direct", 12),
-    ...capByKind("bank", 24),
-    ...capByKind("double-bank", 4),
-    ...capByKind("combo", 4),
-    ...capByKind("rail-combo", 4),
-  ];
-};
-
-// Is the ghost-ball contact roughly in front of the object ball relative to the
-// pocket (i.e. not a physically impossible "cut from behind the pocket line"),
-// and is the cue on the correct side to make that contact? A coarse geometric
-// feasibility filter — the physics sim is the final arbiter.
-const isReachable = (
-  cue: Vec2,
-  ghost: Vec2,
-  obj: Vec2,
-  aimTarget: Vec2,
-): boolean => {
-  // The cue travels from its position *into* the ghost point, then the object
-  // sets off toward the target. For a makeable cut those two directions must be
-  // roughly aligned (dot > 0); a dot <= 0 means the cue would have to strike the
-  // far side of the object (cut beyond 90 degrees), which is impossible.
-  const toTarget = norm(sub(aimTarget, obj));
-  const cueToGhost = norm(sub(ghost, cue));
-  return dotv(toTarget, cueToGhost) > 0.05;
-};
-
-const dotv = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
-
-// Where the segment obj->mirror crosses the given rail line (the bank point on
-// the actual rail). Returns null if it doesn't cross within the rail extent.
-export const railCrossing = (
-  obj: Vec2,
-  mirror: Vec2,
-  table: Table,
-  side: string,
-): Vec2 | null => {
+// Intersection of segment a->b with a cushion's centre line, if it crosses
+// inside the playing area. Returns null if the segment doesn't cross.
+const crossingPoint = (a: Vec2, b: Vec2, c: Cushion, table: Table): Vec2 | null => {
+  const line = centreLine(c);
+  const pa = c.axis === "x" ? a.x : a.y;
+  const pb = c.axis === "x" ? b.x : b.y;
+  const denom = pb - pa;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = (line - pa) / denom;
+  if (t <= 1e-6 || t >= 1 - 1e-6) return null;
+  const pt = add(a, scale(sub(b, a), t));
+  // The crossing must lie on the physical rail, inside the table bounds.
   const hx = table.length / 2 - BALL_RADIUS;
   const hy = table.width / 2 - BALL_RADIUS;
-  const d = sub(mirror, obj);
-  let tCross: number;
-  let cx: number;
-  let cy: number;
-  if (side === "left" || side === "right") {
-    const railX = side === "left" ? -hx : hx;
-    if (Math.abs(d.x) < 1e-9) return null;
-    tCross = (railX - obj.x) / d.x;
-    if (tCross <= 0 || tCross >= 1) return null;
-    cx = railX;
-    cy = obj.y + d.y * tCross;
-    if (cy < -hy || cy > hy) return null;
-  } else {
-    const railY = side === "bottom" ? -hy : hy;
-    if (Math.abs(d.y) < 1e-9) return null;
-    tCross = (railY - obj.y) / d.y;
-    if (tCross <= 0 || tCross >= 1) return null;
-    cy = railY;
-    cx = obj.x + d.x * tCross;
-    if (cx < -hx || cx > hx) return null;
+  if (c.axis === "x") {
+    if (Math.abs(pt.y) > hy) return null;
+  } else if (Math.abs(pt.x) > hx) {
+    return null;
   }
-  return add({ x: 0, y: 0 }, { x: cx, y: cy });
+  return pt;
+};
+
+// Ghost-ball point: where the cue (or striking ball) centre must be at impact
+// to send `target` along `dir`.
+const ghostPoint = (target: Vec2, dir: Vec2): Vec2 =>
+  sub(target, scale(dir, BALL_DIAMETER));
+
+// A shot is only geometrically possible if the striker approaches the ghost
+// point from "behind" the intended direction (cut angle < ~80 degrees).
+const cutFeasible = (striker: Vec2, ghost: Vec2, dir: Vec2): boolean => {
+  const approach = normalize(sub(ghost, striker));
+  return dot(approach, dir) > 0.17; // cos(80deg)
+};
+
+// Power heuristic from total planned travel distance and planned cushions.
+// Each cushion hit costs energy (restitution 0.85 + rail friction), so banks
+// and kicks are struck harder. This is only the candidate's opening guess —
+// verification simulates the real outcome.
+const powerFor = (pathLen: number, rails: number, combo: boolean): number => {
+  const p = 0.3 + 0.17 * pathLen + 0.09 * rails + (combo ? 0.1 : 0);
+  return Math.min(1, Math.max(0.2, p));
+};
+
+const pathLength = (pts: Vec2[]): number => {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += mag(sub(pts[i], pts[i - 1]));
+  return L;
+};
+
+// --- target selection --------------------------------------------------------
+
+// Which balls may the shooter legally aim to pot? Own group while any remain,
+// then the 8. On an open table, any object ball except the 8.
+export const legalTargets = (g: GameState): number[] => {
+  const group = g.groups[g.turn];
+  const onTable = (id: number): boolean =>
+    g.balls.some((b) => b.id === id && !b.pocketed);
+  if (group === null) {
+    return [...SOLIDS, ...STRIPES].filter(onTable);
+  }
+  const own = (group === "solids" ? SOLIDS : STRIPES).filter(onTable);
+  return own.length > 0 ? own : [EIGHT_ID];
+};
+
+// --- generation --------------------------------------------------------------
+
+export const generateCandidates = (g: GameState, table: Table): Candidate[] => {
+  const cue = g.balls.find((b) => b.id === CUE_ID);
+  if (!cue || cue.pocketed) return [];
+  const targets = legalTargets(g);
+  const out: Candidate[] = [];
+  let nextId = 0;
+
+  const push = (
+    kind: CandidateKind,
+    targetBall: number,
+    pocket: Pocket,
+    railsPlanned: number,
+    cuePath: Vec2[],
+    objectPath: Vec2[],
+    comboBall?: number,
+  ): void => {
+    const phi = Math.atan2(
+      cuePath[1].y - cuePath[0].y,
+      cuePath[1].x - cuePath[0].x,
+    );
+    const len = pathLength(cuePath) + pathLength(objectPath);
+    out.push({
+      id: nextId++,
+      kind,
+      targetBall,
+      comboBall,
+      pocketId: pocket.id,
+      railsPlanned,
+      action: {
+        phi,
+        power: powerFor(len, railsPlanned, comboBall !== undefined),
+        sideSpin: 0,
+        topSpin: 0,
+      },
+      cuePath,
+      objectPath,
+    });
+  };
+
+  for (const tid of targets) {
+    const target = g.balls.find((b) => b.id === tid);
+    if (!target || target.pocketed) continue;
+    const T = target.pos;
+
+    for (const pocket of table.pockets) {
+      const P = pocket.center;
+
+      // Direct: cue -> ghost, object -> pocket.
+      {
+        const dir = normalize(sub(P, T));
+        const ghost = ghostPoint(T, dir);
+        if (cutFeasible(cue.pos, ghost, dir)) {
+          push("direct", tid, pocket, 0, [cue.pos, ghost], [T, P]);
+        }
+      }
+
+      // Bank (1 rail): object ball reflects off one cushion into the pocket.
+      for (const c of table.cushions) {
+        const P1 = reflectAcross(P, c);
+        const dir = normalize(sub(P1, T));
+        const ghost = ghostPoint(T, dir);
+        const x1 = crossingPoint(T, P1, c, table);
+        if (!x1) continue;
+        if (!cutFeasible(cue.pos, ghost, dir)) continue;
+        push("bank", tid, pocket, 1, [cue.pos, ghost], [T, x1, P]);
+      }
+
+      // Bank (2 rails, multi-wall): reflect the pocket across cushion b, then
+      // cushion a; the object ball hits a first, then b, then the pocket.
+      for (const ca of table.cushions) {
+        for (const cb of table.cushions) {
+          if (ca.side === cb.side) continue;
+          const P2 = reflectAcross(reflectAcross(P, cb), ca);
+          const dir = normalize(sub(P2, T));
+          const ghost = ghostPoint(T, dir);
+          const xa = crossingPoint(T, P2, ca, table);
+          if (!xa) continue;
+          const xb = crossingPoint(xa, reflectAcross(P, cb), cb, table);
+          if (!xb) continue;
+          if (!cutFeasible(cue.pos, ghost, dir)) continue;
+          push("bank", tid, pocket, 2, [cue.pos, ghost], [T, xa, xb, P]);
+        }
+      }
+
+      // Kick (1 rail): the cue ball banks off a cushion before striking the
+      // object ball, which then runs straight to the pocket.
+      {
+        const dir = normalize(sub(P, T));
+        const ghost = ghostPoint(T, dir);
+        for (const c of table.cushions) {
+          const G1 = reflectAcross(ghost, c);
+          const xc = crossingPoint(cue.pos, G1, c, table);
+          if (!xc) continue;
+          // The post-rail approach into the ghost must still make the cut.
+          const approach = normalize(sub(ghost, xc));
+          if (dot(approach, dir) <= 0.17) continue;
+          push("kick", tid, pocket, 1, [cue.pos, xc, ghost], [T, P]);
+        }
+      }
+    }
+
+    // Combos: cue strikes an own-group ball A, which drives target T into a
+    // pocket. First contact (A) must be legal, so A comes from the same legal
+    // target set.
+    for (const aid of targets) {
+      if (aid === tid) continue;
+      const aBall = g.balls.find((b) => b.id === aid);
+      if (!aBall || aBall.pocketed) continue;
+      const A = aBall.pos;
+      for (const pocket of table.pockets) {
+        const P = pocket.center;
+        const dirTP = normalize(sub(P, T));
+        const ghostT = ghostPoint(T, dirTP);
+        const dirAT = normalize(sub(ghostT, A));
+        const ghostA = ghostPoint(A, dirAT);
+        // Both stages need a feasible cut.
+        if (dot(normalize(sub(ghostT, A)), dirTP) <= 0.25) continue;
+        if (!cutFeasible(cue.pos, ghostA, dirAT)) continue;
+        push(
+          "combo",
+          tid,
+          pocket,
+          0,
+          [cue.pos, ghostA],
+          [A, ghostT, T, P],
+          aid,
+        );
+      }
+    }
+  }
+
+  return out;
+};
+
+// A soft "safety" action used when no candidate survives verification: roll
+// gently into the nearest legal ball, aiming slightly through it so both balls
+// are likely to reach a rail (avoiding the no-rail foul).
+export const safetyAction = (g: GameState, _table: Table): CueAction | null => {
+  const cue = g.balls.find((b) => b.id === CUE_ID);
+  if (!cue || cue.pocketed) return null;
+  const targets = legalTargets(g);
+  let best: { d: number; phi: number } | null = null;
+  for (const tid of targets) {
+    const t = g.balls.find((b) => b.id === tid);
+    if (!t || t.pocketed) continue;
+    const d = mag(sub(t.pos, cue.pos));
+    const phi = Math.atan2(t.pos.y - cue.pos.y, t.pos.x - cue.pos.x);
+    if (!best || d < best.d) best = { d, phi };
+  }
+  if (!best) return null;
+  return {
+    phi: best.phi,
+    power: Math.min(0.55, 0.3 + 0.15 * best.d),
+    sideSpin: 0,
+    topSpin: 0,
+  };
 };
