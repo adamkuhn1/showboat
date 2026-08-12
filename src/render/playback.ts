@@ -185,11 +185,19 @@ export const playShot = (
   }
 
   const warp = buildTimeWarp(sim.duration, sim.events, baseRate);
-  const start = performance.now();
+  // Wall time is ACCUMULATED tick to tick with each step clamped to 100 ms,
+  // rather than read as (now - start). Two reasons: rAF timestamps come from
+  // the compositor clock, whose epoch/step can diverge from performance.now()
+  // (observed under headless Chromium), and a hidden tab stops producing
+  // frames entirely. With accumulation, any timestamp gap simply pauses the
+  // animation; it can never fast-forward or skip the shot.
+  let wallT = 0;
+  let lastNow: number | null = null;
 
   const tick = (now: number): void => {
     if (finished) return;
-    const wallT = (now - start) / 1000;
+    if (lastNow !== null) wallT += Math.min((now - lastNow) / 1000, 0.1);
+    lastNow = now;
     if (wallT >= warp.totalWall) {
       finish();
       return;
