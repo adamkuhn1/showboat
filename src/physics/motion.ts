@@ -8,13 +8,6 @@ import {
 } from "./ball";
 import { BALL_RADIUS, STOP_SPEED, STOP_SPIN } from "./constants";
 
-// Angular deceleration of the ball's roll during sliding, rad/s².
-// Derived from I = (2/5)mR², torque = mu_s*m*g*R → α = (5/2)*mu_s*g/R.
-// This is 1/BALL_RADIUS × (5/2) × linear decel, so roll converges to vel/R
-// on the correct physical timescale (not 87× too slowly).
-const rollingAngularDecel = (linearDecel: number): number =>
-  (5 / 2) * linearDecel / BALL_RADIUS;
-
 // Advance a single ball by dt along its current analytic trajectory. This is
 // closed-form integration, not a fixed timestep of the whole world: the caller
 // (the evolution engine) has already guaranteed no collision happens within dt,
@@ -42,12 +35,15 @@ export const advanceBall = (b: Ball, dt: number): void => {
     const a = scale(slipDir, -decel);
     b.pos = add(add(b.pos, scale(b.vel, dt)), scale(a, 0.5 * dt * dt));
     b.vel = add(b.vel, scale(a, dt));
-    // The friction torque increases the roll toward matching the (new) velocity.
-    // In the slide phase the roll grows so that slip shrinks; we model roll as
-    // trending to vel/R.
+    // The friction torque spins the ball toward matching the (new) velocity.
+    // Torque rate: the friction force F = mu*m*g acts at the contact point, so
+    // angular acceleration = F*R/I = (5/2)*mu*g/R (I = 2/5 m R^2 for a solid
+    // sphere). The ported reference used decel*dt here — missing the (5/2)/R
+    // factor, ~90x too slow — which left balls "driving" into cushions on
+    // residual roll for tens of seconds (a live-reproduced non-termination bug
+    // on hard breaks). This is the standard sliding-friction spin-up rate.
     const targetRoll = scale(b.vel, 1 / BALL_RADIUS);
-    // Roll converges to vel/R at the correct angular rate (5/2)*mu_s*g/R.
-    b.roll = approach(b.roll, targetRoll, rollingAngularDecel(decel) * dt);
+    b.roll = approach(b.roll, targetRoll, (2.5 * decel / BALL_RADIUS) * dt);
   } else {
     // Rolling: friction acts opposite the velocity, decelerating linearly.
     if (speed > 1e-12) {
@@ -97,8 +93,7 @@ export const timeToPhaseChange = (b: Ball): number => {
   if (b.motion === Motion.Sliding) {
     const decel = linearDeceleration(Motion.Sliding);
     const slip = mag(relativeSurfaceVelocity(b));
-    // Slip closes at (7/2)*decel: vel changes at decel, roll*R at (5/2)*decel.
-    return decel > 0 ? 2 * slip / (7 * decel) : Infinity;
+    return decel > 0 ? slip / decel : Infinity;
   }
   if (b.motion === Motion.Rolling) {
     const decel = linearDeceleration(Motion.Rolling);

@@ -1,9 +1,0 @@
-/target
-# Cargo.lock IS tracked. This crate compiles to a COMMITTED .wasm that the
-# browser loads, so a dependency bump changes the shipped artifact -- which is
-# exactly the case Rust's own guidance says to commit the lock for.
-#
-# It was ignored, and scripts/wasm-provenance.mjs hashes it when present. That
-# made the provenance check depend on whether an ignored local file happened to
-# exist: the same commit passed on a machine without it and failed on one with
-# it. Non-determinism across machines is worse than either answer.

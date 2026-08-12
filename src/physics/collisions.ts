@@ -123,6 +123,15 @@ export const resolveBallCushion = (b: Ball, cushion: Cushion): void => {
   // english). Reaction is opposite to the tangential friction impulse.
   b.wz -= (fric / BALL_RADIUS) * heightCoupling;
 
+  // The cushion also absorbs the roll component along its normal: a ball
+  // arriving with follow (rolling into the rail) cannot keep that forward
+  // roll through the rebound — the raised nose grips the ball's surface and
+  // partially reverses it (the familiar "check" off a cushion). Without this,
+  // residual roll re-accelerates the ball into the rail after every rebound
+  // and the ball pins itself against the cushion indefinitely.
+  const rollN = dot(b.roll, n);
+  b.roll = add(b.roll, scale(n, -(1 + E_BALL_CUSHION) * rollN));
+
   // Nudge the ball just clear of the rail to avoid immediate re-collision from
   // floating-point contact.
   b.pos = add(b.pos, scale(n, 1e-6));
