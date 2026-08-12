@@ -1,0 +1,4 @@
+{
+  "placeholder": "No trained model yet — training/train.ts overwrites this file. validateModel() rejects it, so the app runs on the classical ranker until real weights exist.",
+  "layers": []
+}
