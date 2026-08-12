@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTable } from "../src/physics/table";
@@ -20,14 +20,20 @@ import { makeRng, rolloutSuccess } from "../src/ai/rollout";
 // the file itself is not committed (see training/data/.gitignore).
 //
 // Env knobs: POSITIONS (default 260), ROLLOUTS (6), MAX_CANDS (40), SEED.
+// PART/POS_BASE allow several worker processes to build disjoint shards
+// (part-N.jsonl with non-overlapping position ids) that are concatenated into
+// dataset.jsonl afterwards — position-disjoint by construction, so the
+// held-out-by-position split stays sound.
 
 const POSITIONS = Number(process.env.POSITIONS ?? 260);
 const ROLLOUTS = Number(process.env.ROLLOUTS ?? 6);
 const MAX_CANDS = Number(process.env.MAX_CANDS ?? 40);
 const SEED = Number(process.env.SEED ?? 20260811);
+const PART = process.env.PART;
+const POS_BASE = Number(process.env.POS_BASE ?? 0);
 
 const here = dirname(fileURLToPath(import.meta.url));
-const OUT = join(here, "data", "dataset.jsonl");
+const OUT = join(here, "data", PART ? `part-${PART}.jsonl` : "dataset.jsonl");
 
 const table = makeTable();
 const rng = makeRng(SEED);
@@ -83,7 +89,18 @@ const randomState = (): GameState => {
   };
 };
 
-const rows: string[] = [];
+// The file is written incrementally (header first, rows appended per
+// position) so an interrupted run still leaves a usable prefix of the
+// dataset.
+mkdirSync(dirname(OUT), { recursive: true });
+writeFileSync(
+  OUT,
+  `# showboat ranker dataset · seed=${SEED} positions=${POSITIONS} rollouts=${ROLLOUTS} maxCands=${MAX_CANDS}\n` +
+    `# features: ${FEATURE_NAMES.join(",")}\n`,
+);
+
+let rowCount = 0;
+let labelSum = 0;
 let sims = 0;
 const t0 = Date.now();
 
@@ -97,6 +114,7 @@ for (let pos = 0; pos < POSITIONS; pos++) {
   }
   cands = cands.slice(0, MAX_CANDS);
 
+  const lines: string[] = [];
   for (const cand of cands) {
     const feats = featuresOf(state, table, cand);
     const rr = rolloutSuccess(
@@ -108,7 +126,8 @@ for (let pos = 0; pos < POSITIONS; pos++) {
       rng,
     );
     sims += ROLLOUTS;
-    rows.push(
+    labelSum += rr.successes / rr.n;
+    lines.push(
       JSON.stringify({
         pos,
         kind: cand.kind,
@@ -119,30 +138,21 @@ for (let pos = 0; pos < POSITIONS; pos++) {
       }),
     );
   }
+  appendFileSync(OUT, lines.join("\n") + "\n");
+  rowCount += lines.length;
 
   if ((pos + 1) % 10 === 0) {
     const dt = (Date.now() - t0) / 1000;
     const eta = (dt / (pos + 1)) * (POSITIONS - pos - 1);
     console.log(
-      `position ${pos + 1}/${POSITIONS} · rows ${rows.length} · sims ${sims} · ` +
+      `position ${pos + 1}/${POSITIONS} · rows ${rowCount} · sims ${sims} · ` +
         `${dt.toFixed(0)}s elapsed · ~${eta.toFixed(0)}s left`,
     );
   }
 }
 
-mkdirSync(dirname(OUT), { recursive: true });
-writeFileSync(
-  OUT,
-  `# showboat ranker dataset · seed=${SEED} positions=${POSITIONS} rollouts=${ROLLOUTS} maxCands=${MAX_CANDS}\n` +
-    `# features: ${FEATURE_NAMES.join(",")}\n` +
-    rows.join("\n") +
-    "\n",
-);
-const posCount = new Set(rows.map((r) => JSON.parse(r).pos)).size;
-const mean =
-  rows.reduce((s, r) => s + (JSON.parse(r).label as number), 0) / rows.length;
 console.log(
-  `wrote ${rows.length} rows over ${posCount} positions to ${OUT}\n` +
-    `total physics rollouts: ${sims} · mean label ${mean.toFixed(3)} · ` +
+  `wrote ${rowCount} rows over ${POSITIONS} positions to ${OUT}\n` +
+    `total physics rollouts: ${sims} · mean label ${(labelSum / rowCount).toFixed(3)} · ` +
     `${((Date.now() - t0) / 1000).toFixed(0)}s`,
 );
