@@ -60,6 +60,10 @@ export interface AiMove {
 
 export interface AiHooks {
   onPhase?: (phase: string) => void;
+  // Fired after a ball-in-hand placement so the UI can repaint the moved cue.
+  onPlaced?: (placed: GameState) => void;
+  // Fired once with the real generation counts (before any verification).
+  onGenerated?: (count: number, byKind: Record<CandidateKind, number>) => void;
   onCandidate?: (ec: EvaluatedCandidate, index: number, total: number) => void;
   // Pause between candidate verifications so the thinking display is legible.
   // Self-play evaluation passes 0.
@@ -137,6 +141,7 @@ export const aiTakeTurn = async (
     if (spot) {
       state = placeCueBall(state, spot.x, spot.y);
       cuePlacedAt = spot;
+      hooks.onPlaced?.(state);
     }
     if (cancelled()) return null;
   }
@@ -151,6 +156,7 @@ export const aiTakeTurn = async (
     combo: 0,
   };
   for (const c of cands) byKind[c.kind]++;
+  hooks.onGenerated?.(cands.length, byKind);
 
   const evaluated: EvaluatedCandidate[] = cands.map((cand) => {
     const features = featuresOf(state, table, cand);

@@ -40,14 +40,21 @@ const segmentFor = (e: ShotEvent): string | null => {
   }
 };
 
-// Build the arrow-joined caption from the ordered event trace.
-export const describeShot = (sim: SimResult): string => {
+// Build the arrow-joined caption from the ordered event trace. Long shots
+// (breaks especially) produce dozens of events; the caption keeps the first
+// `maxSegments` and says how much it elided rather than flooding the status
+// line.
+export const describeShot = (sim: SimResult, maxSegments = 9): string => {
   const segments: string[] = ["cue"];
   for (const e of sim.events) {
     const seg = segmentFor(e);
     if (seg && segments[segments.length - 1] !== seg) segments.push(seg);
   }
   if (segments.length === 1) return "cue rolled without contact";
+  if (segments.length > maxSegments) {
+    const elided = segments.length - maxSegments;
+    return `${segments.slice(0, maxSegments).join(" → ")} → … (${elided} more)`;
+  }
   return segments.join(" → ");
 };
 

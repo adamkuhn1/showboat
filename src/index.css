@@ -18,7 +18,7 @@ body {
   align-items: center;
   gap: 0.8rem;
   padding: 1.5rem;
-  max-width: 960px;
+  max-width: 1220px;
   margin: 0 auto;
 }
 .topbar { text-align: center; }
@@ -36,20 +36,68 @@ h1 {
   letter-spacing: -0.02em;
   color: var(--accent);
 }
-.board { line-height: 0; }
+.layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.board { line-height: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .table {
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  cursor: crosshair;
+  cursor: default;
   max-width: 100%;
 }
+.table[data-human] { cursor: crosshair; }
+.thinking {
+  width: 240px;
+  min-height: 120px;
+  background: #131317;
+  border: 1px solid #26262b;
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #b9b9bf;
+}
+.thinking p { margin: 0.35rem 0 0; }
+.thinking .reason { color: #e6e6ea; }
+.thinking-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+}
+.thinking .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3a40;
+}
+.thinking .dot[data-active] {
+  background: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% { opacity: 0.35; }
+}
+.thinking .counts { color: #8f8f96; }
+.thinking .current { color: #d9d9de; min-height: 2.6em; }
 .status {
   display: flex;
   gap: 1rem;
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  max-width: 900px;
 }
 .turn {
   font-weight: 650;
