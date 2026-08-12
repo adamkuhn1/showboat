@@ -1,6 +1,6 @@
 import { type Ball, makeBall } from "../physics/ball";
 import { FOOT_SPOT, HEAD_SPOT } from "../physics/table";
-import { BALL_DIAMETER, ENGINE_MIN_GAP } from "../physics/constants";
+import { BALL_DIAMETER } from "../physics/constants";
 
 // Ball id conventions used across the game and the ML action space:
 //   0        cue ball
@@ -36,16 +36,9 @@ export const rackEightBall = (): Ball[] => {
   ];
 
   // Geometry: apex at foot spot, rows step toward +x (foot rail); balls in a
-  // row are spread along y.
-  //
-  // Spacing is a diameter plus the engine's own minimum clearance. Racking
-  // tighter does not produce a tighter rack: the engine separates the triangle
-  // to this clearance before the cue ball moves, and doing it from a tighter
-  // start walks the balls apart unevenly — measured at up to 4.7 mm of
-  // displacement, which is a visibly crooked rack that nobody built. At this
-  // spacing the engine finds nothing to correct and the triangle that breaks is
-  // the triangle that was drawn.
-  const gap = BALL_DIAMETER + ENGINE_MIN_GAP;
+  // row are spread along y. Spacing slightly over a diameter to avoid initial
+  // overlap from floating point.
+  const gap = BALL_DIAMETER * 1.001;
   const rowDx = gap * Math.sqrt(3) / 2;
 
   for (let r = 0; r < layout.length; r++) {
