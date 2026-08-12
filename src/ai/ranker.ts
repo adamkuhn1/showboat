@@ -10,8 +10,9 @@ import weightsJson from "./weights.json";
 // training/train.ts from rollout-labelled data generated against this same
 // physics engine (training/generate.ts), and evaluated on a held-out split
 // (training/evaluate.ts) through this very forward pass. If the bundled
-// weights fail shape validation, the app falls back to the classical scorer
-// and says so in the UI — it never silently pretends.
+// weights fail shape validation, OR failed evaluate.ts's held-out gate
+// (meta.gatePassed), the app defaults to the classical scorer and says so in
+// the UI — it never silently ships a model that didn't earn its place.
 
 export interface RankerModel {
   meta: {
@@ -20,6 +21,7 @@ export interface RankerModel {
     featureNames: string[];
     normalization: { mean: number[]; std: number[] };
     heldOut: Record<string, number>;
+    gatePassed?: boolean;
   };
   // Dense layers, applied in order. Activation: tanh for hidden layers,
   // sigmoid on the final single-unit layer.
@@ -126,11 +128,14 @@ export const classicalScore = (f: number[]): number => {
 // --- construction ------------------------------------------------------------
 
 export const makeRanker = (force?: RankerName): Ranker => {
-  if (force !== "classical") {
-    const model = validateModel(weightsJson);
-    if (model) {
-      return { name: "neural", score: (f) => neuralScore(model, f) };
-    }
+  const model = validateModel(weightsJson);
+  // Default: only ship neural if it validated AND beat the classical
+  // baseline on held-out data (evaluate.ts's gate). ?ranker=neural forces it
+  // on anyway for demo/comparison purposes even after a failed gate;
+  // ?ranker=classical always forces the fallback.
+  const wantNeural = force === "neural" || (force !== "classical" && model?.meta.gatePassed === true);
+  if (wantNeural && model) {
+    return { name: "neural", score: (f) => neuralScore(model, f) };
   }
   return { name: "classical", score: classicalScore };
 };

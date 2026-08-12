@@ -160,3 +160,13 @@ console.log(
 );
 writeFileSync(METRICS, JSON.stringify({ ...report, gate: pass ? "PASS" : "FAIL" }, null, 2));
 console.log(`metrics written to ${METRICS}`);
+
+// Record the gate result IN the shipped artifact, not just in this training
+// report — src/ai/ranker.ts reads meta.gatePassed to decide the app's
+// default. Otherwise a failed-gate model would still validate its shape and
+// ship as "neural" by default, silently contradicting this script's own
+// verdict.
+const shipped = JSON.parse(readFileSync(WEIGHTS, "utf8"));
+shipped.meta.gatePassed = pass;
+writeFileSync(WEIGHTS, JSON.stringify(shipped, null, 2));
+console.log(`weights.json meta.gatePassed = ${pass}`);

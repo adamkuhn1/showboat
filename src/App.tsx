@@ -43,12 +43,15 @@ const routeFromFrames = (sim: SimResult, ballId: number) => {
 
 export default function App() {
   const game = useRef(makeGame());
-  // ?ranker=classical forces the fallback (useful to see the difference).
+  // ?ranker=classical|neural forces one or the other (useful to compare);
+  // the default without the param reflects training/evaluate.ts's held-out
+  // gate result (see src/ai/ranker.ts).
   const ranker = useRef(
     makeRanker(
-      new URLSearchParams(window.location.search).get("ranker") === "classical"
-        ? "classical"
-        : undefined,
+      (new URLSearchParams(window.location.search).get("ranker") as
+        | "classical"
+        | "neural"
+        | null) ?? undefined,
     ),
   );
   const [state, setState] = useState<GameState>(game.current.state);
