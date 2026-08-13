@@ -52,7 +52,7 @@ game state
 ## The AI is trained ML, and here is exactly what that means
 
 The ranker that orders candidate shots is a small MLP (13 → 20 → 12 → 1,
-~540 parameters, `src/ai/weights.json`) trained by `training/`:
+~545 parameters, `src/ai/weights.json`) trained by `training/`:
 
 1. `npm run train:generate` — seeded random mid-game positions; every
    candidate the generator proposes is labelled by jittered physics rollouts
