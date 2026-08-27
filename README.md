@@ -34,13 +34,16 @@ game state
   in the Han-2005 / pooltool lineage. SI units, standard literature
   coefficients, closed-form per-phase trajectories with analytic + guarded
   numeric event solvers. Ported from this repo's earlier pure-TS engine, plus
-  three reviewed fixes found while porting: sliding-phase spin-up rate was
-  missing the `(5/2)/R` torque factor from `I = 2/5·mR²`; cushions now
-  absorb the roll component along their normal (both prevented balls from
-  pinning against rails in endless micro-collisions); and the event loop
-  carries a hard iteration cap independent of simulated time, since a
-  same-instant repeated collision could in principle hold `t` still and
-  defeat the existing time-based cap.
+  fixes found while porting: sliding-phase spin-up rate was missing the
+  `(5/2)/R` torque factor from `I = 2/5·mR²`; cushions now absorb the roll
+  component along their normal (both prevented balls from pinning against
+  rails in endless micro-collisions); the event loop carries a hard
+  iteration cap independent of simulated time, since a same-instant repeated
+  collision could in principle hold `t` still and defeat the existing
+  time-based cap; and rolling resistance was recalibrated (`MU_ROLLING`
+  0.01 → 0.05) after the literature default left an ordinary shot rolling
+  for 6-14+ real seconds under this engine's deceleration model — a medium
+  shot now settles in a few seconds, matching how a real table looks.
 - `src/game/` — 8-ball rules as a pure function of (pre-state, sim result):
   groups, fouls (wrong first contact, scratch, no-rail), ball-in-hand, 8-ball
   win/loss. Fully unit tested.
@@ -48,9 +51,11 @@ game state
   classification, and the turn state machine described above.
 - `src/render/` — canvas renderer + playback. Playback interpolates the
   position keyframes recorded by the authoritative simulation; it never
-  re-simulates. One global precomputed time-warp per shot slows smoothly
-  around first contact / rail hits / pockets and is fixed before the first
-  frame — no per-ball rates, nothing coupled to live contact state.
+  re-simulates, and it runs at a constant simulation-time-to-wall-time rate
+  (a fixed slower rate for the "Slow" option) — an earlier version eased
+  the rate down around cue contact/rail hits/pockets, which made ordinary
+  shots look like they were dragging and speeding up rather than just
+  playing back at a steady pace.
 
 ## The AI is trained ML, and here is exactly what that means
 
@@ -60,17 +65,15 @@ The ranker that orders candidate shots is a small MLP (13 → 20 → 12 → 1,
 1. `npm run train:generate` — seeded random mid-game positions; every
    candidate the generator proposes is labelled by jittered physics rollouts
    (σ ≈ 0.46° aim, σ = 0.03 power) of this exact engine. Label = fraction of
-   rollouts that legally pot the intended ball. Current dataset: **8,726
-   labelled rows from 240 sampled table positions** (up from an earlier,
-   much smaller run — more positions is what actually made the gate below
-   trustworthy).
+   rollouts that legally pot the intended ball. Current dataset: **9,390
+   labelled rows from 260 sampled table positions**.
 2. `npm run train:fit` — hand-written Adam/backprop loop (no framework; the
    network is small enough that auditable beats convenient). The split is by
    whole table position, three ways, never by row: candidates from one
-   layout share geometry, so a row-level split would leak. 192 positions
-   (6,962 rows) train, 24 positions (904 rows) validation for early
-   stopping — best epoch 97, validation BCE 0.311. The remaining 24
-   positions (860 rows) are a **test** set this script never reads.
+   layout share geometry, so a row-level split would leak. 208 positions
+   (7,555 rows) train, 26 positions (927 rows) validation for early
+   stopping — best epoch 8, validation BCE 0.253. The remaining 26
+   positions (908 rows) are a **test** set this script never reads.
 3. `npm run train:evaluate` — evaluates the exported weights through the
    same `neuralScore()` the app bundles, against the classical baseline, on
    that untouched test set, and **writes the gate result into the shipped
@@ -78,30 +81,25 @@ The ranker that orders candidate shots is a small MLP (13 → 20 → 12 → 1,
    drift from what this script found. The gate was fixed before this run:
    neural must beat classical on all three of held-out BCE, AUC and mean
    per-position Spearman, no partial credit. **Current result: GATE PASS.**
-   BCE 0.329 vs classical's 0.404; AUC 0.749 vs 0.720; mean per-position
-   Spearman 0.303 vs 0.117. The two rankers disagree on the top-ranked
-   candidate 71% of the time, and when they disagree neural's pick has a
-   higher true success rate on average (0.250 vs classical's 0.215). Full
+   BCE 0.261 vs classical's 0.310; AUC 0.824 vs 0.755; mean per-position
+   Spearman 0.280 vs 0.130. The two rankers disagree on the top-ranked
+   candidate 44% of the time, and when they disagree neural's pick has a
+   higher true success rate on average (0.30 vs classical's 0.233). Full
    numbers: `training/metrics.json`.
    **The app ships neural as the default ranker because of this result** —
    `?ranker=classical` forces the heuristic on instead, for comparison.
 4. `npm run train:selfplay` — neural-ranked agent vs classical-ranked agent,
-   full racks, identical everything else. 30 games, seed 42: **classical
-   wins 16/30 (53%)**, neural wins 14/30 (47%) — statistically a wash at this
-   sample size, not a second win for either side. Avg shots-to-win is close
-   too (10.4 vs 11.0). Neural's potted balls are trick shots somewhat more
-   often — 86% (97/113) vs classical's 78% (91/117).
+   full racks, identical everything else. 30 games, seed 42: **neural wins
+   21/30 (70%)**, classical wins 9/30 (30%). Avg shots-to-win is close (16.3
+   vs 15.8). Neural's potted balls are trick shots slightly more often — 80%
+   (130/162) vs classical's 76% (104/137).
 
 What the model is NOT: it does not choose the shot alone. It orders
 candidates; the physics engine then verifies the top 10 and selection
 requires a simulated legal pot. If `weights.json` fails shape validation, or
 the ranker's own held-out gate, the app falls back to the interpretable
 classical scorer and the thinking panel says "classical ranker" — it never
-labels a shot "neural" unless a neural model actually scored it. The honest
-summary of this experiment: the ranker beats the classical heuristic on the
-metric it was trained on (predicting shot success), but that edge is real
-without yet being large enough to show up as a clear game-level win-rate
-advantage over 30 racks. Both facts are worth knowing, so both are reported.
+labels a shot "neural" unless a neural model actually scored it.
 
 ## Trick-shot preference (and its honesty)
 
@@ -148,5 +146,5 @@ back.
 
 ## File budget
 
-27 production files in `src/` (3,495 lines), plus 3 test files (510 lines)
-and 5 training scripts (713 lines) — 35 files / 4,718 lines total.
+27 production files in `src/` (3,414 lines), plus 3 test files (510 lines)
+and 5 training scripts (725 lines) — 35 files / 4,649 lines total.
