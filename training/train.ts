@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FEATURE_DIM, FEATURE_NAMES } from "../src/ai/features";
 import { makeRng } from "../src/ai/rollout";
+import { splitOf } from "./split";
 
 // Train the ranker MLP on the rollout-labelled dataset. Plain TypeScript —
 // the network is small enough (13 -> 20 -> 12 -> 1, ~540 parameters) that a
@@ -10,9 +11,10 @@ import { makeRng } from "../src/ai/rollout";
 // framework, and the exported weights are consumed by the exact same forward
 // pass the app ships (src/ai/ranker.ts:neuralScore).
 //
-// Split discipline: held-out positions, not held-out rows. Candidates from
-// the same table position share geometry, so a row-level split would leak.
-// Every position with pos % 5 === 0 is validation and is never trained on.
+// Split discipline: held-out POSITIONS, not held-out rows (see split.ts).
+// This script only ever sees train + validation; test positions are not
+// loaded here at all, so the final gate (evaluate.ts) can't leak into any
+// decision made during training.
 //
 // Loss: binary cross-entropy against soft labels (the rollout success
 // fraction). Early stopping on validation BCE; the best epoch's weights are
@@ -35,17 +37,22 @@ interface Row {
   label: number;
 }
 
-const rows: Row[] = readFileSync(DATA, "utf8")
+const allRows: Row[] = readFileSync(DATA, "utf8")
   .split("\n")
   .filter((l) => l && !l.startsWith("#"))
   .map((l) => JSON.parse(l));
 
-const isVal = (r: Row): boolean => r.pos % 5 === 0;
-const train = rows.filter((r) => !isVal(r));
-const val = rows.filter(isVal);
+// Test positions are excluded here entirely -- not read, not touched, not
+// used for any decision this script makes. rows/train/val below are already
+// test-free.
+const rows = allRows.filter((r) => splitOf(r.pos) !== "test");
+const train = rows.filter((r) => splitOf(r.pos) === "train");
+const val = rows.filter((r) => splitOf(r.pos) === "val");
+const testExcluded = allRows.length - rows.length;
 console.log(
-  `dataset: ${rows.length} rows · train ${train.length} · held-out ${val.length} ` +
-    `(${new Set(val.map((r) => r.pos)).size} positions)`,
+  `dataset: ${allRows.length} rows total (${testExcluded} held out as test, unread beyond this line) · ` +
+    `train ${train.length} (${new Set(train.map((r) => r.pos)).size} positions) · ` +
+    `val ${val.length} (${new Set(val.map((r) => r.pos)).size} positions)`,
 );
 
 // --- standardisation (train split only) -------------------------------------
@@ -228,12 +235,18 @@ for (let epoch = 0; epoch < EPOCHS; epoch++) {
 }
 
 // --- export -------------------------------------------------------------------
+// datasetRows/heldOutRows describe the FULL dataset (train+val+test), so the
+// numbers this file exports and the numbers evaluate.ts reports about the
+// same file agree. "heldOut" here means the held-out validation split used
+// for early stopping in THIS script; evaluate.ts's report and metrics.json
+// separately describe the held-out TEST split, which this script never
+// reads.
 const model = {
   meta: {
     trainedAt: new Date().toISOString(),
-    datasetRows: rows.length,
+    datasetRows: allRows.length,
     trainRows: train.length,
-    heldOutRows: val.length,
+    valRows: val.length,
     featureNames: [...FEATURE_NAMES],
     normalization: { mean, std },
     arch: sizes.join("-"),
