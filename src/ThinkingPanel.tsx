@@ -56,7 +56,7 @@ export default function ThinkingPanel({ t }: { t: ThinkingState }) {
     <aside className="thinking" aria-live="polite">
       <div className="thinking-head">
         <span className="dot" data-active={t.active || undefined} />
-        AI · {t.ranker} ranker
+        Opponent — {t.ranker} ranker
       </div>
 
       {t.phase === "placing" && <p>Ball in hand — choosing cue position…</p>}

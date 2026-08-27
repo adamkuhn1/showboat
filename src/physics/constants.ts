@@ -21,9 +21,13 @@ export const BALL_INERTIA = (2 / 5) * BALL_MASS * BALL_RADIUS * BALL_RADIUS;
 // Coefficient of sliding friction between ball and cloth. Governs how fast a
 // sliding ball's surface velocity decays toward pure rolling.
 export const MU_SLIDING = 0.2;
-// Coefficient of rolling resistance. Much smaller; slowly bleeds speed from a
-// purely rolling ball until it stops.
-export const MU_ROLLING = 0.01;
+// Coefficient of rolling resistance. Much smaller than sliding friction;
+// slowly bleeds speed from a purely rolling ball until it stops. The
+// textbook value (~0.01) left a medium-power shot rolling for 6-14+ real
+// seconds with this engine's deceleration model (a = MU_ROLLING * G applied
+// directly to translational speed) -- calibrated up so an ordinary shot
+// settles in a few seconds, matching how a real table actually looks.
+export const MU_ROLLING = 0.05;
 // Spin (about vertical axis) decays through a separate spinning friction.
 export const MU_SPINNING = 0.044;
 
