@@ -1,5 +1,5 @@
 {
-  "name": "@portfolio-suite/showboat",
+  "name": "showboat",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,6 @@
     "build": "vite build",
     "preview": "vite preview --port 5175 --strictPort",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "train:generate": "tsx training/generate.ts",
     "train:fit": "tsx training/train.ts",
@@ -27,5 +26,8 @@
     "typescript": "~5.6.3",
     "vite": "^5.4.11",
     "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

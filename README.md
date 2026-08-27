@@ -9,7 +9,7 @@ Human vs AI. You break. Everything runs in the browser; no backend.
 ## Run
 
 ```bash
-npm install          # from the repo root (npm workspace)
+npm install
 npm run dev          # -> http://localhost:5175
 npm run build        # production build (dist/)
 npm test             # physics, rules and AI tests (29)
