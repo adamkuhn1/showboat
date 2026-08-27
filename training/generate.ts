@@ -21,9 +21,21 @@ import { makeRng, rolloutSuccess } from "../src/ai/rollout";
 //
 // Env knobs: POSITIONS (default 260), ROLLOUTS (6), MAX_CANDS (40), SEED.
 // PART/POS_BASE allow several worker processes to build disjoint shards
-// (part-N.jsonl with non-overlapping position ids) that are concatenated into
-// dataset.jsonl afterwards — position-disjoint by construction, so the
-// held-out-by-position split stays sound.
+// (part-N.jsonl with non-overlapping position ids, via POS_BASE + local
+// index) that are concatenated into dataset.jsonl afterwards —
+// position-disjoint by construction, so the held-out-by-position split stays
+// sound. Each shard also needs its own SEED (POS_BASE alone only changes the
+// id a position is labelled with, not the random content), or shards end up
+// generating duplicate table layouts under different ids.
+//
+// The shipped dataset (8,726 rows / 240 positions) was built as 4 shards of
+// 60 positions run in parallel, then concatenated:
+//   POSITIONS=60 POS_BASE=0   SEED=20260827 PART=0 npx tsx training/generate.ts
+//   POSITIONS=60 POS_BASE=60  SEED=20260828 PART=1 npx tsx training/generate.ts
+//   POSITIONS=60 POS_BASE=120 SEED=20260829 PART=2 npx tsx training/generate.ts
+//   POSITIONS=60 POS_BASE=180 SEED=20260830 PART=3 npx tsx training/generate.ts
+// then cat training/data/part-*.jsonl (minus comment lines) into
+// training/data/dataset.jsonl with one shared header.
 
 const POSITIONS = Number(process.env.POSITIONS ?? 260);
 const ROLLOUTS = Number(process.env.ROLLOUTS ?? 6);
