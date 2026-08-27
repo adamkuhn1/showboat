@@ -104,7 +104,8 @@ let labelSum = 0;
 let sims = 0;
 const t0 = Date.now();
 
-for (let pos = 0; pos < POSITIONS; pos++) {
+for (let i = 0; i < POSITIONS; i++) {
+  const pos = POS_BASE + i;
   const state = randomState();
   let cands = generateCandidates(state, table);
   // Unbiased random subsample so no kind is over-represented by construction.
@@ -141,11 +142,11 @@ for (let pos = 0; pos < POSITIONS; pos++) {
   appendFileSync(OUT, lines.join("\n") + "\n");
   rowCount += lines.length;
 
-  if ((pos + 1) % 10 === 0) {
+  if ((i + 1) % 10 === 0) {
     const dt = (Date.now() - t0) / 1000;
-    const eta = (dt / (pos + 1)) * (POSITIONS - pos - 1);
+    const eta = (dt / (i + 1)) * (POSITIONS - i - 1);
     console.log(
-      `position ${pos + 1}/${POSITIONS} · rows ${rowCount} · sims ${sims} · ` +
+      `position ${i + 1}/${POSITIONS} (id ${pos}) · rows ${rowCount} · sims ${sims} · ` +
         `${dt.toFixed(0)}s elapsed · ~${eta.toFixed(0)}s left`,
     );
   }

@@ -6,17 +6,22 @@ import {
   neuralScore,
   validateModel,
 } from "../src/ai/ranker";
+import { splitOf } from "./split";
 
-// Held-out evaluation of the SHIPPED model through the SHIPPED inference path.
-// This deliberately imports neuralScore/validateModel from src/ai/ranker.ts
-// and reads src/ai/weights.json — the same code and file the app bundles — so
-// a training/export mismatch cannot pass unnoticed.
+// Held-out evaluation of the SHIPPED model through the SHIPPED inference path,
+// on the TEST split (see split.ts) -- positions train.ts never reads, not
+// even for early stopping. This deliberately imports neuralScore/
+// validateModel from src/ai/ranker.ts and reads src/ai/weights.json — the
+// same code and file the app bundles — so a training/export mismatch cannot
+// pass unnoticed.
 //
-// The gate: the neural ranker earns its place only if it beats the classical
-// scorer on the same held-out positions, on both calibration (BCE) and
-// ranking (AUC + mean per-position Spearman). If it fails, this script says
-// FAIL loudly; the honest response is to ship classical as the default, not
-// to relabel the heuristic.
+// The gate is predetermined (decided before this script was ever run against
+// real test numbers, see training/README or the project README): the neural
+// ranker earns its place only if it beats the classical scorer on the same
+// held-out test positions, on calibration (BCE) and both ranking metrics
+// (AUC + mean per-position Spearman) -- not a cherry-picked one of the three.
+// If it fails, this script says FAIL loudly; the honest response is to ship
+// classical as the default, not to relabel the heuristic or weaken the gate.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = join(here, "data", "dataset.jsonl");
@@ -34,7 +39,7 @@ const rows: Row[] = readFileSync(DATA, "utf8")
   .split("\n")
   .filter((l) => l && !l.startsWith("#"))
   .map((l) => JSON.parse(l));
-const val = rows.filter((r) => r.pos % 5 === 0); // same rule as train.ts
+const val = rows.filter((r) => splitOf(r.pos) === "test"); // held-out TEST split, see split.ts
 
 const model = validateModel(JSON.parse(readFileSync(WEIGHTS, "utf8")));
 if (!model) {

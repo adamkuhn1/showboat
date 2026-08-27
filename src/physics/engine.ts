@@ -57,6 +57,14 @@ const MAX_SIM_TIME = 30;
 // are found by scanning [0, LOOKAHEAD]; if none, we integrate that far and
 // rescan. Keeps the polynomial sampling dense enough to catch fast contacts.
 const LOOKAHEAD = 0.05;
+// Hard cap on event-loop iterations, independent of simulated time. If a
+// resolved collision ever left two balls still within collision distance,
+// the same event would be found again at essentially t=0, `step` would stay
+// ~0, and `t` would never advance far enough to hit MAX_SIM_TIME — an
+// unbounded loop that a purely time-based guard can't catch. A normal shot
+// resolves in well under 1,000 iterations, so this is slack for a real
+// break-like cascade, not a budget anything legitimate should approach.
+const MAX_ITERATIONS = 20_000;
 
 interface Candidate {
   t: number;
@@ -103,7 +111,21 @@ export const simulateShot = (
   reclassify(balls);
   snapshot();
 
+  let iterations = 0;
   while (anyMoving(balls) && t < MAX_SIM_TIME) {
+    iterations++;
+    if (iterations > MAX_ITERATIONS) {
+      // Force a settle rather than spin forever; see MAX_ITERATIONS above.
+      for (const b of balls) {
+        if (!b.pocketed) {
+          b.vel = { x: 0, y: 0 };
+          b.roll = { x: 0, y: 0 };
+          b.wz = 0;
+          b.motion = Motion.Stationary;
+        }
+      }
+      break;
+    }
     // Find the earliest event across all active balls within the lookahead.
     let best: Candidate | null = null;
     const window = LOOKAHEAD;
