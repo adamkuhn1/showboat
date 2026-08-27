@@ -34,10 +34,13 @@ game state
   in the Han-2005 / pooltool lineage. SI units, standard literature
   coefficients, closed-form per-phase trajectories with analytic + guarded
   numeric event solvers. Ported from this repo's earlier pure-TS engine, plus
-  two reviewed fixes found while porting (sliding-phase spin-up rate was
-  missing the `(5/2)/R` torque factor from `I = 2/5·mR²`, and cushions now
-  absorb the roll component along their normal — both prevented balls from
-  pinning against rails in endless micro-collisions).
+  three reviewed fixes found while porting: sliding-phase spin-up rate was
+  missing the `(5/2)/R` torque factor from `I = 2/5·mR²`; cushions now
+  absorb the roll component along their normal (both prevented balls from
+  pinning against rails in endless micro-collisions); and the event loop
+  carries a hard iteration cap independent of simulated time, since a
+  same-instant repeated collision could in principle hold `t` still and
+  defeat the existing time-based cap.
 - `src/game/` — 8-ball rules as a pure function of (pre-state, sim result):
   groups, fouls (wrong first contact, scratch, no-rail), ball-in-hand, 8-ball
   win/loss. Fully unit tested.
@@ -57,49 +60,48 @@ The ranker that orders candidate shots is a small MLP (13 → 20 → 12 → 1,
 1. `npm run train:generate` — seeded random mid-game positions; every
    candidate the generator proposes is labelled by jittered physics rollouts
    (σ ≈ 0.46° aim, σ = 0.03 power) of this exact engine. Label = fraction of
-   rollouts that legally pot the intended ball. 240 labelled rows from 260
-   sampled positions.
+   rollouts that legally pot the intended ball. Current dataset: **8,726
+   labelled rows from 240 sampled table positions** (up from an earlier,
+   much smaller run — more positions is what actually made the gate below
+   trustworthy).
 2. `npm run train:fit` — hand-written Adam/backprop loop (no framework; the
-   network is small enough that auditable beats convenient). Split is
-   held-out-by-position — candidates from one table layout share geometry, so
-   a row-level split would leak (160 train / 80 held-out, 2 held-out
-   positions). Early stopping on held-out BCE — best epoch 28 of 59, held-out
-   BCE 0.333.
+   network is small enough that auditable beats convenient). The split is by
+   whole table position, three ways, never by row: candidates from one
+   layout share geometry, so a row-level split would leak. 192 positions
+   (6,962 rows) train, 24 positions (904 rows) validation for early
+   stopping — best epoch 97, validation BCE 0.311. The remaining 24
+   positions (860 rows) are a **test** set this script never reads.
 3. `npm run train:evaluate` — evaluates the exported weights through the
    same `neuralScore()` the app bundles, against the classical baseline, on
-   the held-out positions, and **writes the gate result into the shipped
+   that untouched test set, and **writes the gate result into the shipped
    `weights.json` itself** (`meta.gatePassed`) so the app's own default can't
-   drift from what this script found. **Current result: GATE FAIL.** The
-   gate requires neural to beat classical on all three of BCE, AUC and mean
-   per-position Spearman on held-out data — it does, narrowly, on two (BCE
-   0.333 vs classical's 0.389; Spearman 0.180 vs 0.175) but not the third
-   (AUC 0.878 vs classical's 0.897), so it fails as designed: no partial
-   credit. Classical also picks a measurably better top-1 shot on held-out
-   data (mean true-success-label of its top-1 pick: 0.33 vs neural's 0.08).
-   Full numbers: `training/metrics.json`.
-   **The app ships classical as the default ranker because of this result** —
-   `?ranker=neural` forces the trained model on anyway, for comparison.
+   drift from what this script found. The gate was fixed before this run:
+   neural must beat classical on all three of held-out BCE, AUC and mean
+   per-position Spearman, no partial credit. **Current result: GATE PASS.**
+   BCE 0.329 vs classical's 0.404; AUC 0.749 vs 0.720; mean per-position
+   Spearman 0.303 vs 0.117. The two rankers disagree on the top-ranked
+   candidate 71% of the time, and when they disagree neural's pick has a
+   higher true success rate on average (0.250 vs classical's 0.215). Full
+   numbers: `training/metrics.json`.
+   **The app ships neural as the default ranker because of this result** —
+   `?ranker=classical` forces the heuristic on instead, for comparison.
 4. `npm run train:selfplay` — neural-ranked agent vs classical-ranked agent,
-   full racks, identical everything else (forces neural on regardless of the
-   gate, since this is exactly how you'd diagnose one). 20 games, seed 42:
-   **classical wins 11/20 (55%)**, neural wins 9/20 (45%), avg shots-to-win
-   is a wash (9.5 vs 9.6). But neural's potted balls are trick shots far more
-   often — **94% (46/49) vs classical's 75% (57/76)** — a real, measured
-   behavioral difference in what the ranker rewards, even though it doesn't
-   translate into more wins on this dataset size.
+   full racks, identical everything else. 30 games, seed 42: **classical
+   wins 16/30 (53%)**, neural wins 14/30 (47%) — statistically a wash at this
+   sample size, not a second win for either side. Avg shots-to-win is close
+   too (10.4 vs 11.0). Neural's potted balls are trick shots somewhat more
+   often — 86% (97/113) vs classical's 78% (91/117).
 
 What the model is NOT: it does not choose the shot alone. It orders
 candidates; the physics engine then verifies the top 10 and selection
 requires a simulated legal pot. If `weights.json` fails shape validation, or
-the ranker's own held-out gate, the app defaults to the interpretable
+the ranker's own held-out gate, the app falls back to the interpretable
 classical scorer and the thinking panel says "classical ranker" — it never
-labels a shot "neural" unless a neural model is actually the one that scored
-it. This is the honest outcome of a genuinely small dataset (240 rows is not
-much for a held-out gate with only 2 held-out positions) rather than a
-result to be hidden: the training pipeline is real and auditable, and this
-run's real result was "not yet good enough to trust by default." More
-positions (`POSITIONS` env var) would be the first thing to try to change
-that.
+labels a shot "neural" unless a neural model actually scored it. The honest
+summary of this experiment: the ranker beats the classical heuristic on the
+metric it was trained on (predicting shot success), but that edge is real
+without yet being large enough to show up as a clear game-level win-rate
+advantage over 30 racks. Both facts are worth knowing, so both are reported.
 
 ## Trick-shot preference (and its honesty)
 
@@ -146,6 +148,5 @@ back.
 
 ## File budget
 
-27 production files in `src/` (3,458 lines), plus 3 test files (510 lines)
-and 4 training scripts (676 lines) — 34 files / 4,644 lines total. Within
-the 20–30 file / 4,000–7,000 line budget the reset brief set.
+27 production files in `src/` (3,495 lines), plus 3 test files (510 lines)
+and 5 training scripts (713 lines) — 35 files / 4,718 lines total.
