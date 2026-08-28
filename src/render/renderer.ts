@@ -135,18 +135,39 @@ export const drawBall = (
 };
 
 // Draw the aim line + power indicator for the human shooter.
+// Distance (world units) from `pos` to where a ray in direction `dir` exits
+// the table's playing rectangle (cushion nose to cushion nose). `pos` is
+// assumed inside the rectangle, which the cue ball always is.
+const rayExitDistance = (
+  pos: { x: number; y: number },
+  dir: { x: number; y: number },
+  table: Table,
+): number => {
+  const hx = table.length / 2;
+  const hy = table.width / 2;
+  const tx = dir.x > 0 ? (hx - pos.x) / dir.x : dir.x < 0 ? (-hx - pos.x) / dir.x : Infinity;
+  const ty = dir.y > 0 ? (hy - pos.y) / dir.y : dir.y < 0 ? (-hy - pos.y) / dir.y : Infinity;
+  return Math.min(tx, ty);
+};
+
 export const drawAim = (
   ctx: CanvasRenderingContext2D,
   cue: Ball,
   phi: number,
   power: number,
   v: ViewTransform,
+  table: Table,
 ): void => {
   if (cue.pocketed) return;
   const [cx, cy] = toPx(cue.pos.x, cue.pos.y, v);
-  const len = (0.3 + power * 0.7) * table_diag(v);
+  const desiredLen = (0.3 + power * 0.7) * table_diag(v);
   const dx = Math.cos(phi);
   const dy = -Math.sin(phi); // screen y flip
+  // Clipped to the playing surface in world units, then converted to the
+  // same pixel scale the desired length is already in, so the line never
+  // strays past the cloth into the rail/canvas margin.
+  const worldExit = rayExitDistance(cue.pos, { x: Math.cos(phi), y: Math.sin(phi) }, table);
+  const len = Math.min(desiredLen, worldExit * v.scale);
   ctx.strokeStyle = "rgba(255,255,255,0.8)";
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 6]);
