@@ -1,10 +1,11 @@
 # Showboat
 
-2D bar pool (7-foot bar box, standard 8-ball rules) played against an AI that
-strongly prefers trick shots — banks, kicks off the rail, multi-wall banks and
-combos — and shows you its actual reasoning while it decides.
+2D bar pool (7-foot bar box, standard 8-ball rules) played against a computer
+opponent that strongly prefers trick shots -- banks, kicks off the rail,
+multi-wall banks and combos -- and shows you its actual reasoning while it
+decides.
 
-Human vs AI. You break. Everything runs in the browser; no backend.
+Human vs computer. You break. Everything runs in the browser; no backend.
 
 ## Run
 
