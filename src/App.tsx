@@ -93,7 +93,7 @@ export default function App() {
       render(c, s, table, view);
       if (phase === "aiming" && s.turn === HUMAN) {
         const cue = s.balls.find((b) => b.id === CUE_ID);
-        if (cue && !cue.pocketed) drawAim(c, cue, aim, power, view);
+        if (cue && !cue.pocketed) drawAim(c, cue, aim, power, view, table);
       }
     },
     [table, view, phase, aim, power],
@@ -154,26 +154,28 @@ export default function App() {
 
   // --- human input ----------------------------------------------------------
   const humanTurn = phase === "aiming" && state.turn === HUMAN && state.winner === null;
+  // Aiming is press-and-drag, not hover-follow: the aim only updates while
+  // the pointer is held down on the table, so moving the mouse around to look
+  // at the table (or to reach a slider) never disturbs a prepared shot.
+  const draggingRef = useRef(false);
 
-  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!humanTurn) return;
+  const aimFromEvent = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number; inBounds: boolean } => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const cue = state.balls.find((b) => b.id === CUE_ID);
-    if (!cue || cue.pocketed) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const inBounds = x >= 0 && x <= rect.width && y >= 0 && y <= rect.height;
+    return { x, y, inBounds };
+  };
+
+  const updateAimTo = (x: number, y: number, cue: { pos: { x: number; y: number } }) => {
     const cx = view.offsetX + cue.pos.x * view.scale;
     const cy = view.offsetY - cue.pos.y * view.scale;
-    setAim(
-      Math.atan2(
-        -(e.clientY - rect.top - cy),
-        e.clientX - rect.left - cx,
-      ),
-    );
+    setAim(Math.atan2(-(y - cy), x - cx));
   };
 
   // Clicking ONLY places the cue ball during ball-in-hand; shooting is the
   // explicit button. Aim and shoot stay separate, deliberate actions.
-  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!humanTurn || state.ballInHand === false) return;
+  const placeCueAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
     const wx = (e.clientX - rect.left - view.offsetX) / view.scale;
     const wy = -(e.clientY - rect.top - view.offsetY) / view.scale;
@@ -185,6 +187,40 @@ export default function App() {
     game.current.state = placed;
     setState(placed);
     setMessage("Cue ball placed. Take your shot.");
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!humanTurn) return;
+    if (state.ballInHand !== false) {
+      placeCueAt(e);
+      return;
+    }
+    const cue = state.balls.find((b) => b.id === CUE_ID);
+    if (!cue || cue.pocketed) return;
+    draggingRef.current = true;
+    // Pointer capture keeps move/up events coming to this canvas even if the
+    // drag continues past its edges, so releasing off-table still freezes
+    // the aim cleanly instead of leaving the drag "stuck" open.
+    canvasRef.current?.setPointerCapture(e.pointerId);
+    const { x, y } = aimFromEvent(e);
+    updateAimTo(x, y, cue);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!humanTurn || !draggingRef.current) return;
+    const cue = state.balls.find((b) => b.id === CUE_ID);
+    if (!cue || cue.pocketed) return;
+    const { x, y, inBounds } = aimFromEvent(e);
+    // Leaving the table surface stops the aim from updating (it freezes at
+    // its last in-bounds value) without ending the drag -- coming back while
+    // still held resumes it, same as a real cue stroke you can pause.
+    if (inBounds) updateAimTo(x, y, cue);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    canvasRef.current?.releasePointerCapture(e.pointerId);
   };
 
   const shoot = () => {
@@ -283,6 +319,7 @@ export default function App() {
     playbackRef.current?.stop();
     playbackRef.current = null;
     aiRunningRef.current = false;
+    draggingRef.current = false;
     game.current = makeGame();
     setState(game.current.state);
     setPhase("aiming");
@@ -304,7 +341,7 @@ export default function App() {
     <main className="shell">
       <header className="topbar">
         <h1>Showboat</h1>
-        <p className="tag">2D bar pool · you vs a trick-shot AI</p>
+        <p className="tag">2D bar pool · you vs a trick-shot opponent</p>
       </header>
 
       <div className="layout">
@@ -313,8 +350,10 @@ export default function App() {
             ref={canvasRef}
             width={CANVAS_W}
             height={CANVAS_H}
-            onMouseMove={onMouseMove}
-            onClick={onClick}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
             className="table"
             data-human={humanTurn || undefined}
           />
