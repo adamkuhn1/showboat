@@ -5,19 +5,13 @@ import { type Frame, type SimResult } from "../physics/engine";
 // between them — it never re-simulates, so the animation is the exact shot that
 // was resolved by the rules.
 //
-// Pacing rules (each one answers a previously-shipped bug, do not relax them):
-//   - There is a single global timeline for the whole table: sim-time advances
-//     at a fixed multiple of wall-clock time (baseRate), the same rate for
-//     every ball. No per-ball rate exists anywhere, so an untouched ball can
-//     never appear to speed up because a different ball touched something
-//     (the old "5.68x phantom acceleration" bug). An earlier version also
-//     eased the rate down around cue contact/rail hits/pockets; that made
-//     ordinary shots feel like they were dragging and speeding up rather than
-//     just playing at a constant pace, so playback is a plain constant-rate
-//     clock now. "Slow" is `baseRate < 1`, not a different curve.
-//   - stop() resolves the returned promise itself; it does not depend on the
-//     requestAnimationFrame loop reaching another tick (the old unsettled-
-//     promise bug when a rack was reset mid-animation).
+// Pacing invariants:
+//   - One global timeline for the whole table: sim-time advances at a fixed
+//     multiple of wall-clock time (baseRate), the same rate for every ball,
+//     with no per-ball or per-event rate changes. "Slow" is `baseRate < 1`,
+//     not a different curve.
+//   - stop() resolves the returned promise itself; it never depends on the
+//     requestAnimationFrame loop reaching another tick.
 
 export interface PlaybackHandle {
   // Resolves when the animation finishes OR is stopped. Never rejects.

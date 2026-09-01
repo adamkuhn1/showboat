@@ -38,10 +38,7 @@ export const advanceBall = (b: Ball, dt: number): void => {
     // The friction torque spins the ball toward matching the (new) velocity.
     // Torque rate: the friction force F = mu*m*g acts at the contact point, so
     // angular acceleration = F*R/I = (5/2)*mu*g/R (I = 2/5 m R^2 for a solid
-    // sphere). The ported reference used decel*dt here — missing the (5/2)/R
-    // factor, ~90x too slow — which left balls "driving" into cushions on
-    // residual roll for tens of seconds (a live-reproduced non-termination bug
-    // on hard breaks). This is the standard sliding-friction spin-up rate.
+    // sphere) — the standard sliding-friction spin-up rate.
     const targetRoll = scale(b.vel, 1 / BALL_RADIUS);
     b.roll = approach(b.roll, targetRoll, (2.5 * decel / BALL_RADIUS) * dt);
   } else {

@@ -4,7 +4,7 @@ import { CUE_ID, EIGHT_ID } from "../game/rack";
 // Turn a real physics event trace into a human-readable caption, e.g.
 // "cue → rail → 3-ball → corner". This reads ONLY from the simulation's actual
 // event sequence — it is a presentation layer over real decision/physics data,
-// never a scripted description. Same mechanism CueTip uses to caption shots.
+// never a scripted description.
 
 const ballName = (id: number): string => {
   if (id === CUE_ID) return "cue";
