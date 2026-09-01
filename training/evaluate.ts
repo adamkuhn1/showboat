@@ -8,20 +8,16 @@ import {
 } from "../src/ai/ranker";
 import { splitOf } from "./split";
 
-// Held-out evaluation of the SHIPPED model through the SHIPPED inference path,
-// on the TEST split (see split.ts) -- positions train.ts never reads, not
-// even for early stopping. This deliberately imports neuralScore/
-// validateModel from src/ai/ranker.ts and reads src/ai/weights.json — the
-// same code and file the app bundles — so a training/export mismatch cannot
-// pass unnoticed.
+// Held-out evaluation of the shipped model through the shipped inference
+// path, on the TEST split (see split.ts) -- positions train.ts never reads,
+// not even for early stopping. Imports neuralScore/validateModel from
+// src/ai/ranker.ts and reads src/ai/weights.json directly, so a
+// training/export mismatch can't pass unnoticed.
 //
-// The gate is predetermined (decided before this script was ever run against
-// real test numbers, see training/README or the project README): the neural
-// ranker earns its place only if it beats the classical scorer on the same
-// held-out test positions, on calibration (BCE) and both ranking metrics
-// (AUC + mean per-position Spearman) -- not a cherry-picked one of the three.
-// If it fails, this script says FAIL loudly; the honest response is to ship
-// classical as the default, not to relabel the heuristic or weaken the gate.
+// The gate is predetermined: neural only earns its place if it beats the
+// classical scorer on all three of BCE, AUC, and mean per-position Spearman
+// on the same held-out positions -- not a cherry-picked one of the three. A
+// failing gate ships classical as the default and says so.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA = join(here, "data", "dataset.jsonl");

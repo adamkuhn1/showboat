@@ -2,22 +2,12 @@ import { type Ball, Motion } from "./ball";
 import { fromAngle, scale, add } from "./vec";
 import { BALL_RADIUS } from "./constants";
 
-// The cue action space. This is the *entire* set of parameters the AI (or a
-// human) can express — and it is deliberately missing the two parameters that
-// would make jump and massé shots possible:
+// CueAction is planar: no cue-elevation field, so jump and massé shots are
+// unrepresentable rather than merely discouraged (a jump needs downward
+// elevation into the ball; massé needs steep elevation plus extreme side
+// english). V0 is capped (MAX_V0) so pure speed can't launch the ball
+// airborne either.
 //
-//   - There is NO `theta` (cue elevation). Elevation is fixed at zero, so the
-//     cue strikes the ball horizontally through a plane parallel to the bed.
-//     A jump requires downward elevation into the ball; massé requires steep
-//     elevation plus extreme side english. With no elevation term, neither is
-//     REPRESENTABLE — not merely discouraged. This is the "impossible at the
-//     action level" guarantee from the spec, enforced at the type level: the
-//     interface simply has no field for it.
-//   - `V0` (cue speed) is capped (see MAX_V0). Even a hypothetical exploit that
-//     tried to launch the ball airborne with pure speed is bounded below the
-//     energy needed to do so.
-//
-// Remaining parameters:
 //   - phi: aim direction in radians (table frame).
 //   - power: normalized [0,1]; maps to V0 in [0, MAX_V0].
 //   - sideSpin (a): horizontal english in [-1, 1] (left/right of centre).
