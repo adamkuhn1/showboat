@@ -4,9 +4,7 @@ import { CUE_ID } from "../game/rack";
 // Measured shot classification. The kind of a shot ("bank", "combo", ...)
 // shown anywhere in the UI is derived HERE, from the event log of the actual
 // simulation — which balls and cushions were struck, in what order — never
-// from what the candidate generator intended. (A prior version of this app
-// labelled shots from planner intent; a "bank" that never touched a rail
-// could be displayed as a bank. That must not return.)
+// from what the candidate generator intended.
 
 export interface MeasuredShot {
   // What physically happened, per the event log:

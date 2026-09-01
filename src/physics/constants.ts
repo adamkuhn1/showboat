@@ -22,11 +22,11 @@ export const BALL_INERTIA = (2 / 5) * BALL_MASS * BALL_RADIUS * BALL_RADIUS;
 // sliding ball's surface velocity decays toward pure rolling.
 export const MU_SLIDING = 0.2;
 // Coefficient of rolling resistance. Much smaller than sliding friction;
-// slowly bleeds speed from a purely rolling ball until it stops. The
-// textbook value (~0.01) left a medium-power shot rolling for 6-14+ real
-// seconds with this engine's deceleration model (a = MU_ROLLING * G applied
-// directly to translational speed) -- calibrated up so an ordinary shot
-// settles in a few seconds, matching how a real table actually looks.
+// slowly bleeds speed from a purely rolling ball until it stops. Set above
+// the textbook value (~0.01), which under this engine's deceleration model
+// (a = MU_ROLLING * G applied directly to translational speed) would settle
+// a medium-power shot only after several real seconds; this value settles
+// an ordinary shot in a few seconds, matching a real table.
 export const MU_ROLLING = 0.05;
 // Spin (about vertical axis) decays through a separate spinning friction.
 export const MU_SPINNING = 0.044;

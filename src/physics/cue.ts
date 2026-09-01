@@ -43,9 +43,8 @@ export const applyCue = (cueBall: Ball, action: CueAction): void => {
 
   cueBall.vel = scale(dir, v0);
 
-  // Sidespin becomes vertical-axis spin (wz) → curves throw and cushion
-  // rebound. This is genuine english, NOT elevation, so it can never produce a
-  // masse arc on its own (masse needs elevation, which does not exist here).
+  // Sidespin becomes vertical-axis spin (wz), which curves throw and cushion
+  // rebound.
   cueBall.wz = a * MAX_SIDE_SPIN;
 
   // Follow/draw sets the initial roll relative to velocity. Follow (b>0) means
@@ -56,7 +55,7 @@ export const applyCue = (cueBall: Ball, action: CueAction): void => {
   cueBall.roll = scale(dir, rollMag);
 
   cueBall.motion = v0 > 0 ? Motion.Sliding : Motion.Stationary;
-  void add; // (kept import surface small; add used elsewhere)
+  void add; // silences unused-import lint; add is unused in this file
 };
 
 const clamp = (v: number, lo: number, hi: number): number =>

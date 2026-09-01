@@ -25,15 +25,11 @@ export interface Ball {
   // 0 = cue ball; 1..7 solids; 8 = eight; 9..15 stripes. Kept as plain data.
   pos: Vec2; // centre position on the bed, metres
   vel: Vec2; // linear velocity of the centre, m/s
-  // Angular velocity vector. We track z (spin about vertical, i.e. "english"
-  // sidespin / masse component — capped to zero at the action layer) and the
-  // in-plane roll components implicitly via the rolling model. For a 2D
-  // top-down engine the load-bearing angular quantity is wz (sidespin) plus the
-  // roll that opposes sliding, which we derive from the slip velocity.
+  // wz tracks spin about the vertical axis (sidespin/english; capped to zero
+  // at the action layer). roll is the in-plane angular velocity that opposes
+  // sliding, stored separately from wz so throw and follow/draw are
+  // represented without needing full 3D rigid-body spin.
   wz: number; // spin about the vertical axis, rad/s (sidespin)
-  // Perpendicular angular velocity that resists sliding is captured by the
-  // relative surface velocity; we store the ball's "spin" contribution as a
-  // separate roll vector so throw and follow/draw are represented.
   roll: Vec2; // effective rolling angular velocity mapped into the bed plane
   motion: Motion;
   pocketed: boolean;

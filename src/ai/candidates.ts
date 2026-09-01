@@ -14,9 +14,8 @@ import { CUE_ID, EIGHT_ID, SOLIDS, STRIPES } from "../game/rack";
 //   - The `kind` on a candidate is only a *generation* label. The published
 //     shot kind shown to the player is always re-measured from the event log
 //     of the actual simulation (see classify.ts) — never from this intent.
-//   - Jump and massé shots cannot be generated because CueAction has no
-//     elevation axis at all (see physics/cue.ts). There is nothing here to
-//     "discourage": the action space cannot express them.
+//   - Jump and massé shots are not generated: CueAction has no elevation
+//     axis (see physics/cue.ts), so the action space can't express them.
 
 export type CandidateKind = "direct" | "bank" | "kick" | "combo";
 
