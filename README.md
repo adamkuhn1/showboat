@@ -1,151 +1,100 @@
 # Showboat
 
-2D bar pool (7-foot bar box, standard 8-ball rules) played against a computer
-opponent that strongly prefers trick shots -- banks, kicks off the rail,
-multi-wall banks and combos -- and shows you its actual reasoning while it
-decides.
+Browser-based 8-ball against a computer opponent that specifically hunts for
+trick shots — banks, kicks, combos — verified by real physics rather than
+scripted, with its reasoning shown live as it plays.
 
-Human vs computer. You break. Everything runs in the browser; no backend.
+## What it does
 
-## Run
+- 2D bar pool (7-foot table, standard 8-ball rules), fully in the browser,
+  no backend.
+- Every turn, the opponent generates candidate shots (direct, bank, kick,
+  combo), scores them with a trained ranker, verifies the top candidates
+  with full physics simulation, and plays the best one a simulated rollout
+  actually pots legally.
+- A small neural network does the ranking by default; a classical heuristic
+  scorer is the fallback and can be forced on for comparison.
+- The reasoning panel is built from the same decision data the agent used
+  to pick its shot, not separately-written flavor text.
 
-```bash
-npm install
-npm run dev          # -> http://localhost:5175
-npm run build        # production build (dist/)
-npm test             # physics, rules and AI tests (29)
-npm run typecheck
-```
-
-## Architecture
-
-One pipeline, one representation of every shot:
+## How it works
 
 ```
 game state
-  └─ generateCandidates()        pure geometry: direct / bank(1-2 rail) / kick / combo
-      └─ ranker.score(features)  neural MLP (or classical fallback) -> P(success)
-          └─ verify top 10       full physics simulation of each, frames recorded
-              └─ select          legal + measured-trick-preferred + robustness
-                  └─ ONE ShotReport: its outcome is committed, its frames are
-                     the playback, its event log is the overlay's data source
+  → generate candidates    pure geometry: direct / bank / kick / combo
+  → rank                   neural MLP (or classical fallback) scores each
+  → verify top 10          full physics simulation, jittered rollouts
+  → select                 legal + trick-preferred + robust under jitter
+  → play + overlay         recorded frames drive playback and the panel
 ```
 
-- `src/physics/` — event-based (time-of-next-event, not fixed timestep) engine
-  in the Han-2005 / pooltool lineage. SI units, standard literature
-  coefficients, closed-form per-phase trajectories with analytic + guarded
-  numeric event solvers. Ported from this repo's earlier pure-TS engine, plus
-  fixes found while porting: sliding-phase spin-up rate was missing the
-  `(5/2)/R` torque factor from `I = 2/5·mR²`; cushions now absorb the roll
-  component along their normal (both prevented balls from pinning against
-  rails in endless micro-collisions); the event loop carries a hard
-  iteration cap independent of simulated time, since a same-instant repeated
-  collision could in principle hold `t` still and defeat the existing
-  time-based cap; and rolling resistance was recalibrated (`MU_ROLLING`
-  0.01 → 0.05) after the literature default left an ordinary shot rolling
-  for 6-14+ real seconds under this engine's deceleration model — a medium
-  shot now settles in a few seconds, matching how a real table looks.
-- `src/game/` — 8-ball rules as a pure function of (pre-state, sim result):
-  groups, fouls (wrong first contact, scratch, no-rail), ball-in-hand, 8-ball
-  win/loss. Fully unit tested.
-- `src/ai/` — candidate generation, feature extraction, ranker, measured shot
-  classification, and the turn state machine described above.
-- `src/render/` — canvas renderer + playback. Playback interpolates the
-  position keyframes recorded by the authoritative simulation; it never
-  re-simulates, and it runs at a constant simulation-time-to-wall-time rate
-  (a fixed slower rate for the "Slow" option) — an earlier version eased
-  the rate down around cue contact/rail hits/pockets, which made ordinary
-  shots look like they were dragging and speeding up rather than just
-  playing back at a steady pace.
+- `src/physics/` — event-based simulation (time-of-next-event, not fixed
+  timestep), closed-form per-phase trajectories, in the Han-2005/pooltool
+  lineage.
+- `src/game/` — 8-ball rules as a pure function of simulation result: fouls,
+  ball-in-hand, win/loss.
+- `src/ai/` — candidate generation, the neural ranker, and measured-shot
+  classification: a shot only counts as a "bank" if the simulation log
+  actually shows a rail contact, never by generator intent.
+- `src/render/` — canvas rendering; playback replays recorded simulation
+  frames, it never re-simulates.
 
-## The AI is trained ML, and here is exactly what that means
+## Technical highlights
 
-The ranker that orders candidate shots is a small MLP (13 → 20 → 12 → 1,
-~545 parameters, `src/ai/weights.json`) trained by `training/`:
+- **No jump shots or massé, structurally.** `CueAction` has no cue-elevation
+  axis, so those shots are unrepresentable, not just discouraged.
+- **Trick-shot bias is one constant.** `DIRECT_ORDER_DISCOUNT` in
+  `src/ai/agent.ts` halves the ranking score of direct shots; everything
+  else about scoring and selection is unchanged.
+- **Physics correctness details:** sliding-phase spin-up uses the `(5/2)/R`
+  torque factor from `I = 2/5·mR²`; cushions absorb the roll component along
+  their normal (otherwise balls pin against rails in repeated
+  micro-collisions); rolling resistance is calibrated so a medium-power shot
+  settles in a few seconds, matching a real table.
+- **Held-out evaluation is split by table position, not by row** — every
+  candidate from one layout shares geometry, so a row-level split would
+  leak between train and test.
 
-1. `npm run train:generate` — seeded random mid-game positions; every
-   candidate the generator proposes is labelled by jittered physics rollouts
-   (σ ≈ 0.46° aim, σ = 0.03 power) of this exact engine. Label = fraction of
-   rollouts that legally pot the intended ball. Current dataset: **9,390
-   labelled rows from 260 sampled table positions**.
-2. `npm run train:fit` — hand-written Adam/backprop loop (no framework; the
-   network is small enough that auditable beats convenient). The split is by
-   whole table position, three ways, never by row: candidates from one
-   layout share geometry, so a row-level split would leak. 208 positions
-   (7,555 rows) train, 26 positions (927 rows) validation for early
-   stopping — best epoch 8, validation BCE 0.253. The remaining 26
-   positions (908 rows) are a **test** set this script never reads.
-3. `npm run train:evaluate` — evaluates the exported weights through the
-   same `neuralScore()` the app bundles, against the classical baseline, on
-   that untouched test set, and **writes the gate result into the shipped
-   `weights.json` itself** (`meta.gatePassed`) so the app's own default can't
-   drift from what this script found. The gate was fixed before this run:
-   neural must beat classical on all three of held-out BCE, AUC and mean
-   per-position Spearman, no partial credit. **Current result: GATE PASS.**
-   BCE 0.261 vs classical's 0.310; AUC 0.824 vs 0.755; mean per-position
-   Spearman 0.280 vs 0.130. The two rankers disagree on the top-ranked
-   candidate 44% of the time, and when they disagree neural's pick has a
-   higher true success rate on average (0.30 vs classical's 0.233). Full
-   numbers: `training/metrics.json`.
-   **The app ships neural as the default ranker because of this result** —
-   `?ranker=classical` forces the heuristic on instead, for comparison.
-4. `npm run train:selfplay` — neural-ranked agent vs classical-ranked agent,
-   full racks, identical everything else. 30 games, seed 42: **neural wins
-   21/30 (70%)**, classical wins 9/30 (30%). Avg shots-to-win is close (16.3
-   vs 15.8). Neural's potted balls are trick shots slightly more often — 80%
-   (130/162) vs classical's 76% (104/137).
+## Results
 
-What the model is NOT: it does not choose the shot alone. It orders
-candidates; the physics engine then verifies the top 10 and selection
-requires a simulated legal pot. If `weights.json` fails shape validation, or
-the ranker's own held-out gate, the app falls back to the interpretable
-classical scorer and the thinking panel says "classical ranker" — it never
-labels a shot "neural" unless a neural model actually scored it.
+The ranker is a 13→20→12→1 MLP (~545 parameters), trained on 9,390 labeled
+shot candidates sampled from 260 table positions (208 positions/7,555 rows
+train, 26/927 validation, 26/908 held out and never touched until final
+evaluation):
 
-## Trick-shot preference (and its honesty)
+| | Neural | Classical |
+|---|---|---|
+| Held-out BCE | 0.261 | 0.310 |
+| Held-out AUC | 0.824 | 0.755 |
+| Mean per-position Spearman | 0.280 | 0.130 |
 
-- `DIRECT_ORDER_DISCOUNT = 0.5` in `src/ai/agent.ts` halves direct shots'
-  ordering score. That single constant is the entire style bias.
-- Selection prefers candidates whose **measured** result is a trick shot:
-  `src/ai/classify.ts` reads the simulation event log (cue rails before
-  contact, target-ball rails before dropping, chain length) — never the
-  generator's intent. A "bank" that never touched a rail cannot be labelled a
-  bank.
-- Nothing is scripted: banks/kicks/combos emerge from mirror-image candidate
-  geometry surviving physics verification and jittered robustness rollouts.
+Neural beats classical on all three gate metrics — the model only ships as
+the default if it does, and `weights.json` records the pass/fail itself so
+the app's default can't drift from what evaluation found. In 30 self-play
+games (identical everything except which ranker each side used), the
+neural-ranked agent won 21 (70%).
 
-## No jump shots, no massé — structurally
+## Run locally
 
-`CueAction` (`src/physics/cue.ts`) is `{phi, power, sideSpin, topSpin}`.
-There is no cue-elevation axis anywhere in the state or action space, so jump
-and massé shots are unrepresentable, not merely discouraged. Speed is capped
-at 8.5 m/s. The physics is strictly planar.
+```bash
+npm install
+npm run dev          # http://localhost:5175
+npm run build
+npm test
+npm run typecheck
+```
 
-## The overlay never claims more than the mechanism
+Training scripts (`npm run train:generate|fit|evaluate|selfplay`) regenerate
+the dataset and model from scratch; the shipped `src/ai/weights.json` is
+already trained. Force the classical ranker with `?ranker=classical`.
 
-Every string in the thinking panel is formatted from the same
-`Decision`/`EvaluatedCandidate` objects the agent selected with: candidate
-counts by kind, the candidate currently being verified with its measured
-outcome ("pots it (3/3 under jitter)" / "misses in simulation"), and the
-selected shot with a reason composed from measured fields. Dashed lines on
-the table are hypothetical candidate geometry; solid lines are the verified
-route extracted from the frames of the exact simulation that is then played
-back.
+## Limitations
 
-## Known limitations
-
-- Ball-in-hand is "anywhere" after any foul (bar rules); the behind-the-head-
-  string restriction after an opening scratch is not modelled.
-- The 2D engine approximates draw/follow with a roll-vector model rather than
-  full 3D rigid-body spin; draw shots check the cue ball rather than pulling
-  it back dramatically.
-- Pocket capture is a jaw-radius test; there are no pocket liners/knuckles,
-  so very fast balls never rattle out.
-- The AI's safety play is a single heuristic roll-up, not a searched safety.
-- Candidate power is a heuristic function of path length; the ranker learns
-  around it rather than optimising power per shot.
-
-## File budget
-
-27 production files in `src/` (3,414 lines), plus 3 test files (510 lines)
-and 5 training scripts (725 lines) — 35 files / 4,649 lines total.
+- Ball-in-hand is "anywhere" after any foul; the behind-the-head-string
+  restriction after an opening scratch isn't modeled.
+- Draw/follow uses a roll-vector approximation, not full 3D rigid-body spin.
+- Pockets use a jaw-radius capture test — no liners/knuckles, so very fast
+  balls never rattle out.
+- Safety play is a single heuristic roll-up, not a searched strategy.
+- Shot power is a heuristic function of path length; the ranker doesn't
+  optimize power per shot.
