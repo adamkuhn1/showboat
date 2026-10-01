@@ -1,5 +1,7 @@
 # Showboat
 
+[![CI](https://github.com/adamkuhn1/showboat/actions/workflows/ci.yml/badge.svg)](https://github.com/adamkuhn1/showboat/actions/workflows/ci.yml)
+
 Browser-based 8-ball against a computer opponent that specifically hunts for
 trick shots — banks, kicks, combos — verified by real physics rather than
 scripted, with its reasoning shown live as it plays.
