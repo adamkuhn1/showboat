@@ -41,8 +41,18 @@ const currentLine = (t: ThinkingState): string | null => {
   }`;
 };
 
-export default function ThinkingPanel({ t }: { t: ThinkingState }) {
-  if (!t.active && !t.decision) return null;
+// `placeholder`: render an idle panel instead of nothing before the AI's
+// first turn (embed mode, where the panel owns a fixed column beside the
+// table and an empty column would look broken).
+export default function ThinkingPanel({
+  t,
+  placeholder = false,
+}: {
+  t: ThinkingState;
+  placeholder?: boolean;
+}) {
+  const idle = !t.active && !t.decision;
+  if (idle && !placeholder) return null;
 
   const counts =
     t.byKind &&
@@ -58,6 +68,8 @@ export default function ThinkingPanel({ t }: { t: ThinkingState }) {
         <span className="dot" data-active={t.active || undefined} />
         Opponent — {t.ranker} ranker
       </div>
+
+      {idle && <p>Its reasoning appears here on the AI's turn.</p>}
 
       {t.phase === "placing" && <p>Ball in hand — choosing cue position…</p>}
 
