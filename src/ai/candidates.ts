@@ -264,8 +264,44 @@ export const safetyAction = (g: GameState, _table: Table): CueAction | null => {
   if (!best) return null;
   return {
     phi: best.phi,
-    power: Math.min(0.55, 0.3 + 0.15 * best.d),
+    power: safetyPower(best.d),
     sideSpin: 0,
     topSpin: 0,
   };
+};
+
+const safetyPower = (d: number): number => Math.min(0.55, 0.3 + 0.15 * d);
+
+// Several low-power roll-up variations for the safety search: for EACH legal
+// ball, a full-ball hit plus a slightly thinner hit on either side, at the
+// usual roll-up power and a touch firmer (a softer roll often fails the
+// no-rail rule). safetyAction's choice comes first, so "first legal one" stays
+// the old behaviour whenever it was already legal. These are only proposals —
+// the agent simulates every one and discards any that fouls.
+export const safetyCandidates = (g: GameState, table: Table): CueAction[] => {
+  const cue = g.balls.find((b) => b.id === CUE_ID);
+  if (!cue || cue.pocketed) return [];
+  const out: CueAction[] = [];
+  const first = safetyAction(g, table);
+  if (first) out.push(first);
+  for (const tid of legalTargets(g)) {
+    const t = g.balls.find((b) => b.id === tid);
+    if (!t || t.pocketed) continue;
+    const d = mag(sub(t.pos, cue.pos));
+    const phi = Math.atan2(t.pos.y - cue.pos.y, t.pos.x - cue.pos.x);
+    // Angle at which the cue centre passes half a ball off the object centre
+    // (a half-ball hit); a third of that keeps the contact comfortably full.
+    const thin = Math.asin(Math.min(1, BALL_RADIUS / Math.max(d, BALL_DIAMETER))) / 3;
+    const base = safetyPower(d);
+    for (const power of [base, Math.min(0.7, base + 0.15)]) {
+      for (const offset of [0, -thin, thin]) {
+        out.push({ phi: phi + offset, power, sideSpin: 0, topSpin: 0 });
+      }
+    }
+  }
+  // Drop exact duplicates (safetyAction's pick reappears in the loop).
+  return out.filter(
+    (a, i) =>
+      out.findIndex((b) => b.phi === a.phi && b.power === a.power) === i,
+  );
 };
