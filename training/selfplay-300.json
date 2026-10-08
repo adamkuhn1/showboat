@@ -1,0 +1,27 @@
+{
+  "games": 300,
+  "decided": 300,
+  "seed": 42,
+  "maxShots": 120,
+  "neuralWins": 171,
+  "classicalWins": 129,
+  "neuralWinRate": 0.57,
+  "neuralWinRateWilson95": [
+    0.5134401182890381,
+    0.6247898015112788
+  ],
+  "neural": {
+    "wins": 171,
+    "potsTotal": 1476,
+    "potsTrick": 949,
+    "avgShotsToWin": "14.1"
+  },
+  "classical": {
+    "wins": 129,
+    "potsTotal": 1222,
+    "potsTrick": 797,
+    "avgShotsToWin": "15.0"
+  },
+  "wallSeconds": 1331,
+  "ranAt": "2026-10-01T18:33:02.871Z"
+}
