@@ -1,0 +1,196 @@
+{
+  "generatedAt": "2026-10-01T18:33:15.541Z",
+  "method": "Percentile bootstrap over held-out TEST positions (resampled with replacement, all candidate rows of a position kept together), B=5000, seed 20261001. Neural and classical scored on the same resample (paired differences).",
+  "heldOut": {
+    "positions": 26,
+    "rows": 908,
+    "spearmanEligiblePositions": 25,
+    "positiveRows": 25
+  },
+  "classicalBaseline": "Hand-written multiplicative pot-probability heuristic over the same 13 features (cut angle, path lengths, pocket approach, corridor clearance, per-rail and combo penalties, power) — src/ai/ranker.ts classicalScore; no learned parameters.",
+  "neural": {
+    "auc": {
+      "point": 0.824,
+      "ci95": [
+        0.7485,
+        0.8876
+      ]
+    },
+    "bce": {
+      "point": 0.261,
+      "ci95": [
+        0.2158,
+        0.3063
+      ]
+    },
+    "meanSpearman": {
+      "point": 0.2803,
+      "ci95": [
+        0.2117,
+        0.3491
+      ]
+    }
+  },
+  "classical": {
+    "auc": {
+      "point": 0.7547,
+      "ci95": [
+        0.6525,
+        0.8451
+      ]
+    },
+    "bce": {
+      "point": 0.3102,
+      "ci95": [
+        0.2481,
+        0.3729
+      ]
+    },
+    "meanSpearman": {
+      "point": 0.1303,
+      "ci95": [
+        0.0618,
+        0.2021
+      ]
+    }
+  },
+  "neuralMinusClassical": {
+    "auc": {
+      "point": 0.0693,
+      "ci95": [
+        -0.0063,
+        0.1564
+      ],
+      "shareOfResamplesNeuralBetter": 0.964
+    },
+    "bce": {
+      "point": -0.0492,
+      "ci95": [
+        -0.0732,
+        -0.0279
+      ],
+      "shareOfResamplesNeuralBetter": 1
+    },
+    "meanSpearman": {
+      "point": 0.15,
+      "ci95": [
+        0.0555,
+        0.243
+      ],
+      "shareOfResamplesNeuralBetter": 0.9992
+    }
+  },
+  "top10Recall": {
+    "definition": "Share of held-out positions where at least one candidate with label > 0.5 (pots in most of its 6 jittered rollouts) is in the first 10 of the agent's verification order (prior, direct × 0.5). Ranked among the <= 40 candidates sampled per position in the dataset, not every generated candidate.",
+    "positions": 15,
+    "neural": {
+      "point": 0.8667,
+      "ci95": [
+        0.6667,
+        1
+      ]
+    },
+    "classical": {
+      "point": 0.7333,
+      "ci95": [
+        0.5,
+        0.9375
+      ]
+    },
+    "randomTop10": {
+      "point": 0.4537,
+      "ci95": [
+        0.3637,
+        0.558
+      ]
+    },
+    "neuralMinusClassical": {
+      "point": 0.1333,
+      "ci95": [
+        -0.125,
+        0.4
+      ]
+    },
+    "anyPot": {
+      "definition": "Same, with 'truly potting' = label > 0 (pots in at least one rollout).",
+      "positions": 25,
+      "neural": {
+        "point": 0.96,
+        "ci95": [
+          0.875,
+          1
+        ]
+      },
+      "classical": {
+        "point": 0.96,
+        "ci95": [
+          0.875,
+          1
+        ]
+      },
+      "randomTop10": {
+        "point": 0.909,
+        "ci95": [
+          0.8464,
+          0.9598
+        ]
+      }
+    }
+  },
+  "selfPlay": [
+    {
+      "games": 30,
+      "decided": 30,
+      "seed": 42,
+      "maxShots": 120,
+      "neuralWins": 19,
+      "classicalWins": 11,
+      "neuralWinRate": 0.6333333333333333,
+      "neuralWinRateWilson95": [
+        0.45513246433604937,
+        0.7812629779598231
+      ],
+      "neural": {
+        "wins": 19,
+        "potsTotal": 156,
+        "potsTrick": 95,
+        "avgShotsToWin": "13.8"
+      },
+      "classical": {
+        "wins": 11,
+        "potsTotal": 118,
+        "potsTrick": 77,
+        "avgShotsToWin": "14.6"
+      },
+      "wallSeconds": 145,
+      "ranAt": "2026-10-01T18:10:24.531Z"
+    },
+    {
+      "games": 300,
+      "decided": 300,
+      "seed": 42,
+      "maxShots": 120,
+      "neuralWins": 171,
+      "classicalWins": 129,
+      "neuralWinRate": 0.57,
+      "neuralWinRateWilson95": [
+        0.5134401182890381,
+        0.6247898015112788
+      ],
+      "neural": {
+        "wins": 171,
+        "potsTotal": 1476,
+        "potsTrick": 949,
+        "avgShotsToWin": "14.1"
+      },
+      "classical": {
+        "wins": 129,
+        "potsTotal": 1222,
+        "potsTrick": 797,
+        "avgShotsToWin": "15.0"
+      },
+      "wallSeconds": 1331,
+      "ranAt": "2026-10-01T18:33:02.871Z"
+    }
+  ]
+}
