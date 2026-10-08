@@ -8,6 +8,7 @@ import { CUE_ID } from "../game/rack";
 import {
   generateCandidates,
   safetyAction,
+  safetyCandidates,
   type Candidate,
   type CandidateKind,
 } from "./candidates";
@@ -19,7 +20,9 @@ import { rolloutSuccess, shotSucceeded } from "./rollout";
 // The AI turn. One straight pipeline, one published result:
 //
 //   state -> generate candidates -> rank (neural or classical prior)
-//         -> physics-verify the top K -> select a legal shot
+//         -> physics-verify the top K -> select a legal shot (selectShot:
+//            robustness-gated, trick shots preferred only above the bar)
+//         -> or, if nothing pots, a simulated legal safety (chooseSafety)
 //         -> publish ONE Decision containing THE ShotReport that will be
 //            committed and played back.
 //
@@ -46,7 +49,12 @@ export interface Decision {
   byKind: Record<CandidateKind, number>;
   verified: EvaluatedCandidate[]; // in verification order
   selected: EvaluatedCandidate | null; // null -> safety fallback was used
-  safety: { action: CueAction; measured: MeasuredShot } | null;
+  safety: {
+    action: CueAction;
+    measured: MeasuredShot;
+    considered: number; // safety roll-ups simulated
+    legal: number; // of those, how many were foul-free (0 -> old fallback)
+  } | null;
   reason: string; // composed only from measured/decision data above
   cuePlacedAt: Vec2 | null; // ball-in-hand placement, if any
 }
@@ -75,13 +83,19 @@ export interface AiHooks {
 // The AI's explicit style: trick shots (bank/kick/combo) keep their full
 // ranker score; plain direct shots are discounted when ordering. Verification
 // still decides legality — a discounted direct shot that is the only shot
-// that works will still be chosen. This constant IS the "strongly prefers
-// trick shots" behaviour; nothing else biases the choice.
+// that works will still be chosen. This constant decides which candidates get
+// verified; after verification, selectShot prefers a measured trick shot only
+// among shots that clear the ROBUST_FRACTION bar.
 export const DIRECT_ORDER_DISCOUNT = 0.5;
 // How many top-ranked candidates get a full physics verification.
 export const VERIFY_TOP_K = 10;
 // Jittered re-executions of a verified candidate (robustness measurement).
 export const ROBUSTNESS_N = 3;
+// The robustness bar: a shot "clears" it when at least this fraction of its
+// ROBUSTNESS_N jittered re-executions also pot (2 of 3 by default). Only
+// shots that clear it get the trick-shot preference — a bank that pots once
+// in three tries must not outrank a direct pot that goes in every time.
+export const ROBUST_FRACTION = 2 / 3;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((res) => setTimeout(res, ms));
@@ -193,17 +207,7 @@ export const aiTakeTurn = async (
 
   // --- select ---------------------------------------------------------------
   hooks.onPhase?.("selecting");
-  const successes = top.filter((e) => e.success);
-  successes.sort((a, b) => {
-    // Trick shots first (measured, not intended), then robustness, then prior.
-    const ta = a.measured && isTrickShot(a.measured) ? 1 : 0;
-    const tb = b.measured && isTrickShot(b.measured) ? 1 : 0;
-    if (ta !== tb) return tb - ta;
-    const ra = a.robustness ? a.robustness.successes : 0;
-    const rb = b.robustness ? b.robustness.successes : 0;
-    if (ra !== rb) return rb - ra;
-    return b.prior - a.prior;
-  });
+  const pick = selectShot(top);
 
   const decisionBase = {
     ranker: ranker.name,
@@ -214,35 +218,40 @@ export const aiTakeTurn = async (
     cuePlacedAt,
   };
 
-  if (successes.length > 0) {
-    const chosen = successes[0];
-    const m = chosen.measured!;
-    const rb = chosen.robustness!;
-    const reason =
-      `${capitalise(m.label)} on the ${ballName(chosen.cand.targetBall)} ` +
-      `into the ${pocketName(m.pocketId)} — pots in simulation, ` +
-      `${rb.successes}/${rb.n} under aim jitter` +
-      (m.kind !== "direct" ? ", preferred as a trick shot." : ".");
+  if (pick) {
+    const chosen = pick.chosen;
     return {
       stateAfterPlacement: state,
       action: chosen.cand.action,
       report: chosen.report!,
-      decision: { ...decisionBase, selected: chosen, safety: null, reason },
+      decision: { ...decisionBase, selected: chosen, safety: null, reason: pick.reason },
     };
   }
 
   // --- nothing pots: play safe ---------------------------------------------
-  const safe = safetyAction(state, table);
-  const action: CueAction = safe ?? { phi: 0, power: 0.3, sideSpin: 0, topSpin: 0 };
-  const report = takeShot(state, table, action, { recordFrames: true });
+  hooks.onPhase?.("safety");
+  const safe = chooseSafety(state, table, ranker);
+  const { action, report } = safe;
   const measured = classifyShot(report.sim, -1);
-  const reason =
-    `None of the ${top.length} verified candidates pots a ball — ` +
-    `rolling up to the ${
-      report.sim.firstContact !== null
-        ? ballName(report.sim.firstContact)
-        : "nearest legal ball"
-    } as a safety.`;
+  const lead = `None of the ${top.length} verified candidates pots a ball`;
+  let reason: string;
+  if (safe.legal === 0) {
+    reason =
+      `${lead}. No legal safety found; all ${safe.considered} simulated ` +
+      `roll-ups foul, so rolling up to the ${
+        report.sim.firstContact !== null
+          ? ballName(report.sim.firstContact)
+          : "nearest legal ball"
+      } anyway.`;
+  } else {
+    const target = ballName(report.sim.firstContact!);
+    reason =
+      `${lead} — rolling up to the ${target} as a safety ` +
+      (safe.legal === 1
+        ? `(the only legal one of ${safe.considered} simulated roll-ups).`
+        : `(${safe.legal} of ${safe.considered} simulated roll-ups are legal; ` +
+          `this one leaves the opponent the weakest best shot).`);
+  }
   return {
     stateAfterPlacement: state,
     action,
@@ -250,10 +259,162 @@ export const aiTakeTurn = async (
     decision: {
       ...decisionBase,
       selected: null,
-      safety: { action, measured },
+      safety: { action, measured, considered: safe.considered, legal: safe.legal },
       reason,
     },
   };
+};
+
+// --- shot selection ------------------------------------------------------------
+
+const robustFraction = (ec: EvaluatedCandidate): number =>
+  ec.robustness && ec.robustness.n > 0
+    ? ec.robustness.successes / ec.robustness.n
+    : 0;
+
+// Clears the bar when at least ROBUST_FRACTION of the jittered re-executions
+// also pot (2 of 3 at the default ROBUSTNESS_N). The epsilon only absorbs
+// float rounding in the comparison (2/3 vs 0.6666…).
+export const isRobust = (ec: EvaluatedCandidate): boolean =>
+  robustFraction(ec) >= ROBUST_FRACTION - 1e-9;
+
+const isTrick = (ec: EvaluatedCandidate): boolean =>
+  ec.measured !== undefined && isTrickShot(ec.measured);
+
+const byRobustnessThenPrior = (
+  a: EvaluatedCandidate,
+  b: EvaluatedCandidate,
+): number => {
+  const d = robustFraction(b) - robustFraction(a);
+  if (Math.abs(d) > 1e-9) return d;
+  return b.prior - a.prior;
+};
+
+const byTrickThenRobustness = (
+  a: EvaluatedCandidate,
+  b: EvaluatedCandidate,
+): number => {
+  const ta = isTrick(a) ? 1 : 0;
+  const tb = isTrick(b) ? 1 : 0;
+  if (ta !== tb) return tb - ta;
+  return byRobustnessThenPrior(a, b);
+};
+
+export interface ShotPick {
+  chosen: EvaluatedCandidate;
+  // Why it won — exactly one of these describes the decisive comparison.
+  rule: "trick-preferred" | "robust" | "most-robust-below-bar";
+  reason: string;
+}
+
+// The selection rule, over physics-verified candidates:
+//   1. Only candidates that pot legally in the verification simulation count.
+//   2. Of those, the ones that also pot in >= ROBUST_FRACTION of their jittered
+//      re-executions "clear the bar". Among them a measured trick shot is
+//      preferred, then higher robustness, then higher ranker prior.
+//   3. If none clears the bar, take the most robust successful shot (then
+//      prior) — no trick preference for fragile shots.
+//   4. No successful candidate at all -> null (the caller plays safe).
+// The reason text names the comparison that actually decided the pick.
+export const selectShot = (verified: EvaluatedCandidate[]): ShotPick | null => {
+  const successes = verified.filter((e) => e.success && e.measured && e.robustness);
+  if (successes.length === 0) return null;
+  const robust = successes.filter(isRobust).sort(byTrickThenRobustness);
+
+  if (robust.length > 0) {
+    const chosen = robust[0];
+    // Did the trick preference decide it? Only if, ranked on robustness and
+    // prior alone, a different (non-trick) shot would have come first.
+    const plain = [...robust].sort(byRobustnessThenPrior)[0];
+    const trickDecided = plain !== chosen && isTrick(chosen);
+    let reason = shotSummary(chosen);
+    if (trickDecided) {
+      reason += `, preferred as a trick shot over a ${jitterOf(plain)} ${plain.measured!.label}.`;
+    } else {
+      // A trick shot that lost only because it was fragile (the old
+      // trick-first rule would have taken it) is worth saying out loud.
+      const fragileTrick = successes
+        .filter((e) => isTrick(e) && !isRobust(e))
+        .sort(byRobustnessThenPrior)[0];
+      reason +=
+        fragileTrick && !isTrick(chosen)
+          ? `; passed over a ${fragileTrick.measured!.label} (${jitterOf(fragileTrick)} under jitter) ` +
+            `for a ${jitterOf(chosen)} ${chosen.measured!.kind === "direct" ? "direct pot" : chosen.measured!.label}.`
+          : ".";
+    }
+    return { chosen, rule: trickDecided ? "trick-preferred" : "robust", reason };
+  }
+
+  const chosen = [...successes].sort(byRobustnessThenPrior)[0];
+  const bar = Math.ceil(ROBUST_FRACTION * chosen.robustness!.n - 1e-9);
+  const reason =
+    `No verified shot pots in ${bar}/${chosen.robustness!.n} under jitter; ` +
+    `taking the most robust one. ${shotSummary(chosen)}.`;
+  return { chosen, rule: "most-robust-below-bar", reason };
+};
+
+const jitterOf = (ec: EvaluatedCandidate): string =>
+  `${ec.robustness!.successes}/${ec.robustness!.n}`;
+
+const shotSummary = (ec: EvaluatedCandidate): string => {
+  const m = ec.measured!;
+  return (
+    `${capitalise(m.label)} on the ${ballName(ec.cand.targetBall)} ` +
+    `into the ${pocketName(m.pocketId)} — pots in simulation, ` +
+    `${jitterOf(ec)} under aim jitter`
+  );
+};
+
+// --- safety search ---------------------------------------------------------------
+
+export interface SafetyChoice {
+  action: CueAction;
+  report: ShotReport; // with frames: this is the simulation that gets played
+  considered: number; // roll-ups simulated
+  legal: number; // of those, how many were foul-free
+}
+
+// Simulate every proposed roll-up with the real engine and keep only legal
+// ones (no foul of any kind: wrong first contact, no rail, scratch, an early
+// 8). Among the legal ones, prefer a roll-up that keeps the table (it potted
+// one of ours), otherwise the one that leaves the opponent the weakest best
+// shot by the same ranker the agent uses — pure ranking of the resulting
+// position, no extra physics. Ties keep proposal order, so the classic
+// nearest-ball roll-up wins whenever it is already legal and no worse.
+// Only if nothing is legal does it fall back to the old single roll-up.
+export const chooseSafety = (
+  state: GameState,
+  table: Table,
+  ranker: Ranker,
+): SafetyChoice => {
+  const proposals = safetyCandidates(state, table);
+  let best: { action: CueAction; score: number } | null = null;
+  let legal = 0;
+  for (const action of proposals) {
+    const r = takeShot(state, table, action);
+    if (r.outcome.foul || r.outcome.gameOver || r.sim.firstContact === null) continue;
+    legal++;
+    const score = r.outcome.turnPasses ? opponentBestPrior(r.next, table, ranker) : -1;
+    if (!best || score < best.score - 1e-12) best = { action, score };
+  }
+  const action: CueAction =
+    best?.action ??
+    safetyAction(state, table) ?? { phi: 0, power: 0.3, sideSpin: 0, topSpin: 0 };
+  const report = takeShot(state, table, action, { recordFrames: true });
+  return { action, report, considered: proposals.length, legal };
+};
+
+// How good is the incoming player's best candidate in this position, per the
+// ranker (with the agent's own trick-preference ordering weight)?
+const opponentBestPrior = (g: GameState, table: Table, ranker: Ranker): number => {
+  let best = 0;
+  for (const cand of generateCandidates(g, table)) {
+    const s =
+      ranker.score(featuresOf(g, table, cand)) *
+      (cand.kind === "direct" ? DIRECT_ORDER_DISCOUNT : 1);
+    if (s > best) best = s;
+  }
+  return best;
 };
 
 // Sample free positions and keep the one whose best-ranked candidate scores
