@@ -12,7 +12,8 @@
     "train:generate": "tsx training/generate.ts",
     "train:fit": "tsx training/train.ts",
     "train:evaluate": "tsx training/evaluate.ts",
-    "train:selfplay": "tsx training/selfplay_eval.ts"
+    "train:selfplay": "tsx training/selfplay_eval.ts",
+    "train:bootstrap": "tsx training/bootstrap.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -13,7 +13,8 @@ scripted, with its reasoning shown live as it plays.
 - Every turn, the opponent generates candidate shots (direct, bank, kick,
   combo), scores them with a trained ranker, verifies the top candidates
   with full physics simulation, and plays the best one a simulated rollout
-  actually pots legally.
+  actually pots legally. A trick shot is only preferred when it also pots in
+  at least 2 of 3 jittered re-executions.
 - A small neural network does the ranking by default; a classical heuristic
   scorer is the fallback and can be forced on for comparison.
 - The reasoning panel is built from the same decision data the agent used
@@ -26,7 +27,8 @@ game state
   → generate candidates    pure geometry: direct / bank / kick / combo
   → rank                   neural MLP (or classical fallback) scores each
   → verify top 10          full physics simulation, jittered rollouts
-  → select                 legal + trick-preferred + robust under jitter
+  → select                 legal; trick-preferred only if robust (≥ 2/3 under jitter)
+  → or play safe           simulated roll-ups, illegal first contacts rejected
   → play + overlay         recorded frames drive playback and the panel
 ```
 
@@ -45,9 +47,14 @@ game state
 
 - **No jump shots or massé, structurally.** `CueAction` has no cue-elevation
   axis, so those shots are unrepresentable, not just discouraged.
-- **Trick-shot bias is one constant.** `DIRECT_ORDER_DISCOUNT` in
-  `src/ai/agent.ts` halves the ranking score of direct shots; everything
-  else about scoring and selection is unchanged.
+- **Trick-shot bias is bounded by robustness.** `DIRECT_ORDER_DISCOUNT` in
+  `src/ai/agent.ts` halves the ranking score of direct shots, which decides
+  what gets verified. Selection (`selectShot`) then prefers a measured trick
+  shot only among shots that pot in at least `ROBUST_FRACTION` (2/3) of their
+  jittered re-executions; below that bar it takes the most robust shot.
+- **Safeties are simulated too.** When nothing pots, `chooseSafety` simulates
+  low-power roll-ups to each legal ball and discards any that foul (wrong
+  first contact, no rail, scratch).
 - **Physics correctness details:** sliding-phase spin-up uses the `(5/2)/R`
   torque factor from `I = 2/5·mR²`; cushions absorb the roll component along
   their normal (otherwise balls pin against rails in repeated
@@ -72,9 +79,52 @@ evaluation):
 
 Neural beats classical on all three gate metrics — the model only ships as
 the default if it does, and `weights.json` records the pass/fail itself so
-the app's default can't drift from what evaluation found. In 30 self-play
-games (identical everything except which ranker each side used), the
-neural-ranked agent won 21 (70%).
+the app's default can't drift from what evaluation found. Self-play results
+are under Evaluation below.
+
+## Evaluation
+
+Held-out test set: **26 table positions, 908 candidate rows** (25 positions
+have enough label variance for a per-position Spearman; only 25 rows, from
+15 positions, are positives at label > 0.5, which is what AUC counts). The
+classical baseline is `classicalScore` in `src/ai/ranker.ts`: a hand-written
+multiplicative pot-probability heuristic over the same 13 features, with no
+learned parameters.
+
+95% intervals come from a position-level bootstrap (5,000 resamples of the 26
+held-out positions, seed 20261001; neural and classical scored on the same
+resample, so the differences are paired). Predictions are regenerated from
+the shipped weights, and the point estimates match `training/metrics.json`
+exactly.
+
+| | Neural | Classical | Neural − classical |
+|---|---|---|---|
+| AUC | 0.824 (0.749–0.888) | 0.755 (0.653–0.845) | +0.069 (−0.006 to +0.156) |
+| BCE | 0.261 (0.216–0.306) | 0.310 (0.248–0.373) | −0.049 (−0.073 to −0.028) |
+| Mean Spearman | 0.280 (0.212–0.349) | 0.130 (0.062–0.202) | +0.150 (+0.056 to +0.243) |
+
+The BCE and Spearman gains have intervals that exclude zero. The AUC gain
+does not quite (96% of resamples favour neural); with 26 positions it is
+suggestive, not established.
+
+**Top-10 recall** (does a candidate that pots in most of its jittered
+rollouts land in the 10 the agent verifies, using the agent's real order):
+neural 13/15 positions (0.87, 0.67–1.00), classical 11/15 (0.73,
+0.50–0.94), a random 10 0.45. This is ranked among the ≤ 40 candidates
+sampled per position, not every candidate the game generates, and 15
+positions is a small sample.
+
+**Self-play** (neural-ranked vs classical-ranked agent, everything else
+identical, seed 42), re-run after the robustness-gated selection and
+simulated safeties:
+
+- 30 games: neural won 19/30 (63%, Wilson 95% 46–78%). The previous selection
+  rule, re-run at the same seed, won 21/30.
+- 300 games: neural won 171/300 (57%, Wilson 95% 51–63%), about 22 minutes
+  on a laptop.
+
+Reproduce with `npm run train:selfplay` (`GAMES=300` for the long run) and
+then `npm run train:bootstrap`; everything lands in `training/ci.json`.
 
 ## Run locally
 
@@ -88,7 +138,13 @@ npm run typecheck
 
 Training scripts (`npm run train:generate|fit|evaluate|selfplay`) regenerate
 the dataset and model from scratch; the shipped `src/ai/weights.json` is
-already trained. Force the classical ranker with `?ranker=classical`.
+already trained. `npm run train:bootstrap` recomputes the confidence
+intervals below into `training/ci.json` without touching the weights. Force
+the classical ranker with `?ranker=classical`.
+
+`?embed=1` is the portfolio-iframe mode: no title, the host's palette, the
+table scaled to the frame width, and the content height posted to the parent
+as `{ source: "portfolio-embed", type: "resize", id: "showboat", height }`.
 
 ## Limitations
 
@@ -97,6 +153,7 @@ already trained. Force the classical ranker with `?ranker=classical`.
 - Draw/follow uses a roll-vector approximation, not full 3D rigid-body spin.
 - Pockets use a jaw-radius capture test — no liners/knuckles, so very fast
   balls never rattle out.
-- Safety play is a single heuristic roll-up, not a searched strategy.
+- Safety play is a small simulated search over roll-ups (legality plus the
+  opponent's best ranked shot afterwards), not a real safety strategy.
 - Shot power is a heuristic function of path length; the ranker doesn't
   optimize power per shot.
