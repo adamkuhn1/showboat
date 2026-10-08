@@ -15,6 +15,7 @@ import {
 } from "./render/renderer";
 import { playShot, type PlaybackHandle } from "./render/playback";
 import { describeShot } from "./ai/trace";
+import { summariseOutcome } from "./game/summary";
 import { aiTakeTurn, type EvaluatedCandidate } from "./ai/agent";
 import { makeRanker } from "./ai/ranker";
 import ThinkingPanel, { type ThinkingState } from "./ThinkingPanel";
@@ -41,8 +42,15 @@ const routeFromFrames = (sim: SimResult, ballId: number) => {
   return pts;
 };
 
-export default function App() {
+// Instruction wording follows the input device: on a touch screen the aim
+// is a tap-and-drag, everywhere else a press-and-drag.
+const coarsePointer = (): boolean =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(pointer: coarse)").matches;
+
+export default function App({ embed = false }: { embed?: boolean }) {
   const game = useRef(makeGame());
+  const coarse = useMemo(coarsePointer, []);
   // ?ranker=classical|neural forces one or the other (useful to compare);
   // the default without the param reflects training/evaluate.ts's held-out
   // gate result (see src/ai/ranker.ts).
@@ -61,7 +69,12 @@ export default function App() {
   const [side, setSide] = useState(0);
   const [top, setTop] = useState(0);
   const [slow, setSlow] = useState(false);
-  const [message, setMessage] = useState("You break. Aim with the mouse, then Shoot.");
+  const [message, setMessage] = useState(
+    `You break. ${coarse ? "Tap and drag" : "Drag"} to aim, then Shoot.`,
+  );
+  // Full collision chain of the last committed shot — behind "details", never
+  // in the status line itself.
+  const [lastTrace, setLastTrace] = useState<string | null>(null);
   const [thinking, setThinking] = useState<ThinkingState>({
     active: false,
     ranker: ranker.current.name,
@@ -127,29 +140,13 @@ export default function App() {
     [table, view],
   );
 
-  const outcomeMessage = (report: ShotReport, shooter: number): string => {
-    const o = report.outcome;
-    const trace = describeShot(report.sim);
-    const who = (p: number): string => (p === HUMAN ? "You" : "The AI");
-    if (o.gameOver) {
-      return `${who(o.winner ?? 0)} win${o.winner === AI ? "s" : ""} the rack!${
-        o.foul ? ` (${o.foulReason})` : ""
-      }`;
-    }
-    if (o.foul) {
-      return `Foul by ${who(shooter).toLowerCase()}: ${o.foulReason}. ${
-        report.next.turn === HUMAN ? "You have" : "AI has"
-      } ball in hand.`;
-    }
-    const next =
-      report.next.turn === shooter
-        ? shooter === HUMAN
-          ? "You continue."
-          : "AI continues."
-        : report.next.turn === HUMAN
-          ? "Your turn."
-          : "AI's turn.";
-    return `${next} ${trace}`;
+  // Status line gets a plain summary; the full event chain goes behind the
+  // details toggle (and the console) instead of flooding the line.
+  const showOutcome = (report: ShotReport, shooter: typeof HUMAN | typeof AI): void => {
+    const trace = describeShot(report.sim, Infinity);
+    console.debug(`[showboat] ${shooter === HUMAN ? "you" : "AI"}: ${trace}`);
+    setLastTrace(trace);
+    setMessage(summariseOutcome(report, shooter, HUMAN));
   };
 
   // --- human input ----------------------------------------------------------
@@ -159,12 +156,20 @@ export default function App() {
   // at the table (or to reach a slider) never disturbs a prepared shot.
   const draggingRef = useRef(false);
 
-  const aimFromEvent = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number; inBounds: boolean } => {
+  // Pointer position in canvas pixels. The canvas is drawn at CANVAS_W x
+  // CANVAS_H but may be displayed scaled (max-width on narrow screens, full
+  // frame width in embed mode), so CSS pixels are mapped back to the drawing
+  // coordinates the view transform uses.
+  const canvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number; inBounds: boolean } => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const inBounds = x >= 0 && x <= rect.width && y >= 0 && y <= rect.height;
-    return { x, y, inBounds };
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    const inBounds = cssX >= 0 && cssX <= rect.width && cssY >= 0 && cssY <= rect.height;
+    return {
+      x: (cssX * CANVAS_W) / (rect.width || CANVAS_W),
+      y: (cssY * CANVAS_H) / (rect.height || CANVAS_H),
+      inBounds,
+    };
   };
 
   const updateAimTo = (x: number, y: number, cue: { pos: { x: number; y: number } }) => {
@@ -176,9 +181,9 @@ export default function App() {
   // Clicking ONLY places the cue ball during ball-in-hand; shooting is the
   // explicit button. Aim and shoot stay separate, deliberate actions.
   const placeCueAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const wx = (e.clientX - rect.left - view.offsetX) / view.scale;
-    const wy = -(e.clientY - rect.top - view.offsetY) / view.scale;
+    const { x, y } = canvasPoint(e);
+    const wx = (x - view.offsetX) / view.scale;
+    const wy = -(y - view.offsetY) / view.scale;
     const hx = table.length / 2 - BALL_RADIUS;
     const hy = table.width / 2 - BALL_RADIUS;
     const nx = Math.max(-hx, Math.min(hx, wx));
@@ -202,7 +207,7 @@ export default function App() {
     // drag continues past its edges, so releasing off-table still freezes
     // the aim cleanly instead of leaving the drag "stuck" open.
     canvasRef.current?.setPointerCapture(e.pointerId);
-    const { x, y } = aimFromEvent(e);
+    const { x, y } = canvasPoint(e);
     updateAimTo(x, y, cue);
   };
 
@@ -210,7 +215,7 @@ export default function App() {
     if (!humanTurn || !draggingRef.current) return;
     const cue = state.balls.find((b) => b.id === CUE_ID);
     if (!cue || cue.pocketed) return;
-    const { x, y, inBounds } = aimFromEvent(e);
+    const { x, y, inBounds } = canvasPoint(e);
     // Leaving the table surface stops the aim from updating (it freezes at
     // its last in-bounds value) without ending the drag -- coming back while
     // still held resumes it, same as a real cue stroke you can pause.
@@ -226,7 +231,7 @@ export default function App() {
   const shoot = () => {
     if (!humanTurn) return;
     if (state.ballInHand !== false) {
-      setMessage("Place the cue ball first (click the table).");
+      setMessage(`Place the cue ball first (${coarse ? "tap" : "click"} the table).`);
       return;
     }
     setThinking({ active: false, ranker: ranker.current.name, phase: "" });
@@ -234,7 +239,7 @@ export default function App() {
     // ONE simulation resolves the shot; its frames are the playback.
     const report = takeShot(state, table, action, { recordFrames: true });
     void playAndCommit(report).then(() => {
-      setMessage(outcomeMessage(report, HUMAN));
+      showOutcome(report, HUMAN);
     });
   };
 
@@ -258,6 +263,7 @@ export default function App() {
     const run = async (): Promise<void> => {
       let base = state;
       setMessage("AI is thinking…");
+      setLastTrace(null);
       setThinking({ active: true, ranker: ranker.current.name, phase: "starting" });
       const move = await aiTakeTurn(state, table, ranker.current, {
         delayMs: 420,
@@ -298,7 +304,7 @@ export default function App() {
 
       await playAndCommit(move.report, overlay);
       if (signal.cancelled) return;
-      setMessage(outcomeMessage(move.report, AI));
+      showOutcome(move.report, AI);
     };
 
     void run().finally(() => {
@@ -324,6 +330,7 @@ export default function App() {
     setState(game.current.state);
     setPhase("aiming");
     setThinking({ active: false, ranker: ranker.current.name, phase: "" });
+    setLastTrace(null);
     setMessage("New rack. You break.");
   };
 
@@ -339,10 +346,12 @@ export default function App() {
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <h1>Showboat</h1>
-        <p className="tag">2D bar pool · you vs a trick-shot opponent</p>
-      </header>
+      {!embed && (
+        <header className="topbar">
+          <h1>Showboat</h1>
+          <p className="tag">2D bar pool · you vs a trick-shot opponent</p>
+        </header>
+      )}
 
       <div className="layout">
         <div className="board">
@@ -364,10 +373,16 @@ export default function App() {
               {state.ballInHand !== false && state.turn === HUMAN ? " · ball in hand" : ""}
             </span>
             <span className="msg">{message}</span>
+            {lastTrace && phase === "aiming" && (
+              <details className="trace">
+                <summary>details</summary>
+                <span>{lastTrace}</span>
+              </details>
+            )}
           </div>
         </div>
 
-        <ThinkingPanel t={thinking} />
+        <ThinkingPanel t={thinking} placeholder={embed} />
       </div>
 
       <div className="controls">

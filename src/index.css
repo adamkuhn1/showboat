@@ -51,7 +51,7 @@ h1 {
   cursor: default;
   max-width: 100%;
 }
-.table[data-human] { cursor: crosshair; }
+.table[data-human] { cursor: crosshair; touch-action: none; }
 .thinking {
   width: 240px;
   min-height: 120px;
@@ -132,3 +132,62 @@ button {
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.secondary { background: transparent; color: var(--ink); border-color: var(--line); }
 .hint { font-size: 0.78rem; color: var(--dim); max-width: 60ch; text-align: center; }
+.trace { font-size: 0.75rem; color: var(--dim); }
+.trace summary { cursor: pointer; text-decoration: underline dotted; }
+.trace[open] { flex-basis: 100%; text-align: center; }
+.trace[open] span { display: block; margin-top: 0.3rem; overflow-wrap: anywhere; }
+
+/* --- embed mode (?embed=1) --------------------------------------------------
+   Inside the portfolio's iframe: the host's palette and type, no title, the
+   table scaled to the frame width, the reasoning panel beside the table from
+   1024px of frame width and below it on narrower frames. The page sizes to
+   its content (no 100%-height chain) and reports that height to the host
+   (src/embed.ts), which sizes the frame, so there are no inner scrollbars. */
+html[data-embed] {
+  --ink: #ece5d3;
+  --dim: #b9ad96;
+  --gilt: #c8a04a;
+  --line: rgba(236, 229, 211, 0.16);
+  --p1: var(--gilt);
+  --bone: #eee9dd;
+  --bone-ink: #1c1e24;
+  overflow: hidden;
+}
+html[data-embed],
+html[data-embed] body,
+html[data-embed] #root { height: auto; }
+html[data-embed] body {
+  background: #25170f;
+  font-family: "Archivo Variable", Archivo, system-ui, sans-serif;
+  overflow: hidden;
+}
+html[data-embed] .shell {
+  min-height: 0;
+  max-width: none;
+  padding: 12px 16px 16px;
+  align-items: stretch;
+}
+html[data-embed] .layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.9rem;
+}
+html[data-embed] .board { min-width: 0; }
+html[data-embed] .table { width: 100%; height: auto; }
+html[data-embed] .status { max-width: none; }
+html[data-embed] .thinking { width: auto; min-height: 0; }
+html[data-embed] .controls { max-width: none; }
+html[data-embed] .controls input[type="range"] { accent-color: var(--gilt); }
+html[data-embed] button,
+html[data-embed] button.secondary {
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--bone-ink);
+}
+html[data-embed] .hint { max-width: none; margin: 0; }
+@media (min-width: 1024px) {
+  html[data-embed] .layout { grid-template-columns: minmax(0, 1fr) 260px; }
+}
+@media (max-width: 480px) {
+  html[data-embed] button { padding: 0.5rem 0.8rem; }
+}
