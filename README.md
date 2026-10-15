@@ -2,6 +2,13 @@
 
 [![CI](https://github.com/adamkuhn1/showboat/actions/workflows/ci.yml/badge.svg)](https://github.com/adamkuhn1/showboat/actions/workflows/ci.yml)
 
+![The AI opponent scans 125 candidate shots, selects a bank on the 10-ball that pots in 2 of 3 jittered simulations, and plays it into the side pocket](docs/bank-shot.gif)
+
+*A real AI turn, recorded in-game: dashed lines are candidates being verified, the
+solid line is the simulated route it then plays. The 10 banks off the opposite
+rail into the side pocket.* No hosted demo yet; it runs locally with two
+commands, see [Run locally](#run-locally).
+
 Browser-based 8-ball against a computer opponent that specifically hunts for
 trick shots — banks, kicks, combos — verified by real physics rather than
 scripted, with its reasoning shown live as it plays.
