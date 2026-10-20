@@ -106,15 +106,15 @@ export default function App({ embed = false }: { embed?: boolean }) {
       render(c, s, table, view);
       if (phase === "aiming" && s.turn === HUMAN) {
         const cue = s.balls.find((b) => b.id === CUE_ID);
-        if (cue && !cue.pocketed) drawAim(c, cue, aim, power, view, table);
+        if (cue && !cue.pocketed) drawAim(c, cue, aim, s.balls, view, table);
       }
     },
-    [table, view, phase, aim, power],
+    [table, view, phase, aim],
   );
 
   useEffect(() => {
     if (phase !== "animating") paint(state);
-  }, [state, aim, power, phase, paint]);
+  }, [state, aim, phase, paint]);
 
   // --- shared playback + commit ---------------------------------------------
   const playAndCommit = useCallback(

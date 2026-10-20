@@ -3,6 +3,7 @@ import { type Table } from "../physics/table";
 import { BALL_RADIUS } from "../physics/constants";
 import { type GameState } from "../game/state";
 import { CUE_ID, EIGHT_ID, SOLIDS } from "../game/rack";
+import { aimContact } from "./aim";
 
 // Canvas renderer for the 2D bar-pool table. Draws in metres, mapping the table
 // coordinate system (origin at centre) to canvas pixels with a fixed scale plus
@@ -134,51 +135,67 @@ export const drawBall = (
   ctx.fill();
 };
 
-// Draw the aim line + power indicator for the human shooter.
-// Distance (world units) from `pos` to where a ray in direction `dir` exits
-// the table's playing rectangle (cushion nose to cushion nose). `pos` is
-// assumed inside the rectangle, which the cue ball always is.
-const rayExitDistance = (
-  pos: { x: number; y: number },
-  dir: { x: number; y: number },
-  table: Table,
-): number => {
-  const hx = table.length / 2;
-  const hy = table.width / 2;
-  const tx = dir.x > 0 ? (hx - pos.x) / dir.x : dir.x < 0 ? (-hx - pos.x) / dir.x : Infinity;
-  const ty = dir.y > 0 ? (hy - pos.y) / dir.y : dir.y < 0 ? (-hy - pos.y) / dir.y : Infinity;
-  return Math.min(tx, ty);
-};
-
+// Aim overlay for the human shooter: a dashed line from the cue ball to the
+// first thing it would touch on a straight path. When that is a ball, a ghost
+// ball marks where the cue ball's centre will be at contact, and a short line
+// off the object ball shows the direction it will be sent (no throw or spin).
 export const drawAim = (
   ctx: CanvasRenderingContext2D,
   cue: Ball,
   phi: number,
-  power: number,
+  balls: readonly Ball[],
   v: ViewTransform,
   table: Table,
 ): void => {
   if (cue.pocketed) return;
+  const contact = aimContact(cue, phi, balls, table);
   const [cx, cy] = toPx(cue.pos.x, cue.pos.y, v);
-  const desiredLen = (0.3 + power * 0.7) * table_diag(v);
-  const dx = Math.cos(phi);
-  const dy = -Math.sin(phi); // screen y flip
-  // Clipped to the playing surface in world units, then converted to the
-  // same pixel scale the desired length is already in, so the line never
-  // strays past the cloth into the rail/canvas margin.
-  const worldExit = rayExitDistance(cue.pos, { x: Math.cos(phi), y: Math.sin(phi) }, table);
-  const len = Math.min(desiredLen, worldExit * v.scale);
+  const [gx, gy] = toPx(contact.ghost.x, contact.ghost.y, v);
+  const r = BALL_RADIUS * v.scale;
+
+  ctx.save();
   ctx.strokeStyle = "rgba(255,255,255,0.8)";
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
   ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + dx * len, cy + dy * len);
+  ctx.lineTo(gx, gy);
   ctx.stroke();
   ctx.setLineDash([]);
+
+  if (contact.kind === "ball") {
+    // Ghost ball.
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(gx, gy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Object-ball direction, clipped to the cloth so it never runs onto the rail.
+    const [x0, y0] = toPx(-table.length / 2, table.width / 2, v);
+    ctx.beginPath();
+    ctx.rect(x0, y0, table.length * v.scale, table.width * v.scale);
+    ctx.clip();
+    // Starts at the object ball's far edge so it doesn't cover the number.
+    const [ox, oy] = toPx(contact.target.pos.x, contact.target.pos.y, v);
+    const ux = contact.objectDir.x;
+    const uy = -contact.objectDir.y; // screen y flip
+    const len = OBJECT_LINE_LENGTH * v.scale;
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(ox + ux * r, oy + uy * r);
+    ctx.lineTo(ox + ux * (r + len), oy + uy * (r + len));
+    ctx.stroke();
+  }
+  ctx.restore();
 };
 
-const table_diag = (v: ViewTransform): number => Math.max(140, v.scale * 0.6);
+// Kept short on purpose: it shows the direction, not a promise of where the
+// object ball ends up.
+const OBJECT_LINE_LENGTH = 0.3; // m
 
 export const render = (
   ctx: CanvasRenderingContext2D,
