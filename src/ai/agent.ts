@@ -3,7 +3,14 @@ import { type Table } from "../physics/table";
 import { type CueAction } from "../physics/cue";
 import { BALL_RADIUS } from "../physics/constants";
 import { type GameState } from "../game/state";
-import { cloneState, placeCueBall, takeShot, type ShotReport } from "../game/game";
+import {
+  cloneState,
+  cueSpotLimits,
+  placeCueBall,
+  takeShot,
+  type ShotReport,
+} from "../game/game";
+import { HEAD_SPOT } from "../physics/table";
 import { CUE_ID } from "../game/rack";
 import {
   generateCandidates,
@@ -68,8 +75,10 @@ export interface AiMove {
 
 export interface AiHooks {
   onPhase?: (phase: string) => void;
-  // Fired after a ball-in-hand placement so the UI can repaint the moved cue.
-  onPlaced?: (placed: GameState) => void;
+  // Fired after a ball-in-hand placement so the UI can show the cue ball
+  // being put down. The turn waits for a returned promise before it starts
+  // the (synchronous, frame-blocking) candidate generation.
+  onPlaced?: (placed: GameState, spot: Vec2) => void | Promise<void>;
   // Fired once with the real generation counts (before any verification).
   onGenerated?: (count: number, byKind: Record<CandidateKind, number>) => void;
   onCandidate?: (ec: EvaluatedCandidate, index: number, total: number) => void;
@@ -148,15 +157,15 @@ export const aiTakeTurn = async (
   }
 
   // --- ball in hand: place the cue where the ranker sees the best shot -----
+  // Only after a scratch, and only behind the head string (bar rules). If
+  // every sampled spot is blocked it goes on the head spot.
   let cuePlacedAt: Vec2 | null = null;
   if (state.ballInHand !== false) {
     hooks.onPhase?.("placing");
-    const spot = bestCuePlacement(state, table, ranker);
-    if (spot) {
-      state = placeCueBall(state, spot.x, spot.y);
-      cuePlacedAt = spot;
-      hooks.onPlaced?.(state);
-    }
+    const spot = bestCuePlacement(state, table, ranker) ?? { ...HEAD_SPOT };
+    state = placeCueBall(state, spot.x, spot.y);
+    cuePlacedAt = spot;
+    await hooks.onPlaced?.(state, spot);
     if (cancelled()) return null;
   }
 
@@ -417,22 +426,29 @@ const opponentBestPrior = (g: GameState, table: Table, ranker: Ranker): number =
   return best;
 };
 
-// Sample free positions and keep the one whose best-ranked candidate scores
-// highest (with the same trick preference used for ordering). Pure ranking —
-// physics verification then applies to the shot taken from there.
-const bestCuePlacement = (
+// Sample free spots inside the legal area (behind the head string after a
+// scratch) and keep the one whose best-ranked candidate scores highest, with
+// the same trick preference used for ordering. Pure ranking; physics
+// verification then applies to the shot taken from there.
+export const bestCuePlacement = (
   g: GameState,
   table: Table,
   ranker: Ranker,
 ): Vec2 | null => {
-  const hx = table.length / 2 - BALL_RADIUS * 2;
-  const hy = table.width / 2 - BALL_RADIUS * 2;
+  const lim = cueSpotLimits(g, table);
+  // One more radius of clearance from the rails than the hard limit.
+  const x0 = lim.minX + BALL_RADIUS;
+  const x1 = lim.maxX - BALL_RADIUS;
+  const y0 = lim.minY + BALL_RADIUS;
+  const y1 = lim.maxY - BALL_RADIUS;
+  const NX = 6;
+  const NY = 6;
   let best: { score: number; p: Vec2 } | null = null;
-  for (let ix = 0; ix < 12; ix++) {
-    for (let iy = 0; iy < 6; iy++) {
+  for (let ix = 0; ix < NX; ix++) {
+    for (let iy = 0; iy < NY; iy++) {
       const p = {
-        x: -hx + (2 * hx * ix) / 11,
-        y: -hy + (2 * hy * iy) / 5,
+        x: x0 + ((x1 - x0) * ix) / (NX - 1),
+        y: y0 + ((y1 - y0) * iy) / (NY - 1),
       };
       const blocked = g.balls.some(
         (b) =>

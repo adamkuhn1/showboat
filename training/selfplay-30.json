@@ -3,25 +3,25 @@
   "decided": 30,
   "seed": 42,
   "maxShots": 120,
-  "neuralWins": 19,
-  "classicalWins": 11,
-  "neuralWinRate": 0.6333333333333333,
+  "neuralWins": 15,
+  "classicalWins": 15,
+  "neuralWinRate": 0.5,
   "neuralWinRateWilson95": [
-    0.45513246433604937,
-    0.7812629779598231
+    0.33153851227173764,
+    0.6684614877282624
   ],
   "neural": {
-    "wins": 19,
-    "potsTotal": 156,
+    "wins": 15,
+    "potsTotal": 132,
     "potsTrick": 95,
-    "avgShotsToWin": "13.8"
+    "avgShotsToWin": "12.9"
   },
   "classical": {
-    "wins": 11,
-    "potsTotal": 118,
-    "potsTrick": 77,
-    "avgShotsToWin": "14.6"
+    "wins": 15,
+    "potsTotal": 132,
+    "potsTrick": 96,
+    "avgShotsToWin": "13.3"
   },
-  "wallSeconds": 145,
-  "ranAt": "2026-10-01T18:10:24.531Z"
+  "wallSeconds": 149,
+  "ranAt": "2026-10-21T17:54:09.161Z"
 }

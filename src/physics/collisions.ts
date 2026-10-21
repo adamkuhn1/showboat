@@ -58,10 +58,12 @@ export const resolveBallBall = (a: Ball, b: Ball): void => {
 
   const normalImpulse = 0.5 * (1 + e) * approach; // per-ball magnitude
   const maxFric = MU_BALL_BALL * normalImpulse;
-  // Friction opposes relative tangential surface motion, capped by available
-  // tangential momentum so we never reverse the slip.
-  const desired = 0.5 * Math.abs(relTan);
-  const fric = Math.sign(relTan) * Math.min(maxFric, desired);
+  // Friction opposes the relative surface slip, up to the Coulomb limit, and
+  // never more than it takes to stop the slip. Each unit of tangential
+  // impulse (per unit mass) changes each ball's surface speed by 1 through
+  // translation and 5/2 through spin (I = 2/5 m R^2), so the two surfaces
+  // close at 2 * (1 + 5/2) = 7 per unit of impulse.
+  const fric = Math.sign(relTan) * Math.min(maxFric, Math.abs(relTan) / 7);
 
   const newVat = vat - fric;
   const newVbt = vbt + fric;
@@ -69,11 +71,12 @@ export const resolveBallBall = (a: Ball, b: Ball): void => {
   a.vel = add(scale(n, newVan), scale(t, newVat));
   b.vel = add(scale(n, newVbn), scale(t, newVbt));
 
-  // Throw also perturbs spin slightly (angular reaction to the tangential
-  // impulse). Small but real; keeps the overlay's event traces honest.
-  const spinTransfer = (fric / BALL_RADIUS) * 0.5;
+  // The same impulse twists both balls the same way. Its contact point is
+  // at +R n on a (force -fric t) and at -R n on b (force +fric t); in this
+  // z-up frame (perp is a +90 degree turn) both torques are -R * fric.
+  const spinTransfer = (2.5 * fric) / BALL_RADIUS;
   a.wz -= spinTransfer;
-  b.wz += spinTransfer;
+  b.wz -= spinTransfer;
 };
 
 // --- Ball-cushion collision (Han 2005 lineage) -------------------------------
@@ -104,24 +107,28 @@ export const resolveBallCushion = (b: Ball, cushion: Cushion): void => {
   // Normal rebound with restitution.
   const newVn = -E_BALL_CUSHION * vn;
 
-  // Tangential surface velocity at the (raised) contact point includes the
-  // sidespin contribution. Positive wz spins the ball's rail-side surface along
-  // +t, adding to throw off the cushion.
-  const surfTan = vt + b.wz * BALL_RADIUS * heightCoupling;
+  // Surface velocity along the rail at the contact point. The rail is behind
+  // the ball (contact at -R n), where spin wz moves the surface at
+  // -wz * R * t, reduced by how high on the ball the nose sits. So right
+  // english (wz < 0) on a ball running along the rail in +t is "running"
+  // english: it lowers the slip and widens the rebound angle.
+  const surfTan = vt - b.wz * BALL_RADIUS * heightCoupling;
 
-  // Friction impulse along the rail, opposing surface slip, bounded by the
-  // normal impulse (Coulomb) — this is what makes english "grab" the rail.
+  // Friction along the rail opposes that slip, capped by Coulomb and by the
+  // impulse that would just stop it (translation plus the spin response,
+  // 1 + (5/2) h^2 per unit impulse). This is what makes english grab the rail.
   const normalImpulse = (1 + E_BALL_CUSHION) * Math.abs(vn);
   const maxFric = MU_BALL_CUSHION * normalImpulse;
-  const fric = Math.sign(surfTan) * Math.min(maxFric, Math.abs(surfTan));
+  const stopSlip = Math.abs(surfTan) / (1 + 2.5 * heightCoupling * heightCoupling);
+  const fric = Math.sign(surfTan) * Math.min(maxFric, stopSlip);
 
   const newVt = vt - fric;
 
   b.vel = add(scale(n, newVn), scale(t, newVt));
 
-  // The rail friction also alters sidespin (the cushion can add or kill
-  // english). Reaction is opposite to the tangential friction impulse.
-  b.wz -= (fric / BALL_RADIUS) * heightCoupling;
+  // The reaction torque of that friction (force -fric t at -R n) is
+  // +R h * fric about z, so the rail takes off english the ball brings in.
+  b.wz += (2.5 * fric * heightCoupling) / BALL_RADIUS;
 
   // The cushion also absorbs the roll component along its normal: a ball
   // arriving with follow (rolling into the rail) cannot keep that forward

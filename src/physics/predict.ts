@@ -2,6 +2,7 @@ import { sub, add, scale, dot, mag, normalize } from "./vec";
 import { type Ball, Motion, relativeSurfaceVelocity, linearDeceleration } from "./ball";
 import { type Cushion, type Table } from "./table";
 import { BALL_RADIUS, BALL_DIAMETER, EPS } from "./constants";
+import { timeToPhaseChange } from "./motion";
 
 // Predicting the next event is where the event-based approach earns its keep.
 // Because each ball follows a known accelerated path within a phase, the time of
@@ -25,16 +26,19 @@ const posAt = (b: Ball, t: number): { x: number; y: number } => {
     dir = mag(b.vel) > 1e-12 ? normalize(b.vel) : { x: 0, y: 0 };
   }
   const a = scale(dir, -decel);
-  // Clamp t so we never integrate past the moment the ball would stop/​switch
-  // phase along this accelerated arc (velocity would otherwise reverse).
-  return add(add(b.pos, scale(b.vel, t)), scale(a, 0.5 * t * t));
+  // Hold the position at the end of the phase (the ball stops, or starts
+  // rolling). Past that point this arc is wrong: a stopping ball would swing
+  // backwards and show up in contacts it never makes. The engine always
+  // schedules the phase change itself, so nothing after it is ever used.
+  const h = Math.min(t, timeToPhaseChange(b));
+  return add(add(b.pos, scale(b.vel, h)), scale(a, 0.5 * h * h));
 };
 
 const speedAt = (b: Ball, t: number): number => {
   if (b.pocketed || b.motion === Motion.Stationary || b.motion === Motion.Spinning) return 0;
   const decel = linearDeceleration(b.motion);
   const s0 = mag(b.vel);
-  return Math.max(0, s0 - decel * t);
+  return Math.max(0, s0 - decel * Math.min(t, timeToPhaseChange(b)));
 };
 
 // Bisection root-find for the earliest t in (0, tMax] where f(t) crosses zero

@@ -17,7 +17,9 @@ export interface ShotOutcome {
   foulReason: string | null;
   pocketedThisShot: number[];
   turnPasses: boolean; // does control move to the other player?
-  ballInHandForNext: boolean; // opponent gets cue-ball-in-hand?
+  // Opponent places the cue ball behind the head string (bar rules: only a
+  // scratch does this; any other foul just hands over the table as it lies).
+  ballInHandForNext: boolean;
   assignedGroups: boolean; // did this shot claim groups (table was open)?
   gameOver: boolean;
   winner: PlayerId | null;
@@ -37,9 +39,12 @@ const remainingInGroup = (g: GameState, group: Group): number =>
 // by the physics sim) to reflect group assignment / turn / winner, and returns a
 // structured outcome describing what happened.
 //
-// Rules implemented (standard bar / BCA-flavored 8-ball, v1 scope):
+// Rules implemented (American bar rules):
 //   - Cue must contact a legal ball first; on the break, contact any ball.
-//   - Pocketing the cue ball (scratch) is a foul -> ball in hand to opponent.
+//   - After contact, some ball must reach a rail or drop.
+//   - Pocketing the cue ball (scratch) is a foul: the opponent places it
+//     behind the head string. Every other foul only loses the turn; the cue
+//     ball stays exactly where it stopped.
 //   - Table is "open" until someone legally pockets and claims a group.
 //   - You continue your turn if you legally pocket one of your balls and don't
 //     foul; otherwise turn passes.
@@ -90,12 +95,15 @@ export const applyShotRules = (
   }
 
   // --- Cushion / pocket requirement --------------------------------------
-  // After contact, a legal shot must either pocket a ball or drive some ball to
-  // a rail. If nothing is pocketed and no ball hit a cushion after first
-  // contact, it's a foul (a standard "no rail" rule).
+  // After contact, a legal shot must either pocket a ball or drive some ball
+  // to a rail. A rail the cue ball found on its way to the first ball (a
+  // kick) does not count.
   if (!foul && pocketed.length === 0) {
+    const contactAt = result.events.findIndex(
+      (e) => e.kind === "ball-ball" && e.balls.includes(CUE_ID),
+    );
     const cushionAfterContact = result.events.some(
-      (e) => e.kind === "ball-cushion",
+      (e, i) => i > contactAt && e.kind === "ball-cushion",
     );
     if (!cushionAfterContact) {
       foul = true;
@@ -175,7 +183,7 @@ export const applyShotRules = (
     foulReason,
     pocketedThisShot: pocketed,
     turnPasses: !continueTurn,
-    ballInHandForNext: foul && !eightPocketed,
+    ballInHandForNext: cueScratched,
     assignedGroups,
     gameOver: false,
     winner: null,

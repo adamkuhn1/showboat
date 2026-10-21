@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { makeGame, placeCueBall, takeShot, type ShotReport } from "./game/game";
+import {
+  cueSpotLimits,
+  makeGame,
+  placeCueBall,
+  takeShot,
+  type ShotReport,
+} from "./game/game";
 import { CUE_ID } from "./game/rack";
 import type { GameState } from "./game/state";
 import type { CueAction } from "./physics/cue";
@@ -22,6 +28,7 @@ import ThinkingPanel, { type ThinkingState } from "./ThinkingPanel";
 
 const CANVAS_W = 900;
 const CANVAS_H = 500;
+const DPR = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
 const HUMAN = 0 as const;
 const AI = 1 as const;
 
@@ -96,8 +103,13 @@ export default function App({ embed = false }: { embed?: boolean }) {
   // over the AI's candidate-route overlay.
   const view = useMemo(() => computeView(CANVAS_W, CANVAS_H, table), [table]);
 
-  const ctx = (): CanvasRenderingContext2D | null =>
-    canvasRef.current?.getContext("2d") ?? null;
+  // Drawing happens in CANVAS_W x CANVAS_H units; the backing store is
+  // scaled by the device pixel ratio so the table is sharp on retina screens.
+  const ctx = (): CanvasRenderingContext2D | null => {
+    const c = canvasRef.current?.getContext("2d") ?? null;
+    c?.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return c;
+  };
 
   const paint = useCallback(
     (s: GameState) => {
@@ -146,7 +158,12 @@ export default function App({ embed = false }: { embed?: boolean }) {
     const trace = describeShot(report.sim, Infinity);
     console.debug(`[showboat] ${shooter === HUMAN ? "you" : "AI"}: ${trace}`);
     setLastTrace(trace);
-    setMessage(summariseOutcome(report, shooter, HUMAN));
+    const summary = summariseOutcome(report, shooter, HUMAN);
+    setMessage(
+      report.next.ballInHand !== false && report.next.turn === HUMAN && report.next.winner === null
+        ? `${summary} ${coarse ? "Tap" : "Click"} inside the shaded kitchen to put it down.`
+        : summary,
+    );
   };
 
   // --- human input ----------------------------------------------------------
@@ -184,10 +201,19 @@ export default function App({ embed = false }: { embed?: boolean }) {
     const { x, y } = canvasPoint(e);
     const wx = (x - view.offsetX) / view.scale;
     const wy = -(y - view.offsetY) / view.scale;
-    const hx = table.length / 2 - BALL_RADIUS;
-    const hy = table.width / 2 - BALL_RADIUS;
-    const nx = Math.max(-hx, Math.min(hx, wx));
-    const ny = Math.max(-hy, Math.min(hy, wy));
+    const lim = cueSpotLimits(state, table);
+    const nx = Math.max(lim.minX, Math.min(lim.maxX, wx));
+    const ny = Math.max(lim.minY, Math.min(lim.maxY, wy));
+    const overlaps = state.balls.some(
+      (b) =>
+        !b.pocketed &&
+        b.id !== CUE_ID &&
+        Math.hypot(b.pos.x - nx, b.pos.y - ny) < BALL_RADIUS * 2,
+    );
+    if (overlaps) {
+      setMessage("There's a ball there. Pick a clear spot.");
+      return;
+    }
     const placed = placeCueBall(state, nx, ny);
     game.current.state = placed;
     setState(placed);
@@ -260,6 +286,44 @@ export default function App({ embed = false }: { embed?: boolean }) {
       drawRoute(c, ec.cand.objectPath, view, "hypothetical", "#ffd166");
     };
 
+    // Ball in hand, shown as it happens on a real table: the cue ball comes
+    // out from the head rail and rolls to the chosen spot, rather than
+    // appearing there.
+    const rollCueIn = (
+      placed: GameState,
+      spot: { x: number; y: number },
+      sig: { cancelled: boolean },
+    ): Promise<void> =>
+      new Promise((resolve) => {
+        const from = { x: -table.length / 2 + BALL_RADIUS, y: spot.y };
+        const ms = 650;
+        const start = performance.now();
+        const frame = (now: number): void => {
+          if (sig.cancelled) return resolve();
+          const k = Math.min(1, (now - start) / ms);
+          const e = 1 - (1 - k) ** 3; // ease-out: it slows into place
+          const s = {
+            ...placed,
+            balls: placed.balls.map((b) =>
+              b.id === CUE_ID
+                ? {
+                    ...b,
+                    pos: {
+                      x: from.x + (spot.x - from.x) * e,
+                      y: from.y + (spot.y - from.y) * e,
+                    },
+                  }
+                : b,
+            ),
+          };
+          const c = ctx();
+          if (c) render(c, s, table, view);
+          if (k < 1) requestAnimationFrame(frame);
+          else setTimeout(resolve, 250);
+        };
+        requestAnimationFrame(frame);
+      });
+
     const run = async (): Promise<void> => {
       let base = state;
       setMessage("AI is thinking…");
@@ -269,9 +333,10 @@ export default function App({ embed = false }: { embed?: boolean }) {
         delayMs: 420,
         signal,
         onPhase: (p) => setThinking((t) => ({ ...t, phase: p })),
-        onPlaced: (placed) => {
+        onPlaced: async (placed, spot) => {
           base = placed;
-          paint(placed);
+          setMessage("AI takes ball in hand behind the line.");
+          await rollCueIn(placed, spot, signal);
         },
         onGenerated: (n, byKind) =>
           setThinking((t) => ({ ...t, generated: n, byKind })),
@@ -334,93 +399,123 @@ export default function App({ embed = false }: { embed?: boolean }) {
     setMessage("New rack. You break.");
   };
 
-  const grp = state.groups[state.turn];
   const turnLabel =
     state.winner !== null
       ? state.winner === HUMAN
-        ? "You won"
-        : "AI won"
+        ? "You won the rack"
+        : "The AI won the rack"
       : state.turn === HUMAN
-        ? "Your turn"
-        : "AI's turn";
+        ? "Your shot"
+        : "AI at the table";
+
+  const englishLabel =
+    Math.abs(side) < 0.01 ? "centre" : `${Math.round(Math.abs(side) * 100)}% ${side < 0 ? "left" : "right"}`;
+  const spinLabel =
+    Math.abs(top) < 0.01 ? "stun" : `${Math.round(Math.abs(top) * 100)}% ${top < 0 ? "draw" : "follow"}`;
 
   return (
     <main className="shell">
       {!embed && (
         <header className="topbar">
           <h1>Showboat</h1>
-          <p className="tag">2D bar pool · you vs a trick-shot opponent</p>
+          <p className="tag">Eight-ball on a seven-foot bar table, against an opponent who would rather bank it.</p>
         </header>
       )}
 
       <div className="layout">
         <div className="board">
+          <div className="scores">
+            <Side who="You" player={HUMAN} state={state} />
+            <span className={`turn p${state.turn}`}>{turnLabel}</span>
+            <Side who="AI" player={AI} state={state} />
+          </div>
           <canvas
             ref={canvasRef}
-            width={CANVAS_W}
-            height={CANVAS_H}
+            width={CANVAS_W * DPR}
+            height={CANVAS_H * DPR}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
             className="table"
             data-human={humanTurn || undefined}
+            data-placing={(humanTurn && state.ballInHand !== false) || undefined}
           />
           <div className="status">
-            <span className={`turn p${state.turn}`}>
-              {turnLabel}
-              {grp ? ` · ${grp}` : " · open table"}
-              {state.ballInHand !== false && state.turn === HUMAN ? " · ball in hand" : ""}
-            </span>
             <span className="msg">{message}</span>
             {lastTrace && phase === "aiming" && (
               <details className="trace">
-                <summary>details</summary>
+                <summary>what happened</summary>
                 <span>{lastTrace}</span>
               </details>
             )}
           </div>
+          <div className="controls">
+            <label className="power">
+              Power <span>{Math.round(power * 100)}%</span>
+              <input type="range" min={0.05} max={1} step={0.01} value={power}
+                onChange={(e) => setPower(Number(e.target.value))} disabled={!humanTurn} />
+            </label>
+            <label>
+              English <span>{englishLabel}</span>
+              <input type="range" min={-1} max={1} step={0.05} value={side}
+                onChange={(e) => setSide(Number(e.target.value))}
+                onDoubleClick={() => setSide(0)} disabled={!humanTurn} />
+            </label>
+            <label>
+              Draw / follow <span>{spinLabel}</span>
+              <input type="range" min={-1} max={1} step={0.05} value={top}
+                onChange={(e) => setTop(Number(e.target.value))}
+                onDoubleClick={() => setTop(0)} disabled={!humanTurn} />
+            </label>
+            <div className="buttons">
+              <button onClick={shoot} disabled={!humanTurn}>
+                {phase === "animating"
+                  ? "Rolling…"
+                  : state.turn === AI && state.winner === null
+                    ? "AI's shot"
+                    : "Shoot"}
+              </button>
+              <button onClick={() => setSlow((s) => !s)} className="secondary" aria-pressed={slow}>
+                Slow motion {slow ? "on" : "off"}
+              </button>
+              <button onClick={reset} className="secondary">Rack 'em</button>
+            </div>
+          </div>
+          <p className="hint">
+            While the AI thinks, dashed lines are shots it's still weighing. The
+            solid line is the one it picked, and it's exactly what you'll see rolled.
+            Double-click a spin slider to centre it.
+          </p>
         </div>
 
-        <ThinkingPanel t={thinking} placeholder={embed} />
+        <ThinkingPanel t={thinking} placeholder />
       </div>
 
-      <div className="controls">
-        <label>
-          Power <span>{Math.round(power * 100)}%</span>
-          <input type="range" min={0.05} max={1} step={0.01} value={power}
-            onChange={(e) => setPower(Number(e.target.value))} disabled={!humanTurn} />
-        </label>
-        <label>
-          Side (english) <span>{side.toFixed(2)}</span>
-          <input type="range" min={-1} max={1} step={0.05} value={side}
-            onChange={(e) => setSide(Number(e.target.value))} disabled={!humanTurn} />
-        </label>
-        <label>
-          Draw / Follow <span>{top.toFixed(2)}</span>
-          <input type="range" min={-1} max={1} step={0.05} value={top}
-            onChange={(e) => setTop(Number(e.target.value))} disabled={!humanTurn} />
-        </label>
-        <div className="buttons">
-          <button onClick={shoot} disabled={!humanTurn}>
-            {phase === "animating"
-              ? "Rolling…"
-              : state.turn === AI && state.winner === null
-                ? "AI thinking…"
-                : "Shoot"}
-          </button>
-          <button onClick={() => setSlow((s) => !s)} className="secondary">
-            {slow ? "Playback: slow" : "Playback: normal"}
-          </button>
-          <button onClick={reset} className="secondary">New rack</button>
-        </div>
-      </div>
-      <p className="hint">
-        Dashed lines are candidate geometry the AI is still considering; solid
-        lines are the verified route of the exact simulation you then watch.
-        No jump or massé shots exist — the cue action has no elevation axis by
-        construction.
-      </p>
     </main>
+  );
+}
+
+// One side of the scoreboard: who, which group, and the balls still to sink
+// (the 8 alone once the group is cleared).
+function Side({ who, player, state }: { who: string; player: 0 | 1; state: GameState }) {
+  const group = state.groups[player];
+  const left = group
+    ? state.balls
+        .filter((b) => !b.pocketed && (group === "solids" ? b.id >= 1 && b.id <= 7 : b.id >= 9))
+        .map((b) => b.id)
+        .sort((x, y) => x - y)
+    : [];
+  const show = group && left.length === 0 ? [8] : left;
+  return (
+    <span className={`side p${player}`}>
+      <strong>{who}</strong>
+      <em>{group ?? "open table"}</em>
+      <span className="chips" aria-label={group ? `${show.length} to go` : undefined}>
+        {show.map((id) => (
+          <i key={id} className={`chip c${id > 8 ? id - 8 : id}${id > 8 ? " stripe" : ""}`} title={`${id}`} />
+        ))}
+      </span>
+    </span>
   );
 }

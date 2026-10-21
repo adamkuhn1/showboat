@@ -1,4 +1,5 @@
-import { type Table, makeTable } from "../physics/table";
+import { type Table, makeTable, HEAD_STRING_X } from "../physics/table";
+import { BALL_RADIUS } from "../physics/constants";
 import { type Ball, cloneBall, Motion } from "../physics/ball";
 import { simulateShot, type SimOptions, type SimResult } from "../physics/engine";
 import { applyCue, type CueAction } from "../physics/cue";
@@ -45,6 +46,7 @@ export const cloneState = (s: GameState): GameState => ({
 });
 
 // Place the cue ball (ball-in-hand). Returns a new state with the cue moved.
+// The caller is responsible for keeping the spot legal (see cueSpotLimits).
 export const placeCueBall = (
   s: GameState,
   x: number,
@@ -78,26 +80,34 @@ export const takeShot = (
 
   const sim = simulateShot(next.balls, table, simOpts);
 
-  // Re-spot the cue ball if it was scratched: it comes back into play as
-  // ball-in-hand for the opponent, so we lift it off the table until placed.
   const outcome = applyShotRules(next, pre, sim);
   next.broken = true;
   next.shotCount = pre.shotCount + 1;
-  if (outcome.ballInHandForNext) next.ballInHand = "anywhere";
-  // Restore a scratched cue ball as a placeable (not pocketed) ball for the
-  // incoming player.
-  if (outcome.pocketedThisShot.includes(CUE_ID) && !outcome.gameOver) {
-    const c = next.balls.find((b) => b.id === CUE_ID);
-    if (c) {
-      c.pocketed = false;
-      c.vel = { x: 0, y: 0 };
-      c.motion = Motion.Stationary;
-      // Park it off-centre; UI/env will place it via placeCueBall.
-      c.pos = { x: 0, y: 0 };
-    }
+  // A scratched cue ball stays off the table (pocketed) until the incoming
+  // player puts it down behind the head string with placeCueBall. Nothing is
+  // drawn in the meantime, so it never appears anywhere it wasn't put.
+  if (outcome.ballInHandForNext && !outcome.gameOver) {
+    next.ballInHand = "behind-head";
   }
 
   return { next, sim, outcome };
+};
+
+// Where the cue ball may go for the current ball-in-hand: behind the head
+// string after a scratch, anywhere otherwise. One ball radius in from the
+// rails, and at or behind the line (a ball on the line counts as behind it).
+export const cueSpotLimits = (
+  s: GameState,
+  table: Table,
+): { minX: number; maxX: number; minY: number; maxY: number } => {
+  const hx = table.length / 2 - BALL_RADIUS;
+  const hy = table.width / 2 - BALL_RADIUS;
+  return {
+    minX: -hx,
+    maxX: s.ballInHand === "behind-head" ? HEAD_STRING_X : hx,
+    minY: -hy,
+    maxY: hy,
+  };
 };
 
 // Convenience for tests / search: pull the live (non-pocketed) balls.

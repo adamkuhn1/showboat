@@ -29,9 +29,14 @@ export const summariseOutcome = (
   }
 
   if (o.foul) {
+    const next = isHuman(report.next.turn);
     return `Foul by ${isHuman(shooter) ? "you" : "the AI"}: ${o.foulReason}. ${
-      isHuman(report.next.turn) ? "You have" : "The AI has"
-    } ball in hand.`;
+      o.ballInHandForNext
+        ? `${next ? "You have" : "The AI has"} ball in hand behind the line.`
+        : next
+          ? "Your turn, from where the cue ball lies."
+          : "AI to play, from where the cue ball lies."
+    }`;
   }
 
   const potted = o.pocketedThisShot.filter((id) => id !== CUE_ID);

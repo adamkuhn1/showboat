@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { makeGame, takeShot, cloneState } from "./game";
+import { makeGame, takeShot, cloneState, cueSpotLimits, placeCueBall } from "./game";
+import { HEAD_STRING_X } from "../physics/table";
+import { bestCuePlacement } from "../ai/agent";
+import { makeRanker } from "../ai/ranker";
 import { rackEightBall, CUE_ID } from "./rack";
 import { applyShotRules } from "./rules";
 import type { SimResult } from "../physics/engine";
@@ -37,6 +40,47 @@ describe("8-ball ruleset", () => {
     expect(out.foul).toBe(true);
     expect(out.turnPasses).toBe(true);
     expect(g.turn).toBe(1);
+  });
+
+  it("a wrong-ball foul passes the turn but gives no ball in hand", () => {
+    const pre = openBrokenState();
+    pre.groups = { 0: "solids", 1: "stripes" };
+    const g = cloneState(pre);
+    const out = applyShotRules(
+      g,
+      pre,
+      simOf({
+        firstContact: 9,
+        events: [
+          { time: 0.1, kind: "ball-ball", balls: [CUE_ID, 9] },
+          { time: 0.2, kind: "ball-cushion", balls: [9], cushion: "top" },
+          { time: 1, kind: "stop", balls: [] },
+        ],
+      }),
+    );
+    expect(out.foul).toBe(true);
+    expect(out.turnPasses).toBe(true);
+    expect(out.ballInHandForNext).toBe(false);
+  });
+
+  it("a rail the cue ball hit before contact does not satisfy the rail rule", () => {
+    const pre = openBrokenState();
+    const g = cloneState(pre);
+    const out = applyShotRules(
+      g,
+      pre,
+      simOf({
+        firstContact: 1,
+        events: [
+          { time: 0.1, kind: "ball-cushion", balls: [CUE_ID], cushion: "top" },
+          { time: 0.3, kind: "ball-ball", balls: [CUE_ID, 1] },
+          { time: 1, kind: "stop", balls: [] },
+        ],
+      }),
+    );
+    expect(out.foul).toBe(true);
+    expect(out.foulReason).toMatch(/rail/);
+    expect(out.ballInHandForNext).toBe(false);
   });
 
   it("scratch is a foul giving opponent ball-in-hand", () => {
@@ -136,6 +180,45 @@ describe("8-ball ruleset", () => {
     );
     expect(out.gameOver).toBe(true);
     expect(out.winner).toBe(0);
+  });
+});
+
+describe("ball in hand after a scratch", () => {
+  it("keeps the cue ball off the table until placed, then only in the kitchen", () => {
+    const { state, table } = makeGame();
+    state.broken = true;
+    // Clear the rack away from the side pocket and fire the cue ball into it.
+    for (const b of state.balls) if (b.id !== CUE_ID) b.pocketed = true;
+    const one = state.balls.find((b) => b.id === 1)!;
+    one.pocketed = false;
+    one.pos = { x: 0.7, y: -0.3 };
+    const cue = state.balls.find((b) => b.id === CUE_ID)!;
+    cue.pos = { x: 0, y: 0 };
+    const report = takeShot(state, table, {
+      phi: Math.PI / 2,
+      power: 0.3,
+      sideSpin: 0,
+      topSpin: 0,
+    });
+    expect(report.outcome.pocketedThisShot).toContain(CUE_ID);
+    expect(report.next.ballInHand).toBe("behind-head");
+    // Not parked anywhere visible: it stays pocketed until someone puts it down.
+    expect(report.next.balls.find((b) => b.id === CUE_ID)!.pocketed).toBe(true);
+    const lim = cueSpotLimits(report.next, table);
+    expect(lim.maxX).toBeCloseTo(HEAD_STRING_X, 9);
+    const placed = placeCueBall(report.next, -0.7, 0.1);
+    expect(placed.ballInHand).toBe(false);
+    expect(placed.balls.find((b) => b.id === CUE_ID)!.pocketed).toBe(false);
+  });
+
+  it("the AI only ever places the cue ball behind the head string", () => {
+    const { state, table } = makeGame();
+    state.broken = true;
+    state.ballInHand = "behind-head";
+    state.balls.find((b) => b.id === CUE_ID)!.pocketed = true;
+    const spot = bestCuePlacement(state, table, makeRanker("classical"));
+    expect(spot).not.toBeNull();
+    expect(spot!.x).toBeLessThanOrEqual(HEAD_STRING_X + 1e-9);
   });
 });
 

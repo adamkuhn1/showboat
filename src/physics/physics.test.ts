@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { makeBall, Motion } from "./ball";
+import { advanceBall, timeToPhaseChange } from "./motion";
 import { makeTable } from "./table";
 import { simulateShot } from "./engine";
 import { applyCue } from "./cue";
-import { resolveBallBall } from "./collisions";
+import { resolveBallBall, resolveBallCushion } from "./collisions";
 import { mag } from "./vec";
 import { BALL_RADIUS, BALL_DIAMETER, TABLE_LENGTH } from "./constants";
 
@@ -140,5 +141,107 @@ describe("action-space constraint (no jump / masse)", () => {
 describe("geometry sanity", () => {
   it("ball radius and diameter are consistent", () => {
     expect(BALL_DIAMETER).toBeCloseTo(2 * BALL_RADIUS, 12);
+  });
+});
+
+describe("cue strike and spin", () => {
+  const cueAfterFullHit = (topSpin: number): number => {
+    // Short, firm, straight shot up the table's short axis into the top
+    // side pocket, so the object ball drops instead of coming back. The cue
+    // ball is still sliding at contact, so its spin decides what it does.
+    const cue = makeBall(0, 0, -0.12);
+    const obj = makeBall(1, 0, 0.1);
+    applyCue(cue, { phi: Math.PI / 2, power: 0.25, sideSpin: 0, topSpin });
+    const res = simulateShot([cue, obj], makeTable());
+    expect(res.firstContact).toBe(1);
+    expect(res.pocketed).toEqual([1]);
+    const contactY = 0.1 - BALL_DIAMETER;
+    return res.balls[0].pos.y - contactY;
+  };
+
+  it("a centre-ball hit starts with no spin: it slides, it does not roll", () => {
+    const cue = makeBall(0, 0, 0);
+    applyCue(cue, { phi: 0, power: 0.4, sideSpin: 0, topSpin: 0 });
+    expect(mag(cue.roll)).toBe(0);
+    expect(Math.abs(cue.wz)).toBe(0);
+    expect(cue.motion).toBe(Motion.Sliding);
+  });
+
+  it("stun stops near the contact point, draw comes back, follow goes through", () => {
+    const stun = cueAfterFullHit(0);
+    const draw = cueAfterFullHit(-1);
+    const follow = cueAfterFullHit(0.5);
+    expect(Math.abs(stun)).toBeLessThan(0.03);
+    expect(draw).toBeLessThan(-0.15);
+    expect(follow).toBeGreaterThan(0.15);
+  });
+
+  it("spin from the tip scales with cue speed", () => {
+    const soft = makeBall(0, 0, 0);
+    const hard = makeBall(0, 0, 0);
+    applyCue(soft, { phi: 0, power: 0.2, sideSpin: 1, topSpin: -1 });
+    applyCue(hard, { phi: 0, power: 0.4, sideSpin: 1, topSpin: -1 });
+    expect(hard.wz / soft.wz).toBeCloseTo(2, 6);
+    expect(hard.roll.x / soft.roll.x).toBeCloseTo(2, 6);
+  });
+
+  it("a stun shot rolls on at 5/7 of its launch speed", () => {
+    const cue = makeBall(0, -0.9, 0);
+    applyCue(cue, { phi: 0, power: 0.3, sideSpin: 0, topSpin: 0 });
+    const v0 = cue.vel.x;
+    const tSlide = timeToPhaseChange(cue);
+    advanceBall(cue, tSlide);
+    expect(cue.motion).toBe(Motion.Rolling);
+    expect(cue.vel.x / v0).toBeCloseTo(5 / 7, 6);
+  });
+
+  it("english steers a straight-in rail rebound, mirrored left and right", () => {
+    const endY = (sideSpin: number): number => {
+      const cue = makeBall(0, 0.5, 0);
+      applyCue(cue, { phi: 0, power: 0.25, sideSpin, topSpin: 0 });
+      return simulateShot([cue], makeTable()).balls[0].pos.y;
+    };
+    const right = endY(1);
+    const left = endY(-1);
+    expect(Math.abs(endY(0))).toBeLessThan(1e-9);
+    // Right english spins the ball clockwise; the rail grips the right-moving
+    // surface and kicks the ball the other way.
+    expect(right).toBeGreaterThan(0.05);
+    expect(left).toBeCloseTo(-right, 6);
+  });
+
+  it("running english widens the rebound off a rail, reverse english tightens it", () => {
+    const top = makeTable().cushions.find((c) => c.side === "top")!;
+    // Moving up and slightly right into the top rail. Running english here is
+    // counter-clockwise (left english, wz > 0): the contact surface turns
+    // against the travel, like a wheel rolling along the rail.
+    const reboundAngle = (wz: number): number => {
+      const b = makeBall(0, 0, 0.4);
+      // A steep approach: with no spin the rail friction stays under its
+      // Coulomb limit, so spin can push it either way.
+      b.vel = { x: 0.3, y: 1 };
+      b.roll = { x: 0.3 / BALL_RADIUS, y: 1 / BALL_RADIUS };
+      b.wz = wz;
+      b.motion = Motion.Rolling;
+      resolveBallCushion(b, top);
+      expect(b.vel.y).toBeLessThan(0);
+      return Math.atan2(b.vel.x, -b.vel.y); // from the rail's normal
+    };
+    const plain = reboundAngle(0);
+    expect(reboundAngle(60)).toBeGreaterThan(plain);
+    expect(reboundAngle(-60)).toBeLessThan(plain);
+  });
+
+  it("a ball that stops short never registers a contact it would only reach by sliding backwards", () => {
+    // A slow ball that stops a few mm short of a stationary ball.
+    const a = makeBall(0, 0, 0);
+    a.vel = { x: 0.3, y: 0 };
+    a.roll = { x: 0.3 / BALL_RADIUS, y: 0 };
+    a.motion = Motion.Rolling;
+    const stopDist = (0.3 * 0.3) / (2 * 0.05 * 9.8);
+    const b = makeBall(1, stopDist + BALL_DIAMETER + 0.004, 0);
+    const res = simulateShot([a, b], makeTable());
+    expect(res.firstContact).toBeNull();
+    expect(res.balls[0].pos.x).toBeCloseTo(stopDist, 3);
   });
 });

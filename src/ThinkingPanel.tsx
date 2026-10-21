@@ -34,10 +34,10 @@ const currentLine = (t: ThinkingState): string | null => {
   }`;
   if (!c.measured) return consider;
   if (c.success && c.robustness) {
-    return `${consider} — ${c.measured.label}, pots it (${c.robustness.successes}/${c.robustness.n} under jitter)`;
+    return `${consider}: ${c.measured.label}, goes in (and ${c.robustness.successes} of ${c.robustness.n} times with a shakier stroke)`;
   }
-  return `${consider} — ${
-    c.measured.targetPotted ? "pots it but fouls" : "misses in simulation"
+  return `${consider}: ${
+    c.measured.targetPotted ? "goes in, but it's a foul" : "misses"
   }`;
 };
 
@@ -66,28 +66,28 @@ export default function ThinkingPanel({
     <aside className="thinking" aria-live="polite">
       <div className="thinking-head">
         <span className="dot" data-active={t.active || undefined} />
-        Opponent — {t.ranker} ranker
+        The AI <span className="counts">· {t.ranker} ranker</span>
       </div>
 
-      {idle && <p>Its reasoning appears here on the AI's turn.</p>}
+      {idle && <p>When the AI is at the table, you can watch it think here.</p>}
 
-      {t.phase === "placing" && <p>Ball in hand — choosing cue position…</p>}
+      {t.phase === "placing" && <p>Ball in hand. Finding the best spot behind the line…</p>}
 
       {t.generated !== undefined && (
         <p className="counts">
-          {t.generated} candidates ({counts})
+          Looked at {t.generated} shots ({counts})
         </p>
       )}
 
       {t.active && t.phase === "verifying" && (
-        <p className="current">{currentLine(t) ?? "Verifying…"}</p>
+        <p className="current">{currentLine(t) ?? "Trying them out…"}</p>
       )}
 
       {t.decision && (
         <p className="reason">
           <strong>
             {t.decision.selected
-              ? "Selected"
+              ? "Playing"
               : t.decision.phase === "break"
                 ? "Break"
                 : "Safety"}

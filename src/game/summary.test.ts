@@ -61,13 +61,29 @@ describe("status-line outcome summary", () => {
     );
   });
 
-  it("capitalises the AI in a foul message", () => {
+  it("a non-scratch foul hands over the table as it lies", () => {
     const r = report(
       { foul: true, foulReason: "contacted opponent's ball first", turnPasses: true },
       HUMAN,
     );
     expect(summariseOutcome(r, AI, HUMAN)).toBe(
-      "Foul by the AI: contacted opponent's ball first. You have ball in hand.",
+      "Foul by the AI: contacted opponent's ball first. Your turn, from where the cue ball lies.",
+    );
+  });
+
+  it("a scratch gives ball in hand behind the line", () => {
+    const r = report(
+      {
+        foul: true,
+        foulReason: "scratch (cue ball pocketed)",
+        turnPasses: true,
+        ballInHandForNext: true,
+        pocketedThisShot: [0],
+      },
+      AI,
+    );
+    expect(summariseOutcome(r, HUMAN, HUMAN)).toBe(
+      "Foul by you: scratch (cue ball pocketed). The AI has ball in hand behind the line.",
     );
   });
 
