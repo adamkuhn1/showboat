@@ -22,7 +22,8 @@ import {
 import { playShot, type PlaybackHandle } from "./render/playback";
 import { describeShot } from "./ai/trace";
 import { summariseOutcome } from "./game/summary";
-import { aiTakeTurn, type EvaluatedCandidate } from "./ai/agent";
+import { type EvaluatedCandidate } from "./ai/agent";
+import { AiRunner } from "./ai/aiClient";
 import { makeRanker } from "./ai/ranker";
 import ThinkingPanel, { type ThinkingState } from "./ThinkingPanel";
 
@@ -94,6 +95,9 @@ export default function App({ embed = false }: { embed?: boolean }) {
   const playbackRef = useRef<PlaybackHandle | null>(null);
   const aiAbortRef = useRef<{ cancelled: boolean } | null>(null);
   const aiRunningRef = useRef(false);
+  // The AI thinks in a Web Worker so the table keeps animating meanwhile.
+  const aiRunner = useRef<AiRunner | null>(null);
+  aiRunner.current ??= new AiRunner();
   const slowRef = useRef(slow);
   slowRef.current = slow;
 
@@ -329,9 +333,7 @@ export default function App({ embed = false }: { embed?: boolean }) {
       setMessage("AI is thinking…");
       setLastTrace(null);
       setThinking({ active: true, ranker: ranker.current.name, phase: "starting" });
-      const move = await aiTakeTurn(state, table, ranker.current, {
-        delayMs: 420,
-        signal,
+      const turn = aiRunner.current!.run(state, table, ranker.current.name, {
         onPhase: (p) => setThinking((t) => ({ ...t, phase: p })),
         onPlaced: async (placed, spot) => {
           base = placed;
@@ -344,7 +346,8 @@ export default function App({ embed = false }: { embed?: boolean }) {
           setThinking((t) => ({ ...t, current: ec, index, total }));
           paintCandidate(base, ec);
         },
-      });
+      }, { delayMs: 420 });
+      const move = await turn.move;
       if (!move || signal.cancelled) return;
 
       // Publish the one decision; show the VERIFIED route of the chosen
@@ -384,9 +387,11 @@ export default function App({ embed = false }: { embed?: boolean }) {
   }, [phase, state, aiTick]);
 
   const reset = () => {
-    // Cancel any AI work and any animation; playback.stop() resolves its own
-    // promise, so nothing stays pending.
+    // Cancel any AI work (terminating the worker mid-search) and any
+    // animation; playback.stop() resolves its own promise, so nothing stays
+    // pending.
     if (aiAbortRef.current) aiAbortRef.current.cancelled = true;
+    aiRunner.current?.cancel();
     playbackRef.current?.stop();
     playbackRef.current = null;
     aiRunningRef.current = false;
